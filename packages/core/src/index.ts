@@ -85,7 +85,12 @@ export {
   type TrustStore,
   validateInit,
 } from './trust/index.js';
-export { System1Client } from './system1/index.js';
+export {
+  System1Client,
+  createDriver,
+  type CheckedDriver,
+  type Driver,
+} from './system1/index.js';
 export {
   Exploration,
   type DirectedStep,

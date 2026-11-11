@@ -4,10 +4,13 @@ import { ConfigError, parseConfig } from '../src/config.js';
 import { RunError } from '../src/run/index.js';
 import {
   System1Client,
+  assertDriverFor,
   buildRequest,
+  createDriver,
   parseDecision,
   type DecideInput,
 } from '../src/system1/index.js';
+import { JevDriver } from '../src/system1/jev.js';
 import { startFakeSystem1, type FakeSystem1 } from '@flowctl/fixture-app';
 
 const page: PageSnapshot = {
@@ -154,14 +157,13 @@ describe('buildRequest', () => {
   });
 });
 
-describe('System1Client', () => {
+describe('JevDriver', () => {
   let s1: FakeSystem1 | undefined;
   afterEach(async () => {
     await s1?.close();
     s1 = undefined;
   });
-  const client = (url: string) =>
-    new System1Client({ baseUrl: url, apiKey: 'k' });
+  const client = (url: string) => new JevDriver({ baseUrl: url, apiKey: 'k' });
 
   it('returns ranked operations, targets and the chosen input', async () => {
     s1 = await startFakeSystem1([
@@ -196,7 +198,7 @@ describe('System1Client', () => {
   });
 });
 
-describe('System1Client.fromConfig', () => {
+describe('createDriver', () => {
   const cfg = (system1?: Record<string, unknown>) =>
     parseConfig(
       {
@@ -214,35 +216,32 @@ describe('System1Client.fromConfig', () => {
 
   it('refuses envs outside allowedEnvs', () => {
     const e = thrown(() =>
-      System1Client.fromConfig(
-        cfg({ baseUrl: 'https://s1.test' }),
-        'prod',
-        KEY,
-      ),
+      createDriver(cfg({ baseUrl: 'https://s1.test' }), 'prod', KEY),
     );
     expect(e).toBeInstanceOf(RunError);
     expect(e).toMatchObject({ kind: 'system1_not_allowed' });
   });
 
   it('needs a system1 section and an API key', () => {
-    expect(
-      thrown(() => System1Client.fromConfig(cfg(), 'local', KEY)),
-    ).toBeInstanceOf(ConfigError);
+    expect(thrown(() => createDriver(cfg(), 'local', KEY))).toBeInstanceOf(
+      ConfigError,
+    );
     expect(
       thrown(() =>
-        System1Client.fromConfig(
-          cfg({ baseUrl: 'https://s1.test' }),
-          'local',
-          {},
-        ),
+        createDriver(cfg({ baseUrl: 'https://s1.test' }), 'local', {}),
       ),
     ).toBeInstanceOf(ConfigError);
-    expect(
-      System1Client.fromConfig(
-        cfg({ baseUrl: 'https://s1.test' }),
-        'local',
-        KEY,
-      ),
-    ).toBeInstanceOf(System1Client);
+    const d = createDriver(cfg({ baseUrl: 'https://s1.test' }), 'local', KEY);
+    expect(d.id).toBe('jev');
+    expect(() => assertDriverFor(d, 'local')).not.toThrow();
+  });
+
+  it('is still reachable as the deprecated System1Client.fromConfig', () => {
+    const d = System1Client.fromConfig(
+      cfg({ baseUrl: 'https://s1.test' }),
+      'local',
+      KEY,
+    );
+    expect(() => assertDriverFor(d, 'local')).not.toThrow();
   });
 });

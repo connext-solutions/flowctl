@@ -1,0 +1,48 @@
+{
+  "at": "<at>",
+  "source": "explore",
+  "step": 2,
+  "url": "http://app.test/o/org/hrm/settings/holidays",
+  "ms": 0,
+  "outcome": "TYPE_TEXT [2] textbox \"Tên ngày nghỉ*\" input=holidayName",
+  "ranked": [
+    {
+      "op": "TYPE_TEXT",
+      "p": 0.9
+    },
+    {
+      "op": "CLICK",
+      "p": 0.013
+    },
+    {
+      "op": "SELECT",
+      "p": 0.013
+    },
+    {
+      "op": "PRESS_ENTER",
+      "p": 0.013
+    },
+    {
+      "op": "SCROLL_DOWN",
+      "p": 0.013
+    }
+  ],
+  "targets": {
+    "CLICK": {
+      "control": "[1] button \"Thêm ngày nghỉ\"",
+      "p": 0.9
+    },
+    "TYPE_TEXT": {
+      "control": "[2] textbox \"Tên ngày nghỉ*\"",
+      "p": 0.9
+    },
+    "SELECT": {
+      "control": "[3] combobox \"\"",
+      "p": 1
+    }
+  },
+  "input": {
+    "key": "holidayName",
+    "p": 0.9
+  }
+}
