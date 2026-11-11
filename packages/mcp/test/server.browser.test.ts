@@ -155,6 +155,21 @@ describe('flowctl MCP server', () => {
     expect(existsSync(join(cfg.flowsPath, 'mcp-leave.yaml'))).toBe(true);
     const replay = await call(client, 'flow_replay', { names: ['mcp-leave'] });
     expect(replay.structuredContent).toMatchObject({ passed: 1, failed: 0 });
+    expect(replay.structuredContent?.['videos']).toBeUndefined();
+    const demo = await call(client, 'flow_replay', {
+      names: ['mcp-leave'],
+      video: true,
+    });
+    expect(demo.structuredContent).toMatchObject({
+      passed: 1,
+      videos: [
+        {
+          flow: 'mcp-leave',
+          status: 'passed',
+          videos: [expect.stringMatching(/video-employee\.webm$/)],
+        },
+      ],
+    });
   });
 
   it('escalates with page text marked as data, takes orchestrator steps, and finishes with the verdict', async () => {

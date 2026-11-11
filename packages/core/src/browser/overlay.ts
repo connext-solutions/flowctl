@@ -17,8 +17,9 @@ export const OVERLAY_COLORS = {
  * @remarks Everything sits in a closed shadow root under a host on `<html>`, outside `<body>`, with
  *   `aria-hidden`: `body.innerText` (the `text` assertion), Playwright locators (they pierce only open shadow roots)
  *   and the accessibility snapshot never see it, so the overlay can neither make an assertion pass nor be clicked
- *   (`pointer-events: none`). Text goes in with `textContent`, never as HTML. Init scripts run again on every
- *   navigation; {@link narrate} sets the text again after each step.
+ *   (`pointer-events: none`). It mounts after `DOMContentLoaded`, after `<body>`, so the parser and a framework that
+ *   hydrates the whole document find the markup they expect. Text goes in with `textContent`, never as HTML. Init
+ *   scripts run again on every navigation; {@link narrate} sets the text before each step.
  * @param title the flow name shown in the box header.
  */
 export const overlayScript = (title: string): string => String.raw`((title) => {
@@ -44,8 +45,8 @@ export const overlayScript = (title: string): string => String.raw`((title) => {
   const mount = () => {
     if (!host.isConnected && document.documentElement) document.documentElement.appendChild(host);
   };
-  if (document.documentElement) mount();
-  else new MutationObserver((_, o) => { if (document.documentElement) { o.disconnect(); mount(); } }).observe(document, { childList: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
+  else mount();
   Object.defineProperty(window, '__flowctlNarrate', {
     enumerable: false,
     value: {

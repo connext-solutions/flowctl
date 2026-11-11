@@ -52,4 +52,8 @@ anything flowctl adds to the page must not change what an assertion or a locator
 - **Harder:** a recorded replay is slower (about 1 s per step plus 2.5 s); each profile's video also records while
   another profile acts, so a two-role flow gives two clips with idle stretches. There is no conversion to MP4 or GIF
   (no ffmpeg dependency): browsers and GitHub play WebM.
+- **Limits of "invisible".** The overlay changes the document: a host element after `<body>` and a property on
+  `window`. A page script that walks every child of `<html>` or checks for unknown globals can notice it. The result
+  line is drawn before the teardown hook runs, so a run whose teardown is refused (`hooks_untrusted`) shows the
+  assertions' verdict on screen while `run.json` ends `error`; `run.json` is the verdict of record.
 - **Revisit when:** users need one combined clip across profiles, or videos of explorations.

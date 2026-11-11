@@ -1,4 +1,6 @@
-import type { ResolvedEnv } from '../config.js';
+import type { Page } from 'playwright';
+import type { ActContext } from '../browser/index.js';
+import type { LoadedConfig, ResolvedEnv } from '../config.js';
 import {
   deepExpand,
   expand,
@@ -60,3 +62,20 @@ export function prepareRun(flow: Flow, env: ResolvedEnv): Prepared {
     assertions: deepExpand(flow.assertions, templates),
   };
 }
+
+/** What an action needs on `page`: the page, input values, timeouts, templated values (`RunSession.ctx()`). */
+export const actContext = (
+  cfg: LoadedConfig,
+  page: Page,
+  p: Prepared,
+): ActContext => ({
+  page,
+  values: p.values,
+  exec: {
+    testIdAttribute: cfg.testIdAttribute,
+    timeout: cfg.stepTimeout,
+    flowsRoot: cfg.flowsPath,
+    secrets: p.secrets,
+  },
+  templated: p.templated,
+});

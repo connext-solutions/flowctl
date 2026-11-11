@@ -60,13 +60,25 @@ export function progressView(p: Progress): Record<string, unknown> {
   return { ...runView(p), next: NEXT[p.status] };
 }
 
-/** The JSON `flow_replay` returns: counts, and one entry per run that did not pass (it grows with flows × repeat). */
+/**
+ * The JSON `flow_replay` returns: counts, one entry per run that did not pass (it grows with flows × repeat), and,
+ * when videos were recorded, every run's video files with its verdict (ADR 0032).
+ */
 export function replayView(s: ReplaySummary): Record<string, unknown> {
+  const videos = s.results
+    .filter((r) => (r.evidence.videos ?? []).length > 0)
+    .map((r) => ({
+      runId: r.runId,
+      flow: r.flow,
+      status: r.status,
+      videos: r.evidence.videos,
+    }));
   return {
     passed: s.passed,
     failed: s.failed,
     flaky: s.flaky,
     errors: s.errors,
     notPassed: s.results.filter((r) => r.status !== 'passed').map(runView),
+    ...(videos.length === 0 ? {} : { videos }),
   };
 }
