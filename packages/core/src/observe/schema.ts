@@ -48,7 +48,8 @@ export const CallSchema = z
 
 /**
  * One page the crawler visited: the document `status` (0 when the navigation got no response), its controls,
- * the same-origin links it offers, its forms, and the calls and console errors seen while it was open.
+ * the same-origin links it offers, its forms, the calls and console errors seen while it was open, and what the
+ * run's guards refused while it was open (`refused`: a request out of scope, or a write; the request was aborted).
  */
 export const PageSchema = z
   .object({
@@ -60,6 +61,7 @@ export const PageSchema = z
     forms: z.array(FormSchema).max(50),
     calls: z.array(CallSchema).max(500),
     consoleErrors: z.array(PageText).max(100),
+    refused: z.array(z.enum(['scope_violation', 'destructive_blocked'])).max(2),
   })
   .strict();
 

@@ -64,6 +64,8 @@ interface LeaveRequest {
 
 export interface Fixture {
   url: string;
+  /** Every request the server received, in order: method and path (no query), for tests that prove what was sent. */
+  readonly requests: readonly { method: string; path: string }[];
   close(): Promise<void>;
 }
 
@@ -235,7 +237,12 @@ export async function startFixture(
     return page(res, html);
   }
 
+  const requests: { method: string; path: string }[] = [];
   const server = createServer((req, res) => {
+    requests.push({
+      method: req.method ?? '',
+      path: new URL(req.url ?? '/', 'http://fixture').pathname,
+    });
     handle(req, res).catch((e: unknown) =>
       send(res, 500, { message: String(e) }),
     );
@@ -246,6 +253,7 @@ export async function startFixture(
     throw new Error('fixture failed to bind');
   return {
     url: `http://127.0.0.1:${address.port}`,
+    requests,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

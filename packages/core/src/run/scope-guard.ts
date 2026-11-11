@@ -207,7 +207,10 @@ export class ScopeGuard {
     return held;
   }
 
+  /** Keeps the run's first problem; a crawl's request layer takes a scope refusal as an observation instead. */
   private note(kind: ErrorKind, hint: string): void {
+    if (kind === 'scope_violation' && this.writes?.observes(kind) === true)
+      return;
     this.first ??= new RunError(kind, hint);
   }
 

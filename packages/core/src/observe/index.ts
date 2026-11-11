@@ -1,6 +1,19 @@
 /**
- * Observe (roadmap section 3.2): the `AppMap` a deterministic crawler produces. The crawler itself is T2.2.
+ * Observe (roadmap section 3.2): a deterministic crawler and the `AppMap` it produces.
  */
+export {
+  observe,
+  pageBudget,
+  type Observation,
+  type ObserveOptions,
+} from './crawl.js';
+export {
+  mayOpen,
+  pageLinks,
+  pagePath,
+  type LinkRules,
+  type RawLink,
+} from './links.js';
 export {
   AppMapSchema,
   CallSchema,

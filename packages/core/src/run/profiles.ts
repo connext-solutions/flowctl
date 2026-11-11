@@ -200,8 +200,13 @@ export class Profiles {
         'flow_invalid',
         `Refused to open "${url}": flowctl navigates only inside ${origin}, the env's baseUrl. Use a path starting with /.`,
       );
-    if (this.guard !== undefined && !this.guard.allows(target.href, 'visit'))
+    if (this.guard !== undefined && !this.guard.allows(target.href, 'visit')) {
       this.guard.assertClean();
+      throw new RunError(
+        'scope_violation',
+        `Refused to open ${target.pathname}: it is outside the run's scope.`,
+      );
+    }
     try {
       await this.page.goto(url);
     } catch (e) {

@@ -6,6 +6,12 @@ import type { Outcome } from './outcome.js';
 /** The class of the env a run is on, or `unknown` for a non-loopback origin the trust store does not list. */
 export type RequestClass = EnvClass | 'unknown';
 
+/** A refusal a crawl keeps as an observation of the page it came from ({@link RequestGuard.forCrawl}). */
+export type Refusal = 'scope_violation' | 'destructive_blocked';
+
+/** The methods a crawl may send: reads only. */
+const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 /**
  * The request types that can carry a write: a page or form navigation, fetch, XHR, a beacon or `ping`, an event
  * stream, and Chromium's `other`. Scripts, styles, images, fonts and media are not judged, so a bundle chunk named
@@ -40,6 +46,24 @@ const JUDGED_TYPES = new Set([
 export class RequestGuard {
   private first: string | undefined;
   private orchestrating = false;
+  private crawl = false;
+  private readonly seen = new Set<Refusal>();
+
+  /**
+   * The request layer of a crawl (ADR 0024 section 5, "it covers the crawler ... in every env class"; ADR 0033 decisions 4 and 5): on
+   * every env class, `local` included, it refuses every write (any method but `GET`, `HEAD` and `OPTIONS`) and every
+   * request {@link destructiveRequest} names. A refusal, and a scope refusal the run's scope guard reports through
+   * {@link observes}, is kept for {@link takeRefusals} instead of ending the run: the request is still aborted, and
+   * the crawl records it on the page it came from.
+   */
+  static forCrawl(
+    envClass: RequestClass,
+    extraWords: readonly string[],
+  ): RequestGuard {
+    const g = new RequestGuard(envClass, false, extraWords);
+    g.crawl = true;
+    return g;
+  }
 
   /**
    * @param extraWords the repo's `target.destructiveWords`, already narrowed by the effective configuration.
@@ -57,7 +81,7 @@ export class RequestGuard {
    *   is always allowed.
    */
   allows(method: string, url: string, type: string): boolean {
-    if (this.envClass === 'local') return true;
+    if (this.envClass === 'local' && !this.crawl) return true;
     if (
       this.envClass === 'shared' &&
       this.allowDestructive &&
@@ -65,8 +89,13 @@ export class RequestGuard {
     )
       return true;
     if (!JUDGED_TYPES.has(type.toLowerCase())) return true;
-    const word = destructiveRequest(method, url, this.extraWords);
+    const m = method.toUpperCase();
+    const word =
+      this.crawl && !READS.has(m)
+        ? m
+        : destructiveRequest(method, url, this.extraWords);
     if (word === undefined) return true;
+    if (this.observes('destructive_blocked')) return false;
     this.first ??= `flowctl stopped ${method.toUpperCase()} ${pathOf(url)}, which looks destructive ("${word}") on a ${this.envClass} env. ${this.remedy()}`;
     return false;
   }
@@ -82,6 +111,19 @@ export class RequestGuard {
     } finally {
       this.orchestrating = false;
     }
+  }
+
+  /** In a crawl, keeps `kind` as an observation of the open page and returns true; otherwise false. */
+  observes(kind: Refusal): boolean {
+    if (this.crawl) this.seen.add(kind);
+    return this.crawl;
+  }
+
+  /** The refusals kept since the last call, sorted; a crawl takes them after each page. */
+  takeRefusals(): Refusal[] {
+    const kinds = [...this.seen].sort();
+    this.seen.clear();
+    return kinds;
   }
 
   /** The first refusal of the run, if any. */
