@@ -8,6 +8,7 @@ export {
 } from './server.js';
 export { CRAWL_BUG_MODES, DECOYS, type CrawlBugMode } from './crawl.js';
 export { GUARD_PAGES } from './guard-pages.js';
+export { ITEMS_PATH } from './items.js';
 export { MESSAGES } from './pages.js';
 export {
   LEAVE_REQUEST_RULES,

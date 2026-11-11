@@ -166,6 +166,21 @@ function readExact(
 }
 
 /**
+ * The sha256 (lowercase hex) of the file `norm` under `root`, read the way the closure reads a file (no symlink
+ * component, opened `O_NOFOLLOW`, matched by device and inode, link count 1, at most 256 KiB): the one file-hashing
+ * function the hook, confirm and classify digests share.
+ *
+ * @returns the hash, or `undefined` when the file is missing, a link, too large or cannot be read.
+ */
+export function hashFlowFile(root: string, norm: string): string | undefined {
+  const node = lookup(root, norm);
+  if (node.kind !== 'file' || node.st.nlink > 1n) return undefined;
+  const bytes = readExact(join(root, norm), node.st);
+  if (typeof bytes === 'string') return undefined;
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+/**
  * Reads the closure file `norm` under `root` the way the closure did (every component `lstat`ed, the file
  * opened `O_NOFOLLOW` and matched by device and inode) and returns its bytes only if their sha256 is
  * `sha256`, so a snapshot holds exactly the bytes the digest covers (ADR 0021 Amendment 2026-11-01 s.2.7).

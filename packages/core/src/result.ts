@@ -46,6 +46,52 @@ export interface HealProposal {
 }
 
 /**
+ * A record a run (or `flowctl cleanup`) created and could not confirm deleted (ADR 0024 amendment 2026-11-12, s.8):
+ * `id: null` for a create whose answer never came, found by its `name`.
+ */
+export interface Leftover {
+  /** The create entry that minted it. */
+  entry: string;
+  id: string | null;
+  name: string | null;
+  /**
+   * Why it is left: `id_invalid` is an id that no URL of the entry's cleanup templates can carry (not canonical, not
+   * of the placeholder's type), as only a ledger file edited outside flowctl holds; nothing was sent for it.
+   * `unrecorded` (`flowctl cleanup` only) is an id confirmed deleted whose `cleanup` line could not be written
+   * (`writeFailed`): the ledger still lists it, so the next cleanup sends its cleanup again.
+   */
+  detail:
+    | 'create_unconfirmed'
+    | 'cleanup_failed'
+    | 'verify_failed'
+    | 'timeout'
+    | 'entry_missing'
+    | 'id_invalid'
+    | 'unrecorded';
+}
+
+/**
+ * The end-of-run cleanup of the records a replay on a `shared` env created: how many were confirmed deleted, and
+ * what is left. A non-empty `leftover` is `cleanup_incomplete`: the verdict is unchanged, the CLI exits non-zero.
+ */
+export interface CleanupResult {
+  confirmed: number;
+  leftover: Leftover[];
+  /**
+   * `flowctl cleanup` only: the ledger's last line was torn (written in part, as a crash leaves it) and was dropped;
+   * every line before it was verified and cleaned. A create whose `id` line was torn shows as `create_unconfirmed`.
+   */
+  tornTail?: true;
+  /** `flowctl cleanup` only: a lock left by a flowctl process that is gone was removed and taken over. */
+  staleLock?: true;
+  /**
+   * `flowctl cleanup` only: the first ledger write that failed (a full disk); no line was written after it, and the
+   * ids cleaned after it are leftover (`unrecorded` when they were confirmed deleted).
+   */
+  writeFailed?: string;
+}
+
+/**
  * What System 1 cost one run (T5.5): decisions asked (explore and heal), their round trips, and tokens and cost.
  *
  * @remarks `tokens` and `costUsd` are `unknown` until a driver reports token counts and a price table exists; an
@@ -76,6 +122,8 @@ export interface RunResult {
    */
   heals?: HealProposal[];
   teardownFailed: boolean;
+  /** Present when the run kept a ledger (a replay on a `shared` env with stored confirmations). */
+  cleanup?: CleanupResult;
   weakLocators: string[];
   evidence: EvidenceSummary;
   ms: number;

@@ -63,6 +63,28 @@ const locationOf = (p: Paused): string | undefined =>
 const atRequest = (p: Paused): boolean =>
   p.responseStatusCode === undefined && p.responseErrorReason === undefined;
 
+/** The CDP resource types whose response bodies the run ledger scans for ids (ADR 0024 amendment 2026-11-12, s.1). */
+const SCANNED = new Set(['Document', 'XHR', 'Fetch']);
+
+/** The declared `Content-Length` of a paused answer, or `undefined`. */
+const contentLength = (p: Paused): number | undefined => {
+  const v = p.responseHeaders?.find(
+    (h) => h.name.toLowerCase() === 'content-length',
+  )?.value;
+  return v === undefined || !/^[0-9]+$/.test(v) ? undefined : Number(v);
+};
+
+/**
+ * Reads the body of a held answer (through `read`, called at most once) before it reaches the page: the run ledger's
+ * seen-set (`run/ledger/`). It never rejects for the hold; the answer is passed on once it settles.
+ *
+ * @param length the declared `Content-Length`, so an oversized body is refused without being read.
+ */
+export type ScanBody = (
+  length: number | undefined,
+  read: () => Promise<string>,
+) => Promise<void>;
+
 /**
  * Holds every response of `page`'s frames at the response stage (CDP `Fetch`, request stage left to Playwright's
  * route) and fails a redirect answer whose `Location` the judge refuses, so the browser never sends the hop
@@ -71,6 +93,8 @@ const atRequest = (p: Paused): boolean =>
  * judged here and failed before it is sent when the judge refuses it (rule 6).
  *
  * @param frame a cross-site frame in its own process to hold instead of the page's own target (see `run/frames.ts`).
+ * @param scan when the run keeps a ledger seen-set: every document, fetch and XHR answer that is not a redirect waits
+ *   until its body was scanned ({@link ScanBody}), so the page sees no id the ledger has not seen first.
  * @remarks Chromium only (flowctl launches Chromium). It covers the page's main frame and its same-process frames;
  *   a cross-site frame (its own process) is held only when `frame` names it, and a worker runs in its own target,
  *   where the context route still stops the request and the guard's `request` listener still detects a hop. Every
@@ -87,6 +111,7 @@ export async function holdRedirects(
   page: Page,
   judge: Judge,
   frame?: Frame,
+  scan?: ScanBody,
 ): Promise<void> {
   const cdp: CDPSession = await page.context().newCDPSession(frame ?? page);
   cdp.on('Fetch.requestPaused', (p) => {
@@ -98,14 +123,33 @@ export async function holdRedirects(
     const method = sending
       ? p.request.method
       : hopMethod(p.responseStatusCode ?? 0, p.request.method);
-    const sent =
-      target !== undefined && !judge(target, kind, method, p.resourceType)
-        ? cdp.send('Fetch.failRequest', {
-            requestId: p.requestId,
-            errorReason: 'BlockedByClient',
-          })
-        : cdp.send('Fetch.continueRequest', { requestId: p.requestId });
-    sent.catch(() => undefined);
+    if (target !== undefined && !judge(target, kind, method, p.resourceType)) {
+      cdp
+        .send('Fetch.failRequest', {
+          requestId: p.requestId,
+          errorReason: 'BlockedByClient',
+        })
+        .catch(() => undefined);
+      return;
+    }
+    const scanned =
+      sending ||
+      target !== undefined ||
+      p.responseErrorReason !== undefined ||
+      scan === undefined ||
+      !SCANNED.has(p.resourceType)
+        ? Promise.resolve()
+        : scan(contentLength(p), async () => {
+            const b = await cdp.send('Fetch.getResponseBody', {
+              requestId: p.requestId,
+            });
+            return b.base64Encoded
+              ? Buffer.from(b.body, 'base64').toString('utf8')
+              : b.body;
+          }).catch(() => undefined);
+    void scanned
+      .then(() => cdp.send('Fetch.continueRequest', { requestId: p.requestId }))
+      .catch(() => undefined);
   });
   await cdp.send('Fetch.enable', {
     patterns: [
@@ -121,17 +165,20 @@ export async function holdRedirects(
  * any other answer is handed to the browser as it came.
  *
  * @param fail notes why the answer could not be fetched; the request is aborted as the browser would fail it.
+ * @param scan when the run keeps a ledger seen-set: an answer that is not a redirect is scanned ({@link ScanBody})
+ *   before it is handed to the popup, as {@link holdRedirects} scans the answers of a held page (ledger rule 2).
  * @remarks Only the first hop is prevented: the browser follows a handed-over redirect without routing it, so a
  *   second hop of that chain is held only if the popup's hold is attached by then, and is otherwise detected by the
  *   guard's `request` listener. The request is sent from Node (Playwright's `route.fetch`), not from the browser:
  *   the body is buffered whole and Playwright's request timeout applies, so a popup that streams a large export may
  *   behave differently from a plain browser. Answering a route whose popup already closed rejects; that answer is
- *   dropped, since a closed popup loads nothing.
+ *   dropped, since a closed popup loads nothing. The fetched answer is disposed once it was handed on.
  */
 export async function answerFirstHop(
   route: Route,
   judge: Judge,
   fail: (why: string) => void,
+  scan?: ScanBody,
 ): Promise<void> {
   const r = route.request();
   let answer: APIResponse;
@@ -141,11 +188,35 @@ export async function answerFirstHop(
     fail(`the first answer of ${r.url().slice(0, 200)}: ${errorMessage(e)}`);
     return route.abort('failed').catch(() => undefined);
   }
-  const target = hopTarget(answer.status(), answer.headers().location, r.url());
-  const sent =
-    target !== undefined &&
-    !judge(target, 'visit', hopMethod(answer.status(), r.method()), 'document')
-      ? route.abort('blockedbyclient')
-      : route.fulfill({ response: answer });
-  return sent.catch(() => undefined);
+  try {
+    const target = hopTarget(
+      answer.status(),
+      answer.headers().location,
+      r.url(),
+    );
+    if (
+      target !== undefined &&
+      !judge(
+        target,
+        'visit',
+        hopMethod(answer.status(), r.method()),
+        'document',
+      )
+    )
+      return await route.abort('blockedbyclient').catch(() => undefined);
+    let body: Buffer;
+    try {
+      body = await answer.body();
+    } catch (e) {
+      fail(`the first answer of ${r.url().slice(0, 200)}: ${errorMessage(e)}`);
+      return await route.abort('failed').catch(() => undefined);
+    }
+    if (target === undefined && scan !== undefined)
+      await scan(body.length, () => Promise.resolve(body.toString('utf8')));
+    return await route
+      .fulfill({ response: answer, body })
+      .catch(() => undefined);
+  } finally {
+    await answer.dispose().catch(() => undefined);
+  }
 }

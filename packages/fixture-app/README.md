@@ -6,6 +6,8 @@ Test-only app for flowctl. Never imported by `src/` of another package, only by 
   port, optionally with one **seeded bug** switched on.
 - `startFakeSystem1(script)` — a scripted `/v1/systemone` server so exploration tests never call TypeSafe.
 - `FIXTURE_FLOWS_DIR` — sample flows (`leave-approve`, `leave-validation`, `leave-submit`, `leave-persist`) written for this app.
+- `/items` — a small items CRUD with uuid ids (`POST /api/items` answers 201 with the id, 409 for a name that
+  exists; `GET`, `PATCH` and `DELETE` on `/api/items/:id`) for the run ledger's tests in core; no seeded bug.
 - `/lab` — a page with the hard controls (debounced combobox, auto-formatted input, dialog) used by
   snapshot, recorder and exploration tests.
 

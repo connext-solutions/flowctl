@@ -11,6 +11,10 @@ export type ErrorKind =
   | 'env_not_trusted'
   | 'scope_violation'
   | 'destructive_blocked'
+  | 'ledger_replay'
+  | 'ledger_mismatch'
+  | 'ledger_overflow'
+  | 'ledger_exists'
   | 'budget_exceeded'
   | 'internal';
 
