@@ -31,6 +31,14 @@ export const USAGE = `Usage:
                                          (interactive)
   flowctl trust add project [<name>] [--config <path>]
                                          register this checkout (or record its identity) in the trust store (interactive)
+  flowctl trust add destructive <flow> --env <env> --from-run <run id> [--days <n>] [--config <path>]
+                                         confirm the writes a flow may send on a shared env, derived from a
+                                         passing run of it on a local env; you attest what no recording shows
+                                         (interactive)
+  flowctl trust add destructive --renew <id>... [--days <n>] [--config <path>]
+  flowctl trust add destructive --renew-env <env> [--days <n>] [--config <path>]
+                                         give unchanged flows' confirmations a new expiry (and the env's new
+                                         origin) (interactive)
   flowctl trust revoke destructive <id> [--config <path>]
                                          remove a stored destructive confirmation and the mutate entries that
                                          depend on it (interactive)

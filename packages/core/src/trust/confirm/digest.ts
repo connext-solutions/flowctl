@@ -4,6 +4,7 @@ import {
   type Closure,
   computeClosure,
   hashFlowFile,
+  readVerifiedFile,
 } from '../closure/index.js';
 
 /** What a destructive confirmation binds (ADR 0024 section 5, "Closure and confirmation digest"). */
@@ -111,4 +112,46 @@ export function planConfirm(i: ConfirmDigestInput): ConfirmPlan {
       ? ''
       : createHash('sha256').update(canonicalJson(doc)).digest('hex');
   return { digest, flowSha256, files, hooks, refusals };
+}
+
+/** One file a confirmation binds, as the owner screen shows it: its text, or `undefined` when it is not UTF-8. */
+export interface ConfirmFile {
+  path: string;
+  sha256: string;
+  bytes: number;
+  text: string | undefined;
+}
+
+/**
+ * The flow file and every file its confirmation digest binds (uploads, hook closure files), read again and checked
+ * against the hashes of `plan`, for the owner screen (ADR 0025 section 3, display rules).
+ *
+ * @returns the files, flow file first; a file that changed since `plan` was made is missing, so the caller refuses.
+ */
+export function confirmFiles(
+  i: ConfirmDigestInput,
+  plan: ConfirmPlan,
+): ConfirmFile[] {
+  const want = [
+    { path: i.flowFile, sha256: plan.flowSha256 },
+    ...plan.files,
+    ...(plan.hooks.setup?.files ?? []),
+    ...(plan.hooks.teardown?.files ?? []),
+  ];
+  const seen = new Set<string>();
+  const out: ConfirmFile[] = [];
+  for (const f of want) {
+    if (seen.has(f.path)) continue;
+    seen.add(f.path);
+    const bytes = readVerifiedFile(i.root, f.path, f.sha256);
+    if (bytes === undefined) continue;
+    let text: string | undefined;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      text = undefined;
+    }
+    out.push({ path: f.path, sha256: f.sha256, bytes: bytes.length, text });
+  }
+  return out;
 }

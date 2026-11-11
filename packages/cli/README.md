@@ -11,6 +11,8 @@ flowctl trust init [--replace] [--anchor-dir <abs dir>] [--config <path>]
 flowctl trust hook <name...> [--hook-env NAME] [--pin NAME=VALUE] [--config <path>]
 flowctl trust add env <env> [--config <path>]
 flowctl trust key rotate-owner [--config <path>]
+flowctl trust add destructive <flow> --env <env> --from-run <run id> [--days <n>] [--config <path>]
+flowctl trust add destructive --renew <id>... | --renew-env <env> [--days <n>] [--config <path>]
 flowctl trust revoke destructive <id> [--config <path>]
 ```
 
@@ -52,6 +54,18 @@ exactly), the default env (never a production one), the language and the locale;
 and the store, with every entry signed. `trust add env <env>` classifies an env added to the config later. `trust hook` shows each flow's hook text and every file its hooks call, then signs a consent
 for exactly those bytes; `--hook-env` lets a hook see one allowed variable (`PGPASSWORD`,
 `PGCONNECT_TIMEOUT`, `PGAPPNAME`, `PGCLIENTENCODING`) and `--pin NAME=VALUE` fixes a `PGHOST`-style value.
+
+`trust add destructive <flow> --env <env> --from-run <run id>` lets a replay of that flow write on a shared env
+(ADR 0024 section 5). Replay the flow on a `local` env first; the command reads that passing run's `network.json`
+and turns each write into a proposed entry (method, URL template with ids as `{int}` or `{uuid}`, content type, body
+keys, query keys). It shows the env, the flow and every file its confirmation digest binds, the effective vars and
+the recorded writes (paged, invisible characters escaped), then asks only what no recording holds: the kind
+(`create`, `mutate` or skip), `nameField`, `naturalKeys`, `conflictStatus`, `idFrom` (default `body:/id`), the
+cleanup and verify templates, `ledgerFrom` and `idPositions`, each with a default you accept with Enter. The
+entries are printed last in the fixed line format, then the nonce and the owner-key passphrase. They expire after
+`--days` (default 30, at most 90) and stop matching as soon as the flow, a file it uses or a var it reads changes.
+`--renew <id>...` gives unchanged flows a new expiry; `--renew-env <env>` re-binds an env's entries to the origin
+the store now records.
 
 ## Adding a command
 

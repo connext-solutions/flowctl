@@ -249,4 +249,30 @@ describe('flowctl cleanup', () => {
     ).toBe(3);
     expect(err.join('')).toContain('no ledger for run r_lq3k2a1b9f0e');
   });
+
+  it('trust add destructive without --from-run, or with --renew and --renew-env together, is a usage error (T1.3)', async () => {
+    const add = ['trust', 'add', 'destructive'];
+    expect(
+      await cli([
+        ...add,
+        'leave-submit',
+        '--env',
+        'local',
+        '--config',
+        configFile,
+      ]),
+    ).toBe(2);
+    expect(
+      await cli([
+        ...add,
+        'x',
+        '--renew',
+        '--renew-env',
+        'local',
+        '--config',
+        configFile,
+      ]),
+    ).toBe(2);
+    expect(err.join('')).toContain('--from-run <run id>');
+  });
 });

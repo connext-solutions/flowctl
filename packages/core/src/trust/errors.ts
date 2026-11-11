@@ -33,7 +33,8 @@ export type TrustErrorKind =
   | 'rotate_incomplete'
   | 'replace_unverified'
   | 'store_replaced'
-  | 'ledgers_invalid';
+  | 'ledgers_invalid'
+  | 'renew_digest_changed';
 
 /**
  * A refusal from the trust store: a missing, tampered, wrongly-owned or invalid store, or a checkout

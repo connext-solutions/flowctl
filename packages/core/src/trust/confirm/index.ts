@@ -9,15 +9,28 @@
 export { confirmLine } from './display.js';
 export {
   type ConfirmDigestInput,
+  type ConfirmFile,
+  confirmFiles,
   type ConfirmPlan,
   planConfirm,
 } from './digest.js';
 export {
+  type Draft,
+  type EntryBase,
+  entryOf,
+  proposeDrafts,
+  type RecordedCall,
+  type RecordedWrite,
+  recordedWrites,
+} from './derive.js';
+export {
   type ConfirmRead,
   readConfirmEntries,
   type ReadContext,
+  renewConfirmEntries,
   revokeConfirmEntry,
   saveConfirmEntries,
+  storedConfirmEntries,
 } from './entry.js';
 export {
   type IdPosition,

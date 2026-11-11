@@ -59,6 +59,16 @@ const ARGV: Record<Guarded, string[]> = {
     'call',
     'https://api.example.com',
   ],
+  'trust add destructive': [
+    'trust',
+    'add',
+    'destructive',
+    'items-crud',
+    '--env',
+    'local',
+    '--from-run',
+    'r_lq3k2a1b9f0e',
+  ],
   'trust revoke destructive': [
     'trust',
     'revoke',

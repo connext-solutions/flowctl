@@ -179,3 +179,79 @@ export function revokeConfirmEntry(
   replaceStoreDoc(fresh.dir, { ...fresh.data, destructiveConfirm: kept }, key);
   return removed;
 }
+
+/**
+ * Every stored entry whose signature verifies and whose fields follow the schema, whatever the other rules say: an
+ * expired entry, or one whose origin is no longer the env's, is here too. `trust add destructive --renew` and
+ * `--renew-env` start from these.
+ *
+ * @throws {TrustError} `trust_tampered` as {@link readConfirmEntries}.
+ */
+export function storedConfirmEntries(store: TrustStore): ConfirmEntry[] {
+  const out: ConfirmEntry[] = [];
+  for (const raw of store.data.destructiveConfirm) {
+    const stored = StoredConfirmSchema.safeParse(raw);
+    if (!stored.success) throw tampered('is not {value, sig}');
+    const parsed = ConfirmEntrySchema.safeParse(stored.data.value);
+    if (!parsed.success) continue;
+    store.assertSigned(
+      { id: parsed.data.id, kind: CONFIRM_KIND, value: stored.data.value },
+      stored.data.sig,
+    );
+    out.push(parsed.data);
+  }
+  return out;
+}
+
+/**
+ * Writes `updated` in place of the stored entries with the same ids (`--renew`, `--renew-env`: a new `expires`, or a
+ * new `origin` and `expires`), signed, in one atomic replace; every other entry is kept as it is.
+ *
+ * @throws {TrustError} `trust_entry_invalid` when an id is not stored or an updated entry breaks a rule;
+ *   `trust_tampered`, `store_busy` as {@link saveConfirmEntries}.
+ */
+export function renewConfirmEntries(
+  store: TrustStore,
+  key: OwnerKey,
+  updated: readonly ConfirmEntry[],
+  ctx: ReadContext,
+): void {
+  const fresh = TrustStore.open(store.dir);
+  assertCanWrite(fresh, key);
+  const full: RuleContext = { ...ctx, envs: envsOf(fresh) };
+  const ids = new Set(updated.map((e) => e.id));
+  const stored = storedConfirmEntries(fresh);
+  for (const e of updated) {
+    if (!stored.some((s) => s.id === e.id))
+      throw new TrustError(
+        'trust_entry_invalid',
+        `The trust store has no destructiveConfirm entry "${e.id}"; nothing was written.`,
+      );
+    const problem = entryProblem(ConfirmEntrySchema.parse(e), full);
+    if (problem !== undefined)
+      throw new TrustError(
+        'trust_entry_invalid',
+        `The destructiveConfirm entry ${e.id} is refused: ${problem}. Nothing was written.`,
+      );
+  }
+  const kept = fresh.data.destructiveConfirm.filter((raw) => {
+    const s = StoredConfirmSchema.safeParse(raw);
+    const v = s.success ? s.data.value : undefined;
+    return !(
+      typeof v === 'object' &&
+      v !== null &&
+      'id' in v &&
+      typeof v.id === 'string' &&
+      ids.has(v.id)
+    );
+  });
+  const signed = updated.map((value) => ({
+    value,
+    sig: key.signEntry({ id: value.id, kind: CONFIRM_KIND, value }),
+  }));
+  replaceStoreDoc(
+    fresh.dir,
+    { ...fresh.data, destructiveConfirm: [...kept, ...signed] },
+    key,
+  );
+}

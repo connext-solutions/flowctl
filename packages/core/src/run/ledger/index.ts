@@ -17,6 +17,14 @@ export { cleanupRun, ledgerState, type LedgerState } from './cleanup-run.js';
 export { confirmInputFor, confirmReadContext } from './context.js';
 export { type LedgerOptions, RunLedger } from './run-ledger.js';
 export {
+  currentDigest,
+  type DestructivePlan,
+  planDestructive,
+  planRenew,
+  type Renewal,
+} from './plan-add.js';
+export { readRecordedRun, type RecordedRun } from './recorded.js';
+export {
   idTokens,
   MAX_BODY_BYTES,
   MAX_IDS,

@@ -25,6 +25,10 @@ export const OPTIONS = {
   pin: { type: 'string', multiple: true },
   'anchor-dir': { type: 'string' },
   replace: { type: 'boolean', default: false },
+  'from-run': { type: 'string' },
+  renew: { type: 'boolean', default: false },
+  'renew-env': { type: 'string' },
+  days: { type: 'string' },
   config: { type: 'string' },
 } as const;
 
@@ -95,6 +99,7 @@ export const ARITY: Record<Runnable, (n: number) => boolean> = {
   'trust key rotate-owner': (n) => n === 0,
   'trust add system1': (n) => n >= 3,
   'trust add origin': (n) => n === 3,
+  'trust add destructive': () => true,
   'trust revoke destructive': (n) => n === 1,
 };
 

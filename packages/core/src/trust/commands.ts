@@ -33,6 +33,7 @@ export const COMMANDS = {
   'trust add system1': { guarded: true },
   'trust add origin': { guarded: true },
   'trust key rotate-owner': { guarded: true, storeOnly: true },
+  'trust add destructive': { guarded: true },
   'trust revoke destructive': { guarded: true },
   'mcp flow_run': { guarded: true },
   'mcp flow_step': { guarded: true },

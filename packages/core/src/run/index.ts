@@ -30,6 +30,10 @@ export {
   confirmInputFor,
   idTokens,
   ledgerState,
+  type DestructivePlan,
+  planDestructive,
+  planRenew,
+  type Renewal,
   RunLedger,
   SeenSet,
 } from './ledger/index.js';
