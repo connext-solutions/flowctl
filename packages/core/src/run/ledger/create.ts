@@ -7,8 +7,8 @@ import { idTokens, MAX_BODY_BYTES, MAX_IDS } from './seen.js';
 
 /**
  * Sends a request a `create` entry matched (ADR 0024 section 5, ledger rules 2, 3 and 9): checks the name rules,
- * scans the page, appends the intent line, sends the request from the route, and records the id of a 201 before the
- * answer is handed to the page.
+ * scans the text of every open page of the run (`pages`: every page of every context), appends the intent line,
+ * sends the request from the route, and records the id of a 201 before the answer is handed to the page.
  *
  * @remarks The request is sent with Playwright's `route.fetch` without following redirects, so the answer is read
  *   before the page sees it; a redirect answer is refused (`ledger_mismatch`). A 4xx writes a `none` line; no answer
@@ -17,12 +17,13 @@ import { idTokens, MAX_BODY_BYTES, MAX_IDS } from './seen.js';
  *   `ledger_mismatch` after its id was recorded, so cleanup removes it. "Seen earlier" is judged once every response
  *   scan in flight has finished (`seenBefore`), so a body still being read cannot hide an id. An answer that comes
  *   after the run's wait for writes in flight is not recorded (`assertOpen`, `record` throw `closed`); a page that
- *   closed before its answer is handed on is not a ledger problem.
+ *   closed before its answer is handed on is not a ledger problem. The fetched answer is disposed once it was handed
+ *   on or refused.
  */
 export async function sendCreate(
   ledger: RunLedger,
   route: Route,
-  page: Page | undefined,
+  pages: () => readonly Page[],
   m: Matched,
   req: WireRequest,
 ): Promise<void> {
@@ -70,7 +71,7 @@ export async function sendCreate(
       seq,
       `the ledger holds ${MAX_IDS} ids (detail ids)`,
     );
-  await ledger.scanPage(page);
+  await ledger.scanPages(pages());
   if (ledger.problem !== undefined) return abort();
   ledger.record({ kind: 'intent', seq, entry: e.id, name });
   ledger.open.set(seq, { entry: e.id, name });
@@ -80,57 +81,62 @@ export async function sendCreate(
   } catch {
     return route.abort('failed').catch(() => undefined);
   }
-  ledger.assertOpen();
-  const status = answer.status();
-  if (status >= 400 && status < 500) {
-    ledger.record({ kind: 'none', seq, status });
-    ledger.open.delete(seq);
-    return hand({ response: answer });
-  }
-  if (status >= 300 && status < 400)
-    return fail(
-      'ledger_mismatch',
-      seq,
-      `the create answered ${status}, a redirect`,
-    );
-  if (status !== 201) return hand({ response: answer });
-  const body = await answer.body();
-  if (body.length > MAX_BODY_BYTES)
-    return fail(
-      'ledger_overflow',
-      seq,
-      'the answer is over 8 MiB (detail body)',
-    );
-  const text = body.toString('utf8');
-  let json: unknown;
   try {
-    json = JSON.parse(text);
-  } catch {
-    json = undefined;
-  }
-  const id = idOf(e, answer.headersArray(), json, req.url);
-  if (typeof id !== 'string') return fail('ledger_mismatch', seq, id.why);
-  const inRequest = [
-    req.url,
-    ...Object.values(req.headers),
-    req.body?.toString('utf8') ?? '',
-  ].some((s) => idTokens(s).includes(id));
-  if (inRequest || (await ledger.seenBefore(id)))
-    return fail(
-      'ledger_replay',
-      seq,
-      `the created id ${id} appeared earlier in the run`,
-    );
-  ledger.mint(e, seq, id);
-  ledger.see(text, 'the create answer');
-  for (const k of e.naturalKeys) {
-    const echoed = valueAt(json, k);
-    if (echoed !== undefined && echoed !== stringAt(m.leaves, k))
-      return fail(
+    ledger.assertOpen();
+    const status = answer.status();
+    if (status >= 400 && status < 500) {
+      ledger.record({ kind: 'none', seq, status });
+      ledger.open.delete(seq);
+      return await hand({ response: answer });
+    }
+    if (status >= 300 && status < 400)
+      return await fail(
         'ledger_mismatch',
         seq,
-        `the answer's ${k} differs from the one sent`,
+        `the create answered ${status}, a redirect`,
       );
+    if (status !== 201) return await hand({ response: answer });
+    const body = await answer.body();
+    if (body.length > MAX_BODY_BYTES)
+      return await fail(
+        'ledger_overflow',
+        seq,
+        'the answer is over 8 MiB (detail body)',
+      );
+    const text = body.toString('utf8');
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = undefined;
+    }
+    const id = idOf(e, answer.headersArray(), json, req.url);
+    if (typeof id !== 'string')
+      return await fail('ledger_mismatch', seq, id.why);
+    const inRequest = [
+      req.url,
+      ...Object.values(req.headers),
+      req.body?.toString('utf8') ?? '',
+    ].some((s) => idTokens(s).includes(id));
+    if (inRequest || (await ledger.seenBefore(id)))
+      return await fail(
+        'ledger_replay',
+        seq,
+        `the created id ${id} appeared earlier in the run`,
+      );
+    ledger.mint(e, seq, id);
+    ledger.see(text, 'the create answer');
+    for (const k of e.naturalKeys) {
+      const echoed = valueAt(json, k);
+      if (echoed !== undefined && echoed !== stringAt(m.leaves, k))
+        return await fail(
+          'ledger_mismatch',
+          seq,
+          `the answer's ${k} differs from the one sent`,
+        );
+    }
+    return await hand({ response: answer, body });
+  } finally {
+    await answer.dispose().catch(() => undefined);
   }
-  return hand({ response: answer, body });
 }

@@ -41,8 +41,14 @@ agents, so changing them is a breaking change.
 crash, a timeout): it reads only that run's ledger in the trust store (`<store>/ledgers/<run id>.jsonl`, hash chain
 verified), sends each stored create entry's `cleanup` request with the flow profile's saved session, checks it with
 the `verify` request, and appends the result to the ledger, so it can run again and skips what is confirmed. A
-create whose answer never came is listed by name, never deleted by name. It exits `0` when nothing is left, else
-`2`; a run id that is not `r_` plus 1 to 32 lowercase letters or digits is a usage error.
+create whose answer never came is listed by name, never deleted by name. It holds the run's lock
+(`<store>/ledgers/<run id>.lock`) while it runs: while a live run or another cleanup of the same run holds it, it
+refuses with `ledgers_invalid` detail `busy` and exits `3`, sending nothing; a lock left by a flowctl process that is
+gone is taken over and reported as `staleLock` (in `--json`, and as a warning line). When a result line cannot be
+written to the ledger (a full disk), it still cleans the other ids, reports the error as `writeFailed`, and lists
+each id confirmed deleted but not recorded as leftover `unrecorded`; the next cleanup sends its cleanup again. It
+exits `0` when nothing is left, else `2` (a torn last line, `writeFailed`, or any leftover); a run id that is not `r_`
+plus 1 to 32 lowercase letters or digits is a usage error.
 
 `flowctl observe` (early) crawls the env read-only and writes the map to `appmap.json` in the run directory; `--out`
 copies it to a `.json` path inside the flows directory (never under `.auth`, `.git` or `.runs`, and never over a file

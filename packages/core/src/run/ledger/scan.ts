@@ -68,10 +68,13 @@ export class LedgerScans {
     return p;
   };
 
-  /** Scans the text of every frame of `page`, then waits for every response scan in flight. */
-  async scanPage(page: Page | undefined): Promise<void> {
+  /**
+   * Scans the text of every frame of every page in `pages` (every open page of the run), then waits for every response
+   * scan in flight. A page or frame that closed meanwhile adds nothing.
+   */
+  async scanPages(pages: readonly Page[]): Promise<void> {
     if (this.seen === undefined) return;
-    for (const f of page?.frames() ?? []) {
+    for (const f of pages.flatMap((p) => p.frames())) {
       const text = await f
         .evaluate(() => document.body?.innerText ?? '')
         .catch(() => '');

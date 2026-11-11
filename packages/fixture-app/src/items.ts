@@ -15,6 +15,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
  *   stored), and a delay before the answer; `deleteDelayMs` delays the answer of the next `DELETE` instead.
  * - `/items#total=N` shows "Tổng N" from the fragment, which no request carries: text only the page's `innerText`
  *   holds.
+ * - The link "Báo cáo" opens `/items/report` in a new window; that document carries the id the next create returns
+ *   (set by `/api/__items/next`) in a `meta` tag: in the body of a popup's first document only, neither in a URL nor
+ *   in any page text.
  */
 export const ITEMS_PATH = '/items';
 
@@ -40,6 +43,7 @@ const ITEMS_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><
 <form id="f"><label>Tên mục <input name="name" aria-label="Tên mục"></label><button type="submit">Tạo</button></form>
 <p role="status" id="msg"></p>
 <p id="total"></p>
+<a href="/items/report" target="_blank">Báo cáo</a>
 <ul id="list"></ul>
 <script>
 const msg = document.getElementById('msg');
@@ -109,6 +113,13 @@ export function itemsApp(): {
       if (req.method === 'GET' && p === ITEMS_PATH) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(ITEMS_PAGE);
+        return true;
+      }
+      if (req.method === 'GET' && p === `${ITEMS_PATH}/report`) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(
+          `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="ref" content="${next.id ?? ''}"><link rel="icon" href="data:,"><title>Báo cáo</title></head><body><h1>Báo cáo</h1></body></html>`,
+        );
         return true;
       }
       if (req.method === 'POST' && p === '/api/__items/next') {

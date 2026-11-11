@@ -108,7 +108,7 @@ export function formatSummary(s: ReplaySummary): string {
 
 /**
  * What `flowctl cleanup <run id>` prints: the count confirmed deleted, a warning when the ledger's last line was torn,
- * then one line per record left.
+ * when a stale lock was taken over and when a ledger line could not be written, then one line per record left.
  */
 export function formatCleanup(runId: string, r: CleanupResult): string {
   const lines = [
@@ -123,6 +123,11 @@ export function formatCleanup(runId: string, r: CleanupResult): string {
           '  ⚠ a lock left by a flowctl process that is gone was removed; check that no run of this id is still going',
         ]
       : []),
+    ...(r.writeFailed === undefined
+      ? []
+      : [
+          `  ⚠ the ledger could not be written (${terminalSafe(r.writeFailed)}); the ids below stay listed in it: fix the disk and run flowctl cleanup ${terminalSafe(runId)} again`,
+        ]),
     ...r.leftover.map(
       (l) =>
         `  ⚠ ${terminalSafe(l.entry)} ${l.id === null ? `name ${terminalSafe(l.name ?? '?')}` : `id ${terminalSafe(l.id)}`}: ${l.detail}`,

@@ -57,6 +57,8 @@ export interface Leftover {
   /**
    * Why it is left: `id_invalid` is an id that no URL of the entry's cleanup templates can carry (not canonical, not
    * of the placeholder's type), as only a ledger file edited outside flowctl holds; nothing was sent for it.
+   * `unrecorded` (`flowctl cleanup` only) is an id confirmed deleted whose `cleanup` line could not be written
+   * (`writeFailed`): the ledger still lists it, so the next cleanup sends its cleanup again.
    */
   detail:
     | 'create_unconfirmed'
@@ -64,7 +66,8 @@ export interface Leftover {
     | 'verify_failed'
     | 'timeout'
     | 'entry_missing'
-    | 'id_invalid';
+    | 'id_invalid'
+    | 'unrecorded';
 }
 
 /**
@@ -81,6 +84,11 @@ export interface CleanupResult {
   tornTail?: true;
   /** `flowctl cleanup` only: a lock left by a flowctl process that is gone was removed and taken over. */
   staleLock?: true;
+  /**
+   * `flowctl cleanup` only: the first ledger write that failed (a full disk); no line was written after it, and the
+   * ids cleaned after it are leftover (`unrecorded` when they were confirmed deleted).
+   */
+  writeFailed?: string;
 }
 
 /**

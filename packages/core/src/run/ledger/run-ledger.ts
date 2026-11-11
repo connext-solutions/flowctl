@@ -91,20 +91,22 @@ export class RunLedger extends LedgerScans {
   /**
    * Sends `route`'s request when an entry authorises it, else aborts it and notes why.
    *
-   * @remarks Once {@link finish} started, every write is refused (`closing` is set before anything else), and every
+   * @remarks Once {@link finish} started, every write is refused (`closing` is set before anything else, and checked
+   *   again once the request's headers are read, so a write whose headers were read while the run ended is refused
+   *   too, before it is matched or sent), and every
    *   call that started before is tracked until it ends, so {@link finish} can wait for it before it copies the ids. A
    *   create answered after the bounded wait is refused by the ledger ({@link record}, detail `closed`) and aborted;
    *   its intent stays unconfirmed. Any other failure (a ledger line that cannot be written, a request that cannot be
    *   read) aborts the request and becomes the run's problem, `internal`, so the run never ends `failed` on it.
-   * @param page the page that sent it (its frames' text enters the seen-set before a create).
+   * @param pages every open page of the run: their frames' text enters the seen-set before a create.
    */
-  authorise(route: Route, page: Page | undefined): Promise<void> {
+  authorise(route: Route, pages: () => readonly Page[]): Promise<void> {
     if (this.closing) {
       const r = route.request();
       this.o.refuse(r.method(), r.url(), 'the run was ending');
       return quiet(route.abort('blockedbyclient'));
     }
-    const p = this.judge(route, page).catch((e: unknown) => {
+    const p = this.judge(route, pages).catch((e: unknown) => {
       if (!(e instanceof TrustError && e.detail === 'closed'))
         this.fail(
           new RunError(
@@ -119,7 +121,10 @@ export class RunLedger extends LedgerScans {
     return p;
   }
 
-  private async judge(route: Route, page: Page | undefined): Promise<void> {
+  private async judge(
+    route: Route,
+    pages: () => readonly Page[],
+  ): Promise<void> {
     const r = route.request();
     const req: WireRequest = {
       method: r.method().toUpperCase(),
@@ -127,6 +132,10 @@ export class RunLedger extends LedgerScans {
       headers: await r.allHeaders(),
       body: r.postDataBuffer(),
     };
+    if (this.closing) {
+      this.o.refuse(req.method, req.url, 'the run was ending');
+      return quiet(route.abort('blockedbyclient'));
+    }
     if (this.problem !== undefined) {
       this.o.refuse(
         req.method,
@@ -141,7 +150,8 @@ export class RunLedger extends LedgerScans {
       return quiet(route.abort('blockedbyclient'));
     }
     if (m.entry.kind === 'session') return quiet(route.continue());
-    if (m.entry.kind === 'create') return sendCreate(this, route, page, m, req);
+    if (m.entry.kind === 'create')
+      return sendCreate(this, route, pages, m, req);
     const ids = idValues(m);
     const mine = this.minted.get(m.entry.ledgerFrom);
     const foreign =

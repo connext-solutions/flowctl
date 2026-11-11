@@ -15,6 +15,7 @@ import {
   LedgerFile,
   readConfirmEntries,
   RUN_ID_PATTERN,
+  TrustError,
   type TrustStore,
 } from '../../trust/index.js';
 import { confirmReadContext } from '../guards.js';
@@ -83,7 +84,11 @@ const isCreate = (e: ConfirmEntry | undefined): e is CreateConfirm =>
  *
  * @remarks An id whose create entry is no longer valid (revoked, expired, changed) stays leftover (`entry_missing`):
  *   only a signed entry can authorise a cleanup request. The requests are sent from Node with the profile's saved
- *   session (no browser), to the entry's origin only.
+ *   session (no browser), to the entry's origin only. A `cleanup` line that cannot be written (`write_failed`, a full
+ *   disk) does not stop the other ids: the file is cut back to its last good line and takes no later line, so every
+ *   id cleaned after it is unrecorded too. An id confirmed deleted whose line is not written is leftover `unrecorded`
+ *   (the ledger still lists it, and the next cleanup sends its cleanup again, which a 404 confirms); an id left for
+ *   another reason keeps its detail; the first write error is returned as `writeFailed`.
  * @throws {ConfigError} when `runId` is not a run id (`r_` and up to 32 lowercase letters or digits).
  * @throws {TrustError} `ledgers_invalid` (with its detail, `busy` while another process holds the lock) or
  *   `trust_entry_invalid` (no such ledger).
@@ -129,6 +134,26 @@ export async function cleanupRun(
     const nameOf = (entry: string, id: string | null): string | null =>
       state.targets.find((t) => t.entry === entry && t.id === id)?.name ?? null;
     let confirmed = 0;
+    let writeFailed: string | undefined;
+    const unrecorded = new Set<CleanupTarget>();
+    const record = (
+      t: CleanupTarget,
+      result: 'confirmed' | 'leftover',
+    ): void => {
+      try {
+        file.append({
+          kind: 'cleanup',
+          seq: t.seq,
+          entry: t.entry.id,
+          id: t.id,
+          result,
+        });
+      } catch (e) {
+        if (!(e instanceof TrustError && e.detail === 'write_failed')) throw e;
+        writeFailed ??= e.message;
+        if (result === 'confirmed') unrecorded.add(t);
+      }
+    };
     for (const key of new Set(
       valid.map((t) => `${t.entry.flow} ${t.entry.env}`),
     )) {
@@ -138,28 +163,24 @@ export async function cleanupRun(
       const first = group[0];
       if (first === undefined) continue;
       const done = await withSession(cfg, first.entry, (send) =>
-        cleanIds(
-          group,
-          send,
-          (t, result) =>
-            file.append({
-              kind: 'cleanup',
-              seq: t.seq,
-              entry: t.entry.id,
-              id: t.id,
-              result,
-            }),
-          o.timing ?? CLEANUP_TIMING,
-        ),
+        cleanIds(group, send, record, o.timing ?? CLEANUP_TIMING),
       );
       confirmed += done.confirmed;
       leftover.push(
         ...done.leftover.map((l) => ({ ...l, name: nameOf(l.entry, l.id) })),
       );
     }
+    for (const t of unrecorded)
+      leftover.push({
+        entry: t.entry.id,
+        id: t.id,
+        name: nameOf(t.entry.id, t.id),
+        detail: 'unrecorded',
+      });
     return {
-      confirmed,
+      confirmed: confirmed - unrecorded.size,
       leftover,
+      ...(writeFailed === undefined ? {} : { writeFailed }),
       ...(torn ? { tornTail: true } : {}),
       ...(staleLock === true ? { staleLock } : {}),
     };

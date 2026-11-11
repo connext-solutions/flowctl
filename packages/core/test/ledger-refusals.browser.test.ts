@@ -95,6 +95,35 @@ describe('a confirmed replay refuses', () => {
     expect(r.error?.kind, JSON.stringify(r)).toBe('ledger_replay');
     expect(r.error?.hint).toContain(n);
   });
+
+  it('a create returning a number seen only in the text of another context of the run: ledger_replay', async () => {
+    const n = '876543210987';
+    await app.nextId(n);
+    const { r } = await confirmedRun(
+      crud('items-other-page', [
+        { as: 'manager', goto: `/items#total=${n}` },
+        { wait: 200 },
+        { as: 'employee' },
+        ...CREATE_STEPS,
+      ]),
+    );
+    expect(r.error?.kind, JSON.stringify(r)).toBe('ledger_replay');
+    expect(r.error?.hint).toContain(n);
+  });
+
+  it("a create returning an id seen only in the body of a popup's first document: ledger_replay", async () => {
+    const id = 'e1b2c3d4-0000-4000-8000-00000000abcd';
+    await app.nextId(id);
+    const { r } = await confirmedRun(
+      crud('items-popup', [
+        { click: { role: 'link', name: 'Báo cáo' } },
+        { wait: 300 },
+        ...CREATE_STEPS,
+      ]),
+    );
+    expect(r.error?.kind, JSON.stringify(r)).toBe('ledger_replay');
+    expect(r.error?.hint).toContain(id);
+  });
 });
 
 describe('a confirmed replay records', () => {

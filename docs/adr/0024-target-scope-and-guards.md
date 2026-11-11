@@ -1293,7 +1293,8 @@ option each time:
 ### Stored confirmations, the run ledger and `trust add destructive` as implemented (T1.3 step 3)
 
 Added with the same amendment; the choices below were made under the owner's delegation (the first one by the
-orchestrator, the rest by taking the stricter option each time). Not yet accepted by the owner.
+orchestrator, the rest by taking the stricter option each time, with one exception: WebSockets stay open in a
+replay, see the WebSocket item below). Not yet accepted by the owner.
 
 - **`trust add destructive <flow> --env <env> --from-run <run id>`** (owner decision, made by the orchestrator under
   the owner's delegation). Entry lines are derived from a recorded run of that flow: the run must have passed, on an
@@ -1332,7 +1333,10 @@ orchestrator, the rest by taking the stricter option each time). Not yet accepte
   ends `ledger_mismatch`, so cleanup removes the record. After a ledger problem the run sends no further write.
 - **Seen-set sources as built.** The URL and body of every request of the judged types; the bodies of document, fetch
   and XHR answers, held at the CDP response stage of the page until read (a declared `Content-Length` over 8 MiB is
-  refused unread); WebSocket messages from the server; the `innerText` of every frame before a create. Stated gaps:
+  refused unread); the body of a popup's first document, which is fetched from the route before the popup's page
+  exists, scanned before it is handed on; WebSocket messages from the server; before a create, the `innerText` of
+  every frame of every open page of every context of the run (the scope guard reaches them through the contexts
+  `RunSession` attached it to, not only the page that sends the create). Stated gaps:
   EventSource messages, and answers in a cross-site frame's own process, are not scanned (their requests are); a
   body whose read fails counts as empty.
 - **Cleanup.** At the end of the run, before the contexts close, with the browser context of the flow's profile
@@ -1340,14 +1344,17 @@ orchestrator, the rest by taking the stricter option each time). Not yet accepte
   to the env's origins, without a browser. Both build requests only from the signed entry's origin and templates and
   do not pass the page route. An id whose create entry is no longer valid (revoked, expired, re-bound) is leftover
   with detail `entry_missing`, since only a signed entry authorises a cleanup request. Leftover details are
-  `create_unconfirmed`, `cleanup_failed`, `verify_failed`, `timeout`, `entry_missing` and `id_invalid`. The `abort`
+  `create_unconfirmed`, `cleanup_failed`, `verify_failed`, `timeout`, `entry_missing`, `id_invalid` and, for
+  `flowctl cleanup` only, `unrecorded`. The `abort`
   line comes after the run's own `cleanup` lines, so it is the last line the run writes. A non-empty `leftover` makes
   `replay` and `flowctl cleanup` exit 2.
 - **A cleanup URL never leaves its template.** A ledger file can be edited, so before a cleanup or verify request
   the id must be canonical and of the placeholder's type; the URL is joined segment by segment and must match the
   template again with the entries' exact matcher. An id that fails is leftover `id_invalid` and nothing is sent.
 - **The end of a run.** The ledger refuses every write from the moment its cleanup starts, waits up to 15 s for the
-  writes still in flight and for the response scans, and only then reads its ids. From the end of that wait the
+  writes still in flight and for the response scans, and only then reads its ids. A write that reached the ledger
+  before that moment is judged again once its headers are read, and refused as "the run was ending" when the cleanup
+  started meanwhile, before it is matched or sent. From the end of that wait the
   ledger takes no line from a request in flight: a create answered later, even while the cleanup runs, is never
   recorded (its answer is aborted, not handed to the page) and stays `create_unconfirmed` with its name, so no id
   enters after the ids were read and the `abort` line stays last. The guard judges the outcome again after the cleanup, so a ledger problem
@@ -1361,17 +1368,27 @@ orchestrator, the rest by taking the stricter option each time). Not yet accepte
   `ledgers_invalid` detail `write_failed`. The request whose line failed is aborted, the run sends no further write,
   and the run ends `error: internal` with the cause and the `flowctl cleanup <run id>` to run once the disk is
   fixed; the cleanup at the end of the run still runs. Any other failure while a write is judged is `internal` too,
-  never `failed`.
+  never `failed`. `flowctl cleanup` whose `cleanup` line fails goes on with the other ids (a `DELETE` of a record the
+  run created is safe to send again): an id confirmed deleted whose line was not written is leftover `unrecorded`, the
+  first error is reported as `writeFailed`, and it exits 2; the ledger still lists those ids, so the next cleanup
+  sends their cleanup again and a 404 confirms them.
 - **One writer per ledger.** `ledgers/<run id>.lock` (created `O_EXCL`, mode 0600, holding the pid) is held by the
   live run from the ledger's creation to its close and by `flowctl cleanup` while it reads and appends. While it
   exists and its process is alive, `flowctl cleanup` is refused with `ledgers_invalid` detail `busy` (exit 3), so a
   cleanup during a run or two cleanups at once never fork the chain or send a `DELETE` twice. A lock whose process
-  is gone is removed and taken over, and the cleanup reports `staleLock`. The lock file and the details `busy`,
-  `write_failed` and `closed` extend the file list and the detail list of ADR 0025 amendment 2026-11-02 section 4.
-- **WebSocket messages are not guarded in a replay.** A WebSocket to an origin in scope is opened in a replay on
-  `shared` and `unknown` too, and the messages the page sends over it are not judged: closing sockets would break
-  every realtime app. So **a write sent over a WebSocket is not guarded in a replay**; review flows that use one.
-  Messages from the server enter the seen-set. A test documents the gap.
+  is gone is removed and taken over, and the cleanup reports `staleLock`. The takeover runs under a second `O_EXCL`
+  file, `ledgers/<run id>.lock.takeover` (removed when the takeover ends; one older than 30 s was left by a crash and
+  is removed): holding it, the process judges the lock again and removes it only if it is still stale and still the
+  same file it judged (device, inode and change time, read on the descriptor it judged and by `lstat` just before the
+  removal), so two takeovers at once never remove each other's fresh lock; the second is refused `busy`. The lock and
+  takeover files and the details `busy`, `write_failed` and `closed` extend the file list and the detail list of ADR
+  0025 amendment 2026-11-02 section 4.
+- **WebSocket messages are not guarded in a replay** (owner decision; the one place where the stricter option was not
+  taken). A WebSocket to an origin in scope is opened in a replay on `shared` and `unknown` too, and the frames the
+  page sends to the server over it are not judged. The stricter option, closing every socket in a replay on those
+  classes, was rejected because it would break every realtime app. So **on `shared` and `unknown` a write sent over a
+  WebSocket (page to server) is not guarded in a replay**; review flows that use one. Messages from the server enter
+  the seen-set. A crawl still closes every socket. A test documents the gap.
 - **Ledger file.** Every run that keeps a ledger writes `bundleId: null` (no `ci` bundle exists yet); a `ci` store's
   writable `ledgers/` is not built. A `ledgers_invalid` refusal at the start of a run is reported as
   `scope_violation` naming that kind, like every other store refusal of the run's guards.

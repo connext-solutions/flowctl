@@ -5,6 +5,7 @@ import {
   existsSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -56,9 +57,7 @@ const written = (): { dir: string; path: string } => {
 describe('LedgerFile', () => {
   it('writes a header and chained lines with mode 0600, and reads them back', () => {
     const { dir, path } = written();
-    expect(execFileSync('stat', ['-f', '%Lp', path]).toString().trim()).toBe(
-      '600',
-    );
+    expect(statSync(path).mode & 0o777).toBe(0o600);
     const { file, lines } = LedgerFile.open(dir, RUN, null);
     file.close();
     expect(lines.map((l) => l.kind)).toEqual([
@@ -198,9 +197,7 @@ describe('LedgerFile', () => {
     const f = LedgerFile.create(s.dir, RUN, null);
     const lock = join(s.dir, 'ledgers', `${RUN}.lock`);
     expect(readFileSync(lock, 'utf8').trim()).toBe(String(process.pid));
-    expect(execFileSync('stat', ['-f', '%Lp', lock]).toString().trim()).toBe(
-      '600',
-    );
+    expect(statSync(lock).mode & 0o777).toBe(0o600);
     expect(detailOf(() => LedgerFile.open(s.dir, RUN, null))).toBe('busy');
     f.close();
     expect(existsSync(lock)).toBe(false);

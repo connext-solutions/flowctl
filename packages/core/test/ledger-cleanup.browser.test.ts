@@ -5,6 +5,7 @@ import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { cleanupRun } from '../src/run/index.js';
 import { LedgerFile } from '../src/trust/index.js';
+import { LEDGER_IO } from '../src/trust/ledger-file.js';
 import { writeFlow } from './helpers.js';
 import {
   CREATE_STEPS,
@@ -70,6 +71,52 @@ describe('cleanupRun', () => {
     const second = await cleanupRun(cfg, runId, { store });
     expect(second.confirmed).toBe(0);
     expect(ledgerLines(store, runId)).toEqual(lines);
+  });
+
+  it('keeps cleaning the other ids when a cleanup line cannot be written, and leaves the unrecorded ones', async () => {
+    const { cfg, store: empty } = await app.setup();
+    const flow = writeFlow(cfg, crud('items-full', CREATE_STEPS));
+    const store = app.confirm(cfg, empty, flow);
+    const ids = [
+      'c1b2c3d4-0000-4000-8000-00000000abcd',
+      'c2b2c3d4-0000-4000-8000-00000000abcd',
+    ];
+    const runId = 'r_full01';
+    const f = LedgerFile.create(store.dir, runId, null);
+    for (const [i, id] of ids.entries()) {
+      await app.seed(`QA-full-${i}`, id);
+      f.append({
+        kind: 'intent',
+        seq: i + 1,
+        entry: 'items-full-create',
+        name: `QA-full-${i}`,
+      });
+      f.append({ kind: 'id', seq: i + 1, entry: 'items-full-create', id });
+    }
+    f.close();
+    const before = ledgerLines(store, runId);
+    const real = LEDGER_IO.write;
+    LEDGER_IO.write = () => {
+      throw Object.assign(new Error('ENOSPC: no space left'), {
+        code: 'ENOSPC',
+      });
+    };
+    let r;
+    try {
+      r = await cleanupRun(cfg, runId, { store });
+    } finally {
+      LEDGER_IO.write = real;
+    }
+    expect(await app.items()).toEqual([]);
+    expect(r.confirmed).toBe(0);
+    expect(r.leftover.map((l) => [l.id, l.name, l.detail])).toEqual([
+      [ids[1], 'QA-full-1', 'unrecorded'],
+      [ids[0], 'QA-full-0', 'unrecorded'],
+    ]);
+    expect(r.writeFailed).toContain('ENOSPC');
+    expect(ledgerLines(store, runId)).toEqual(before);
+    const again = await cleanupRun(cfg, runId, { store });
+    expect(again).toEqual({ confirmed: 2, leftover: [] });
   });
 
   it('sends no request for a forged id that would leave the template, and leaves it id_invalid', async () => {

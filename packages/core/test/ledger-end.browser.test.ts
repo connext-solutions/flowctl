@@ -2,6 +2,9 @@ import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { replayFlow } from '../src/replay.js';
+import { RunLedger } from '../src/run/index.js';
+import { LedgerFile } from '../src/trust/index.js';
+import { CREATE, store as testStore } from './confirm-fixture.js';
 import { writeFlow } from './helpers.js';
 import {
   CREATE_STEPS,
@@ -78,5 +81,44 @@ describe('the end of a confirmed replay', () => {
     expect(r.error?.kind, JSON.stringify(r)).toBe('destructive_blocked');
     expect(r.cleanup).toBeUndefined();
     expect(await app.items()).toEqual([]);
+  });
+});
+
+describe('a write whose headers are read while the run ends', () => {
+  it('is refused as the run was ending, before it is matched or sent', async () => {
+    const refused: string[] = [];
+    const ledger = new RunLedger({
+      entries: [CREATE],
+      file: LedgerFile.create(testStore().dir, 'r_late01', null),
+      uid: () => 'ab12cd34',
+      refuse: (_m, _u, why) => refused.push(why),
+    });
+    const context = await browser.newContext();
+    try {
+      let finished: Promise<unknown> = Promise.resolve();
+      await context.route('**/api/items', (route) => {
+        const judged = ledger.authorise(route, () => context.pages());
+        finished = ledger.finish(() => Promise.resolve(404));
+        return judged;
+      });
+      const page = await context.newPage();
+      await page.goto(`${fixture.url}/items`);
+      const sent = await page.evaluate(() =>
+        fetch('/api/items', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'QA-ab12cd34' }),
+        }).then(
+          () => 'answered',
+          () => 'aborted',
+        ),
+      );
+      await finished;
+      expect(sent).toBe('aborted');
+      expect(refused).toEqual(['the run was ending']);
+      expect(await app.items()).toEqual([]);
+    } finally {
+      await context.close();
+    }
   });
 });
