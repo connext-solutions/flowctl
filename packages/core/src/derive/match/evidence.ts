@@ -1,14 +1,13 @@
-import type { Operation } from '../../spec/index.js';
-import { compareKeys, elementKey } from './order.js';
-import type { PageIndex, SpecText } from './sources.js';
 import {
-  compareText,
   normText,
   occurrences,
+  type Operation,
   quotedSpans,
   refusal,
-  type TextRule,
-} from './text.js';
+} from '../../spec/index.js';
+import { compareKeys, elementKey } from './order.js';
+import type { PageIndex, SpecText } from './sources.js';
+import { compareText, type TextRule } from './text.js';
 import type {
   MatchEvidence,
   MatchEvidenceKind,

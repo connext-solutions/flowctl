@@ -1,5 +1,5 @@
 import type { AppMap } from '../../observe/index.js';
-import type { Operation } from '../../spec/index.js';
+import { normText, type Operation } from '../../spec/index.js';
 import {
   evidence,
   literals,
@@ -8,7 +8,7 @@ import {
 } from './evidence.js';
 import { compareEvidence, compareKeys, elementKey } from './order.js';
 import { indexMap, type PageIndex, specTexts } from './sources.js';
-import { fold, normText } from './text.js';
+import { fold } from './text.js';
 import type {
   MatchEvidence,
   LiteralMatch,
@@ -131,13 +131,13 @@ export function matchOperations(
   map: AppMap,
 ): MatchReport {
   const index = indexMap(map);
-  const key = (o: Operation) => [
-    o.id,
-    o.location.provider,
-    o.location.ref,
-    JSON.stringify(o),
-  ];
-  const sorted = [...ops].sort((a, b) => compareKeys(key(a), key(b)));
+  const sorted = ops
+    .map((op) => ({
+      op,
+      key: [op.id, op.location.provider, op.location.ref, JSON.stringify(op)],
+    }))
+    .sort((a, b) => compareKeys(a.key, b.key))
+    .map((k) => k.op);
   return {
     v: 1,
     origin: map.origin,

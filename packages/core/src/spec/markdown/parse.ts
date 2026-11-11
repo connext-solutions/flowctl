@@ -1,4 +1,5 @@
 import type { ExpectedItem, Operation } from '../schema.js';
+import { normText, quotedSpans } from '../text.js';
 import { SpecDocError, splitFrontMatter } from './front-matter.js';
 
 /** One markdown document, read: its path relative to the `specs` root, its bytes and its revision. */
@@ -8,24 +9,14 @@ export interface MarkdownDoc {
   revision: string;
 }
 
-/** Collapses runs of ASCII whitespace, trims, and normalises to NFC. */
-const clean = (s: string): string =>
-  s
-    .normalize('NFC')
-    .replace(/[ \t\n\r\f\v]+/g, ' ')
-    .trim();
-
 const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
 const BULLET = /^ {0,3}[-*+][ \t]+(.*)$/;
 const ORDERED = /^ {0,3}\d{1,9}[.)][ \t]+(.*)$/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
-const QUOTED = /"([^"]+)"|“([^”]+)”/g;
 
 /** The quoted literal of an item when it has exactly one (`"Đã gửi đơn"` gives `Đã gửi đơn`), else `null`. */
 function quotedValue(text: string): string | null {
-  const found = [...text.matchAll(QUOTED)].map((m) =>
-    clean(m[1] ?? m[2] ?? ''),
-  );
+  const found = quotedSpans(text).map((q) => normText(q.text));
   return found.length === 1 && found[0] !== '' ? (found[0] ?? null) : null;
 }
 
@@ -71,7 +62,7 @@ function readBody(
 
   const flush = (): void => {
     if (open === undefined) return;
-    const text = clean(open.parts.join(' '));
+    const text = normText(open.parts.join(' '));
     if (text !== '' && open.kind === 'step') steps.push(text);
     if (text !== '' && open.kind === 'bullet') {
       const headings = stack.map((h) => h.text);
@@ -114,14 +105,15 @@ function readBody(
       endBlock();
       const level = heading[1]?.length ?? 1;
       while ((stack.at(-1)?.level ?? 0) >= level) stack.pop();
-      const text = clean(heading[2] ?? '');
+      const text = normText(heading[2] ?? '');
       stack.push({ level, text });
       if (firstHeadings.length === 0) firstHeadings.push(text);
     } else if (bullet !== null || ordered !== null) {
       flush();
       const kind = bullet !== null ? 'bullet' : 'step';
       if (listLeadIn === undefined || listKind !== kind)
-        listLeadIn = paragraph.length > 0 ? clean(paragraph.join(' ')) : null;
+        listLeadIn =
+          paragraph.length > 0 ? normText(paragraph.join(' ')) : null;
       listKind = kind;
       open = {
         kind,
@@ -174,8 +166,8 @@ export function parseMarkdown(
   const { meta, body } = splitFrontMatter(doc.path, lines);
   const read = readBody(lines, body);
   const fallbackId = doc.path.replace(/\.md$/, '');
-  const id = clean(meta?.id ?? fallbackId);
-  const title = clean(meta?.title ?? read.headings[0] ?? fallbackId);
+  const id = normText(meta?.id ?? fallbackId);
+  const title = normText(meta?.title ?? read.headings[0] ?? fallbackId);
   const expected: ExpectedItem[] = read.items.map((item) => ({
     text: item.text,
     value: item.value,
@@ -195,8 +187,8 @@ export function parseMarkdown(
   return {
     id,
     title,
-    actor: meta?.actor === undefined ? null : clean(meta.actor),
-    preconditions: (meta?.preconditions ?? []).map(clean),
+    actor: meta?.actor === undefined ? null : normText(meta.actor),
+    preconditions: (meta?.preconditions ?? []).map(normText),
     steps: read.steps,
     expected,
     location: { provider, ref: doc.path },

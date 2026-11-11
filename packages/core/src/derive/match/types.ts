@@ -1,4 +1,5 @@
-import type { Refusal, TextRule } from './text.js';
+import type { Refusal } from '../../spec/index.js';
+import type { TextRule } from './text.js';
 
 /**
  * Where a string sits in an `Operation`, as property names and indices from the operation down:
@@ -95,7 +96,16 @@ export interface UnmatchedStep {
 
 /** What the matcher found for one operation. */
 export interface OperationMatch {
-  operation: { id: string; title: string; provider: string; ref: string };
+  operation: {
+    id: string;
+    /**
+     * The title as the `Operation` holds it, raw: the matcher does not normalise it (`normText`), so it may hold any
+     * character a provider passes, a newline included. Escape it before showing it.
+     */
+    title: string;
+    provider: string;
+    ref: string;
+  };
   screen: ScreenVerdict;
   screens: ScreenCandidate[];
   literals: LiteralMatch[];

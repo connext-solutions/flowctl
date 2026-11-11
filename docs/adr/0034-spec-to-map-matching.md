@@ -31,7 +31,7 @@ enough.
    it). Nothing in the report is text the matcher made up.
 3. **Normalisation and refusals are ADR 0020's.** Both sides are normalised as in ADR 0020 section d (NFC, ASCII
    whitespace runs collapsed and trimmed). A string is refused, and matches nothing, when its NFKC form differs from
-   its NFC form, when it holds a code point of category `Cc`, `Cf`, `Zl`, `Zp`, `Co`, `Cn` or a default-ignorable
+   its NFC form, when it holds a code point of category `Cc`, `Cf`, `Cs`, `Zl`, `Zp`, `Co`, `Cn` or a default-ignorable
    code point, or a decimal digit outside ASCII. The rule applies to the two strings being compared (the quoted
    literal, the page title, the control or field name), not to the sentence around a literal. A refused literal is
    reported with its reason; a refused map element is listed in `refusedElements`. NFKC is never used to fold.
@@ -52,7 +52,7 @@ enough.
    `title-mention` is not counted for a spec string that already gives `title-equal` with that page. For the matcher
    an invisible code point (as refused in rule 3) next to a title is not a token boundary, so a hidden character
    cannot make a mention; and the mention compares lower case per code point where rule 4 lower-cases the whole
-   string (they differ only for context-dependent case mapping such as the Greek final sigma). Expected items
+   string (they differ where one code point lower-cases to several (İ), or where the mapping depends on context). Expected items
    give literals only: an outcome may mention another page ("the Report page opens"), so its unquoted text is not
    route evidence.
 6. **Score.** A page's score is the sum of the weights of its distinct evidence, where evidence is distinct by kind

@@ -3,18 +3,7 @@
  * model.
  */
 export { matchOperations, WEIGHTS } from './match.js';
-export {
-  compareText,
-  fold,
-  normText,
-  occurrences,
-  quotedSpans,
-  refusal,
-  type Occurrence,
-  type Quoted,
-  type Refusal,
-  type TextRule,
-} from './text.js';
+export { compareText, fold, type TextRule } from './text.js';
 export type {
   MatchEvidence,
   MatchEvidenceKind,

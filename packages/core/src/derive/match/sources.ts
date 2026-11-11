@@ -1,6 +1,5 @@
 import type { AppMap } from '../../observe/index.js';
-import type { Operation } from '../../spec/index.js';
-import { normText, refusal } from './text.js';
+import { normText, type Operation, refusal } from '../../spec/index.js';
 import type { MapElement, RefusedElement, SpecPath } from './types.js';
 
 /** Where a spec string comes from, which decides the rules it takes part in (ADR 0034). */

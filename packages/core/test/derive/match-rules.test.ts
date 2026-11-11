@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  matchOperations,
-  mdCode,
-  occurrences,
-  WEIGHTS,
-} from '../../src/derive/index.js';
+import { matchOperations, mdCode, WEIGHTS } from '../../src/derive/index.js';
+import { occurrences } from '../../src/spec/index.js';
 import { appMap, operation, page } from './build.js';
 
 /** The individual rules of ADR 0034 sections 5 and 6, each pinned by a case that fails without it. */

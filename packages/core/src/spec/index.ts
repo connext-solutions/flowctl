@@ -26,3 +26,13 @@ export {
   OPERATION_ID,
   SpecDocError,
 } from './markdown/index.js';
+export {
+  INVISIBLE_CLASS,
+  normText,
+  occurrences,
+  quotedSpans,
+  refusal,
+  type Occurrence,
+  type Quoted,
+  type Refusal,
+} from './text.js';

@@ -1,11 +1,11 @@
 import { join } from 'node:path';
 import { ensureDirInside, writeFileNoFollow } from '../foundation/index.js';
+import type { Refusal } from '../spec/index.js';
 import { hideInvisible, mdCode } from './escape.js';
 import type {
   LiteralMatch,
   MatchReport,
   OperationMatch,
-  Refusal,
   SpecPath,
   SpecSpan,
 } from './match/index.js';
@@ -32,10 +32,14 @@ export type ConflictKind =
   | 'expected_not_observed'
   | 'text_refused';
 
-/** One disagreement: the operation, the quoted literal and its spans (or none), the screen and the pages involved. */
+/**
+ * One disagreement: the operation and its index in `report.operations` (two operations may share id, provider and
+ * ref), the quoted literal and its spans (or none), the screen and the pages involved.
+ */
 export interface Conflict {
   kind: ConflictKind;
   operation: OperationMatch['operation'];
+  operationIndex: number;
   text: string | null;
   spans: SpecSpan[];
   screen: string | null;
@@ -49,7 +53,7 @@ const inSteps = (s: SpecSpan): boolean => s.path[0] === 'steps';
 function literalConflict(
   l: LiteralMatch,
   screen: string | null,
-): Omit<Conflict, 'operation'> | null {
+): Omit<Conflict, 'operation' | 'operationIndex'> | null {
   const base = { text: l.text, spans: l.spans, screen, reason: null };
   const seen = [...new Set(l.elements.map((e) => e.element.page))].sort();
   if (l.refused !== null)
@@ -77,13 +81,14 @@ function literalConflict(
  */
 export function findConflicts(report: MatchReport): Conflict[] {
   const out: Conflict[] = [];
-  for (const m of report.operations) {
+  for (const [operationIndex, m] of report.operations.entries()) {
     const { operation } = m;
     const screen = m.screen.status === 'matched' ? m.screen.page : null;
     if (m.screen.status === 'none')
       out.push({
         kind: 'page_missing',
         operation,
+        operationIndex,
         text: null,
         spans: [],
         screen,
@@ -94,6 +99,7 @@ export function findConflicts(report: MatchReport): Conflict[] {
       out.push({
         kind: 'page_ambiguous',
         operation,
+        operationIndex,
         text: null,
         spans: [],
         screen,
@@ -102,7 +108,7 @@ export function findConflicts(report: MatchReport): Conflict[] {
       });
     for (const l of m.literals) {
       const c = literalConflict(l, screen);
-      if (c !== null) out.push({ ...c, operation });
+      if (c !== null) out.push({ ...c, operation, operationIndex });
     }
   }
   return out;
@@ -149,7 +155,8 @@ function entry(c: Conflict): string {
 
 /**
  * The conflicts as a markdown file for a business analyst: a header with the map's origin and time, then one section
- * per operation with its source and one entry per conflict. Every untrusted string goes through {@link mdCode}.
+ * per operation of the report (by `operationIndex`, so duplicates keep their own) with its source and one entry per
+ * conflict. Every untrusted string goes through {@link mdCode}.
  */
 export function conflictsMarkdown(
   report: MatchReport,
@@ -168,6 +175,7 @@ export function conflictsMarkdown(
   let current = '';
   for (const c of conflicts) {
     const key = JSON.stringify([
+      c.operationIndex,
       c.operation.id,
       c.operation.provider,
       c.operation.ref,
@@ -209,8 +217,11 @@ export function conflictsJson(
 }
 
 /**
- * Writes `conflicts.md` and `conflicts.json` into `dir`, which must be inside `root`, and returns their paths.
+ * Writes `conflicts.json`, then `conflicts.md`, into `dir`, which must be inside `root`, and returns their paths.
  *
+ * @remarks The pair is not atomic: each file is written on its own, so a failure between the two leaves a new
+ *   `conflicts.json` next to an old (or no) `conflicts.md`. The JSON goes first since tools read it; regenerate both
+ *   after an error.
  * @throws {ConfigError} when `dir` is not inside `root` or a component on the way is a symlink or a file.
  * @throws {NodeJS.ErrnoException} when the file system refuses the write (`EACCES`, `ENOSPC`), unchanged.
  */
@@ -223,7 +234,7 @@ export function writeConflicts(
   const real = ensureDirInside(dir, root);
   const markdown = join(real, 'conflicts.md');
   const json = join(real, 'conflicts.json');
-  writeFileNoFollow(markdown, conflictsMarkdown(report, conflicts));
   writeFileNoFollow(json, conflictsJson(report, conflicts));
+  writeFileNoFollow(markdown, conflictsMarkdown(report, conflicts));
   return { markdown, json };
 }

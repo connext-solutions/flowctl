@@ -1,7 +1,13 @@
 import type { AppMap, AppPage } from '../../src/observe/index.js';
 import type { Operation } from '../../src/spec/index.js';
 import type { MatchReport, SpecPath } from '../../src/derive/index.js';
-import { normText } from '../../src/derive/index.js';
+
+/** ADR 0020 section d, written out here so the check does not reuse the code it checks. */
+const norm = (s: string): string =>
+  s
+    .normalize('NFC')
+    .replace(/[ \t\n\r\f\v]+/g, ' ')
+    .trim();
 
 /** An operation as the markdown adapter would give it: expected items under `headings`. */
 export function operation(
@@ -120,7 +126,7 @@ export function assertGrounded(
       const text = at(op, s.path);
       if (
         typeof text !== 'string' ||
-        normText(text).slice(s.start, s.end) !== s.text
+        norm(text).slice(s.start, s.end) !== s.text
       )
         throw new Error(`span ${JSON.stringify(s)} is not in ${op.id}`);
     }
