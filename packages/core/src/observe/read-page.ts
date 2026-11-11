@@ -58,7 +58,10 @@ const ROLES: ReadonlySet<string> = new Set(ARIA_ROLES);
 const isRole = (r: string): r is (typeof ARIA_ROLES)[number] => ROLES.has(r);
 
 /** The part of an {@link AppPage} read from the open page; calls, console errors and refusals come from elsewhere. */
-export type PageRead = Omit<AppPage, 'calls' | 'consoleErrors' | 'refused'> &
+export type PageRead = Omit<
+  AppPage,
+  'calls' | 'consoleErrors' | 'refused' | 'navigationRefused'
+> &
   Pick<PageLinks, 'follow'> & {
     /** A list was cut to its `AppMap` cap, or the page script stopped one at its own cap. */
     cut: boolean;

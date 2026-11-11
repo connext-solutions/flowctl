@@ -26,7 +26,7 @@ exits `3` with `trust_missing` before touching any file. The list lives in `COMM
 | Exit code | Meaning |
 |---|---|
 | `0` | every run passed, or usage was requested with `--help` / `-h` as the first argument |
-| `1` | a run failed or a flow is flaky |
+| `1` | a run failed or a flow is flaky; for `observe`, a free check failed |
 | `2` | an infrastructure error (config, app unreachable, expired profile, System 1 unreachable, hooks without consent, a `ledger_*` error), a run that left records it created on a shared env (`cleanup_incomplete`), or a usage error |
 | `3` | a trust refusal: no store or project not registered (`trust_missing`), no terminal, tampered store, wrong passphrase, refused env name or class |
 
@@ -52,11 +52,13 @@ plus 1 to 32 lowercase letters or digits is a usage error.
 
 `flowctl observe` (early) crawls the env read-only and writes the map to `appmap.json` in the run directory; `--out`
 copies it to a `.json` path inside the flows directory (never under `.auth`, `.git` or `.runs`, and never over a file
-that is not a map), checked before the crawl starts. It prints one line per page, or with `--json` the core
+that is not a map), checked before the crawl starts. It then runs the free checks on the map and writes `checks.json`
+beside it. It prints one line per page, the checks' verdict and up to 20 findings, or with `--json` the core
 `ObserveSummary` (`runId`, `env`, `origin`, `pages`, `truncated`, `error` when the run ended in one, `attention`: at
-most 20 pages with no answer, a 4xx/5xx or a refused request, `budget`, `file`, `out`). It has no `status` and the
-command never exits `1`, since a map is not a verdict: it exits `0` when the crawl finished and `2` when the run ended
-in an error.
+most 20 pages with no answer, a 4xx/5xx or a refused request, `checks`: status, failed check ids, finding count and
+file, `budget`, `file`, `out`). It has no top-level `status`, since a map is not a verdict; the checks are. It exits
+`0` when the crawl finished and every check passed, `1` when a free check failed, and `2` when the run ended in an
+error (no checks are run then; ADR 0033, amendment).
 
 `flowctl login` opens a headed browser; finish with Enter in a terminal or by closing the window (the
 only way without a TTY). It refuses to save a session that never left the login page.

@@ -1,5 +1,7 @@
 import {
   appMapPath,
+  type CheckFinding,
+  type FreeChecks,
   type LoadedConfig,
   observe,
   type Observation,
@@ -10,7 +12,52 @@ import {
 import type { Values } from './argv.js';
 import { terminalSafe } from './summary.js';
 
-/** The human summary: one header line, one line per page, then where the map is. Page text is escaped. */
+/** At most this many findings the human summary prints; the rest are in `checks.json`. */
+const MAX_PRINTED = 20;
+
+/** One finding as a line: the check, the page and what was seen there. Page text is escaped. */
+function findingLine(f: CheckFinding): string {
+  const seen =
+    f.message !== undefined
+      ? `console error ${JSON.stringify(f.message)}`
+      : f.target !== undefined
+        ? `link to ${f.target} (${String(f.status ?? 0)})`
+        : f.call !== undefined
+          ? `call ${f.call.method} ${f.call.origin ?? ''}${f.call.path} ${String(f.status ?? 0)}`
+          : f.status === 0
+            ? 'no answer'
+            : `document ${String(f.status ?? 0)}`;
+  return `  ${f.check} ${terminalSafe(f.page)}: ${terminalSafe(seen)}`;
+}
+
+/**
+ * The free-check lines: the verdict with the failed checks and their finding counts, then at most 20 findings, how
+ * many more `checks.json` holds, and how many it does not keep (`omitted`, past each check's cap).
+ *
+ * @internal exported for the CLI's tests.
+ */
+export function formatChecks(c: FreeChecks, file: string): string[] {
+  const failed = c.checks.filter((r) => r.status === 'failed');
+  const findings = failed.flatMap((r) => r.findings);
+  const omitted = failed.reduce((n, r) => n + r.omitted, 0);
+  return [
+    failed.length === 0
+      ? `Checks: passed (${c.checks.length} checks${c.truncated ? ', on a truncated map' : ''})`
+      : `Checks: failed (${failed.map((r) => `${r.id}: ${String(r.findings.length + r.omitted)}`).join(', ')})`,
+    ...findings.slice(0, MAX_PRINTED).map(findingLine),
+    ...(findings.length > MAX_PRINTED
+      ? [`  … ${String(findings.length - MAX_PRINTED)} more in checks.json`]
+      : []),
+    ...(omitted > 0
+      ? [
+          `  … ${String(omitted)} more not kept in checks.json (past a check's finding cap, counted in omitted)`,
+        ]
+      : []),
+    `Checks file: ${file}`,
+  ];
+}
+
+/** The human summary: one header line, one line per page, the free checks, then where the map is. Page text is escaped. */
 function formatObservation(o: Observation, out: string | undefined): string {
   const { map, run, budget } = o;
   const lines = [
@@ -31,6 +78,9 @@ function formatObservation(o: Observation, out: string | undefined): string {
     ...(run.error === undefined
       ? []
       : [`error: ${run.error.kind}: ${terminalSafe(run.error.hint)}`]),
+    ...(o.checks === undefined
+      ? []
+      : formatChecks(o.checks.result, o.checks.file)),
     `Map: ${o.file}`,
     ...(out === undefined ? [] : [`Copy: ${out}`]),
   ];
@@ -38,13 +88,15 @@ function formatObservation(o: Observation, out: string | undefined): string {
 }
 
 /**
- * `flowctl observe`: crawls the env read-only (core `observe`), prints a short summary (or `--json`, core
- * `observeSummary`), and copies the map to `--out` when given (core `writeAppMap`, contained in the flows root, checked
- * before the crawl).
+ * `flowctl observe`: crawls the env read-only (core `observe`), prints a short summary with the free checks (or
+ * `--json`, core `observeSummary`), and copies the map to `--out` when given (core `writeAppMap`, contained in the
+ * flows root, checked before the crawl).
  *
- * @returns the exit code: `0` when the crawl finished (a map is not a verdict), `2` when the run ended in an error.
+ * @returns the exit code: `2` when the run ended in an error (no checks then), `1` when a free check failed (a
+ *   verdict, ADR 0004), else `0`.
  * @throws {ConfigError} for an unknown env or an `--out` path outside the flows root.
  * @throws {FlowError} for an unknown profile or a start that is not a path.
+ * @see docs/adr/0033-read-only-crawl.md (amendment: free checks)
  */
 export async function observeCmd(
   cfg: LoadedConfig,
@@ -66,5 +118,6 @@ export async function observeCmd(
       ? `${JSON.stringify(observeSummary(o, out), null, 2)}\n`
       : formatObservation(o, out),
   );
-  return o.run.status === 'error' ? 2 : 0;
+  if (o.run.status === 'error') return 2;
+  return o.checks?.result.status === 'failed' ? 1 : 0;
 }

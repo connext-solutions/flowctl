@@ -33,6 +33,7 @@ const map = (): AppMap => ({
       calls: [{ method: 'GET', path: '/api/requests', status: 200 }],
       consoleErrors: [],
       refused: [],
+      navigationRefused: false,
     },
   ],
 });

@@ -1,3 +1,4 @@
+import type { Frame, Page, Request } from 'playwright';
 import { RunError, type RequestGuard, type RunSession } from '../run/index.js';
 import type { PageBudget } from './budget.js';
 import type { Capture } from './capture.js';
@@ -49,7 +50,7 @@ export async function walk(
   let first = true;
   for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
     if (!budget.take()) return false;
-    const read = await visit(c, path, first);
+    const { read, navigationRefused } = await visit(c, path, first);
     first = false;
     for (const p of read?.follow ?? [])
       if (!seen.has(p)) {
@@ -70,42 +71,106 @@ export async function walk(
       forms: read?.forms ?? [],
       ...c.capture.take(),
       refused: c.writes.takeRefusals(),
+      navigationRefused,
     });
     c.run.assertInScope();
   }
   return !cut;
 }
 
+/** What {@link visit} found: the page read (`undefined` when it did not open), and whether the guards refused its navigation. */
+interface Visit {
+  read: PageRead | undefined;
+  navigationRefused: boolean;
+}
+
+/** The error text of a request flowctl aborted: a route abort or a failed redirect hop (`BlockedByClient`). */
+const BLOCKED = 'net::ERR_BLOCKED_BY_CLIENT';
+
+/**
+ * Whether `r` is the main-frame navigation of `page` to `target` (its first request, or a redirect hop of it) and
+ * flowctl's guards aborted it.
+ */
+function refusedNavigation(r: Request, page: Page, target: URL): boolean {
+  if (!r.isNavigationRequest() || r.frame() !== page.mainFrame()) return false;
+  if (r.failure()?.errorText !== BLOCKED) return false;
+  let first = r;
+  for (
+    let from = r.redirectedFrom();
+    from !== null;
+    from = from.redirectedFrom()
+  )
+    first = from;
+  const u = new URL(first.url());
+  return u.origin === target.origin && u.pathname === target.pathname;
+}
+
 /**
  * Opens `path` (the start page is already open), waits for its network to go quiet (at most {@link SETTLE_MS}) and
  * reads it under the path it ended on (after a redirect in scope), or under `path` when that one is not a path a crawl
- * may open (a `pushState` to a denied path); `undefined` when the navigation did not answer or the scope refused it
- * before it was sent, which ends this page only. Only a load the browser started (`app_unreachable`, as after a route
- * abort) waits for its error page; a navigation refused before it started does not wait.
+ * may open (a `pushState` to a denied path); `read` is `undefined` when the navigation did not answer or the scope
+ * refused it before it was sent, which ends this page only. Only a load the browser started (`app_unreachable`, as
+ * after a route abort or an empty answer) waits for its own error page to commit; a navigation refused before it
+ * started does not wait.
  *
+ * @remarks The wait is for a main-frame commit of an error page after this navigation started, not for the URL: when
+ *   the page before also failed, the URL is already `chrome-error:`, and the late commit of this page's error page
+ *   would interrupt the next navigation. `navigationRefused` is true when the scope check before navigating refused
+ *   `path`, or when the guards aborted the page's own navigation request or one of its redirect hops. A refusal of
+ *   any other request (a late call or beacon of the page before) does not set it, so it cannot hide a page that did
+ *   not answer.
  * @throws {RunError} `profile_expired` when the page ended under the env's login path, including a client-side
  *   redirect after it loaded (a single-page app on a 401); any other run error, such as `budget_exceeded` or a
  *   violation the scope guard detected after the request was sent.
  */
-async function visit(
-  c: Crawl,
-  path: string,
-  opened: boolean,
-): Promise<PageRead | undefined> {
+async function visit(c: Crawl, path: string, opened: boolean): Promise<Visit> {
   const { run } = c;
   const timeout = Math.min(SETTLE_MS, run.ctx().exec.timeout);
-  if (!opened)
-    try {
-      await run.perform({ kind: 'goto', url: path });
-    } catch (e) {
-      run.assertInScope();
-      if (!(e instanceof RunError) || !PAGE_ENDS.has(e.kind)) throw e;
-      if (e.kind === 'app_unreachable')
-        await run.page
-          .waitForURL((u) => u.protocol === 'chrome-error:', { timeout })
-          .catch(() => undefined);
-      return undefined;
-    }
+  if (opened)
+    return { read: await readOpen(c, path, timeout), navigationRefused: false };
+  const page = run.page;
+  const target = new URL(path, run.env.baseUrl);
+  const errorPage = (f: Frame): boolean =>
+    f === page.mainFrame() && f.url().startsWith('chrome-error:');
+  let navigationRefused = false;
+  let errorShown = false;
+  const onFailed = (r: Request): void => {
+    navigationRefused ||= refusedNavigation(r, page, target);
+  };
+  const onNavigated = (f: Frame): void => {
+    errorShown ||= errorPage(f);
+  };
+  page.on('requestfailed', onFailed);
+  page.on('framenavigated', onNavigated);
+  try {
+    await run.perform({ kind: 'goto', url: path });
+  } catch (e) {
+    run.assertInScope();
+    if (!(e instanceof RunError) || !PAGE_ENDS.has(e.kind)) throw e;
+    if (e.kind === 'scope_violation') navigationRefused = true;
+    else if (!errorShown)
+      await page
+        .waitForEvent('framenavigated', { predicate: errorPage, timeout })
+        .catch(() => undefined);
+    return { read: undefined, navigationRefused };
+  } finally {
+    page.off('requestfailed', onFailed);
+    page.off('framenavigated', onNavigated);
+  }
+  return { read: await readOpen(c, path, timeout), navigationRefused };
+}
+
+/**
+ * Waits for the open page's network to go quiet and reads it ({@link visit}).
+ *
+ * @throws {RunError} `profile_expired` when the page ended under the env's login path; run errors from the read.
+ */
+async function readOpen(
+  c: Crawl,
+  path: string,
+  timeout: number,
+): Promise<PageRead> {
+  const { run } = c;
   await run.page
     .waitForLoadState('networkidle', { timeout })
     .catch(() => undefined);

@@ -15,7 +15,7 @@ specific to the engine.
 | `system1/` | `/v1/systemone` protocol, prompts; the `Driver` interface and its only factory `createDriver` with the run-time check `assertDriverFor` (`client.ts`, ADR 0022); the Jev adapter `JevDriver` (`jev.ts`, built only by the factory: `check-arch` fails a construction elsewhere in `src/`); the transport (`wire.ts`: no proxy, no redirect, bundled CA roots only, loopback decided on the connected socket, answer capped after decompression) | `../system1/index.js` |
 | `explore/` | `Exploration` loop, `RunView` (decision log, escalations), policy (pure), act, heal, `decisionEntry` (builds redacted log entries) | `../explore/index.js` |
 | `spec/` | spec sources (ADR 0023): `Operation` schema, `SpecRegistry` (explicit registration), the markdown adapter `markdownSpecProvider(root)` (`markdown/`: one operation per document, front matter or headings, ordered entries are steps, unordered entries are expected items with their own `ref` and `context`); reads only through `trust/contain/`. Not exported from the package yet | `../spec/index.js` |
-| `observe/` | the read-only crawler (`observe()`, ADR 0033): breadth-first through same-window links in the `visit` scope, one `RunSession` whose request layer is `RequestGuard.forCrawl` (only reads leave the browser, on every env class; a refused request is recorded on its page), the page reader (`page-script.ts`, never a field value; page text through `redactText`), link rules (`links.ts`, pure), per-page calls and console errors (`capture.ts`), the page budget (`budget.ts`), the caller summary (`observeSummary`, no verdict), the `--out` copy rules (`output.ts`), and the `AppMap` schema; `appmap.json` goes through `Evidence.artefact`; a `production` env is refused before any browser starts | `../observe/index.js` |
+| `observe/` | the read-only crawler (`observe()`, ADR 0033): breadth-first through same-window links in the `visit` scope, one `RunSession` whose request layer is `RequestGuard.forCrawl` (only reads leave the browser, on every env class; a refused request is recorded on its page), the page reader (`page-script.ts`, never a field value; page text through `redactText`), link rules (`links.ts`, pure), per-page calls and console errors (`capture.ts`), the page budget (`budget.ts`), the caller summary (`observeSummary`, no top-level verdict), the free checks (`checks/`: `freeChecks(map)`, pure, five rules from the map alone, each finding with an `invariant` sourceRef and an `observation` JSON Pointer into `appmap.json`; `checks.json` beside the map, not written when the run ended in an error), the `--out` copy rules (`output.ts`), and the `AppMap` schema; `appmap.json` goes through `Evidence.artefact`; a `production` env is refused before any browser starts | `../observe/index.js` |
 | `config/` | the effective configuration (ADR 0024 section 1): `effectiveConfig(cfg, trusted)` intersects the repo config with the trust store and the built-in ceilings (`CEILINGS`, `MIN_CONFIDENCE`) and returns the warnings; refusals are recorded on `LoadedConfig.trustView` and raised by `resolveEnv` (`env_not_trusted`). Layer `config`, same as `config.ts` | `../config/index.js` |
 | top level | `config.ts`, `replay.ts`, `save.ts`, `login.ts`, `result.ts`, `safe-fs.ts` (all re-export from `foundation/`; `safe-fs.ts` kept as the stable public path for the fs helpers), `index.ts` | — |
 
@@ -34,6 +34,7 @@ imported by anything; `config.ts`, `result.ts` and `safe-fs.ts` are leaves that 
 | Exploration stop/escalation rule | `explore/policy.ts` (pure, unit-tested) or `explore/exploration.ts` + `explore.browser.test.ts` |
 | New config key | `config.ts` (zod schema with a default) + `config.test.ts` + README quickstart if users set it |
 | New public export | `src/index.ts`, then update `test/api.test.ts` (the interface snapshot) on purpose |
+| New free check | `observe/checks/schema.ts` (`CHECK_IDS`, and the pointer pattern if it points at a new map field) + `observe/checks/rules.ts` (`RULES`) + a case in `test/observe-checks.test.ts` + a crawl-class seeded bug in fixture-app (`CRAWL_BUG_MODES`) mapped in `test/observe-checks.accuracy.test.ts` |
 
 ## Gotchas (each one cost a debugging session)
 
@@ -50,6 +51,10 @@ imported by anything; `config.ts`, `result.ts` and `safe-fs.ts` are leaves that 
   `{ value }` input holding a template such as `{{today+1:DD/MM}}`) back into their templates in recorded names,
   so a saved flow replays on another day or env. A date or env value that only appears on the page stays literal.
 - **Unknown `{{…}}` is an error** (older flows with a raw `{{…}}` now fail with `flow_invalid`; `findFlowsWithErrors` lets the CLI run the other flows and report that file): write `{{lbrace}}` for a literal `{{`. The recorder escapes names that way; env values are inserted literally and never re-scanned (ADR 0026).
+- **A failed navigation commits its error page late.** After a dead page (an empty answer), the crawl waited for a
+  `chrome-error:` URL; the URL was already that of the page before, so the wait ended at once and the late commit
+  interrupted the next navigation, and every later page read status 0. `observe/walk.ts` waits for this navigation's
+  own error-page commit (`framenavigated`) instead.
 - **A replay on `shared` reads entries from the store it was given at open time.** `TrustStore.open` snapshots the
   file; a test that saves `destructiveConfirm` entries must open the store again before the replay, or the run sees
   no entry and ends `destructive_blocked`.

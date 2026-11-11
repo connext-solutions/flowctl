@@ -125,11 +125,16 @@ export {
 } from './explore/index.js';
 export {
   appMapPath,
+  freeChecks,
   observe,
   observeSummary,
   writeAppMap,
   type AppMap,
+  type CheckFinding,
+  type CheckId,
+  type CheckResult,
   type CrawlBudget,
+  type FreeChecks,
   type Observation,
   type ObserveOptions,
   type ObserveSummary,

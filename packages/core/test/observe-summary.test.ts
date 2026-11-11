@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RunResult } from '../src/result.js';
 import {
+  freeChecks,
   observeSummary,
   type AppPage,
   type Observation,
@@ -16,6 +17,7 @@ const pageAt = (path: string, extra: Partial<AppPage> = {}): AppPage => ({
   calls: [],
   consoleErrors: [],
   refused: [],
+  navigationRefused: false,
   ...extra,
 });
 
@@ -93,5 +95,24 @@ describe('observeSummary', () => {
     expect(s.attention[0]).toBe('/p0');
     expect(s.error).toEqual(error);
     expect(s.out).toBe('/repo/.flows/maps/app.json');
+    expect(s).not.toHaveProperty('checks');
+  });
+
+  it('carries the verdict of the free checks: their status, the checks that failed and the number of findings', () => {
+    const o = observation([
+      pageAt('/', { links: ['/gone'] }),
+      pageAt('/gone', { status: 404 }),
+    ]);
+    const s = observeSummary({
+      ...o,
+      checks: { result: freeChecks(o.map), file: '/tmp/r_1/checks.json' },
+    });
+    expect(s.checks).toEqual({
+      status: 'failed',
+      failed: ['no-4xx', 'no-broken-link'],
+      findings: 2,
+      file: '/tmp/r_1/checks.json',
+    });
+    expect(s).not.toHaveProperty('status');
   });
 });
