@@ -1,0 +1,4 @@
+#!/bin/sh
+# Git hooks do not inherit `nvm use`; pick the repo's Node when nvm is installed.
+[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null && nvm use >/dev/null 2>&1
+exec bun run verify

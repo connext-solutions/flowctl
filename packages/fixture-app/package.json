@@ -1,0 +1,16 @@
+{
+  "name": "@flowctl/fixture-app",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/connext-solutions/flowctl.git",
+    "directory": "packages/fixture-app"
+  },
+  "type": "module",
+  "description": "Two-role test app with switchable seeded bugs; source-only, used by flowctl tests",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

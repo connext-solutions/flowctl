@@ -1,0 +1,114 @@
+openapi: 3.1.0
+info:
+  title: fixture-app leave requests
+  version: 1.0.0
+  description: >-
+    The contract of the fixture app's API (task T2.9). The numbers repeat src/validator.ts and the reason field's
+    maxlength; error messages are keys of contracts/i18n/vi.json. Read by static parsing only.
+paths:
+  /api/requests:
+    get:
+      operationId: listRequests
+      responses:
+        '200':
+          description: All leave requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeaveRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewLeaveRequest' }
+      responses:
+        '201':
+          description: The request was stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
+        '400':
+          description: A rule of NewLeaveRequest is broken.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/requests/{id}/approve:
+    patch:
+      operationId: approveRequest
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: The request is approved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
+        '403': { description: Only a manager may approve. }
+        '404': { description: No such request. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/employees:
+    get:
+      operationId: searchEmployees
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: Employee names containing q.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { type: string } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  responses:
+    Unauthorized:
+      description: No role cookie.
+  schemas:
+    NewLeaveRequest:
+      type: object
+      required: [reason, amount, employee, type]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 200
+          x-message-keys:
+            minLength: request.reason.required
+            maxLength: request.reason.tooLong
+        amount:
+          type: integer
+          minimum: 0
+          maximum: 1000000000
+          x-message-keys:
+            minimum: request.amount.invalid
+            maximum: request.amount.invalid
+        employee: { type: string }
+        type: { type: string, enum: [LEAVE] }
+    LeaveRequest:
+      allOf:
+        - $ref: '#/components/schemas/NewLeaveRequest'
+        - type: object
+          required: [id, status]
+          properties:
+            id: { type: integer, minimum: 1 }
+            status: { type: string, enum: [PENDING, APPROVED] }
+    RuleError:
+      type: object
+      required: [message, key, field]
+      properties:
+        message: { type: string }
+        key: { type: string }
+        field: { type: string, enum: [reason, amount] }

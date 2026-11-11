@@ -1,0 +1,16 @@
+name: leave-submit
+goal: Sau khi gửi đơn thành công, trang báo đã lưu và biểu mẫu được xóa trống
+tags: [fixture, happy]
+profile: employee
+start: /requests
+inputs:
+  reason: { value: "Việc riêng {{uid}}" }
+steps:
+  - fill: { role: textbox, name: "Lý do" }
+    input: reason
+  - click: { role: button, name: "Gửi" }
+assertions:
+  - { text: "Đã gửi đơn", within: { role: status } }
+  - network: { method: POST, url: /api/requests, status: 201 }
+  - url: "/requests?saved=1"
+  - value: { locator: { role: textbox, name: "Lý do" }, equals: "" }

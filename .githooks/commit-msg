@@ -1,0 +1,13 @@
+#!/bin/sh
+# Conventional Commits subject; no AI attribution lines (AGENTS.md "Workflow").
+subject=$(head -n1 "$1")
+case "$subject" in Merge*|Revert*|fixup!*|squash!*) exit 0 ;; esac
+if ! printf '%s' "$subject" | grep -Eq '^(feat|fix|refactor|perf|test|docs|build|ci|chore|style|revert)(\([a-z0-9/-]+\))?!?: .+'; then
+  echo "commit-msg: subject must follow Conventional Commits, e.g. 'feat(core): add X'" >&2
+  echo "  got: $subject" >&2
+  exit 1
+fi
+if grep -Eiq '^(co-authored-by:|.*generated with \[?claude)' "$1"; then
+  echo "commit-msg: remove Co-Authored-By / 'Generated with' lines" >&2
+  exit 1
+fi

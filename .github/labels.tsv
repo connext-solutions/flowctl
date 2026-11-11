@@ -1,0 +1,21 @@
+type:bug	d73a4a	flowctl runs wrongly or reaches a wrong verdict
+type:feature	0e8a16	New feature or improvement
+type:refactor	c5def5	Structure change, no behaviour change
+type:docs	0075ca	README, ADR, harness docs
+type:chore	ededed	Repo, dependencies, tooling
+type:security	b60205	Vulnerability, secret, data policy
+area:core	1d76db	packages/core
+area:cli	1d76db	packages/cli
+area:mcp	1d76db	packages/mcp
+area:fixture	1d76db	packages/fixture-app
+area:skill	1d76db	Skill, subagent, plugin
+area:ci	1d76db	GitHub Actions, hooks
+phase:2b	fbca04	MCP server, live monitoring, video/report
+phase:2c	fbca04	Skill, plugin, review gates
+phase:2d	fbca04	flowctl ui
+phase:v1.1	fbca04	Regression after deploy
+status:blocked	5319e7	Waiting on other work or an outside decision
+status:needs-decision	5319e7	Needs a decision before work starts
+status:stacked	bfdadc	PR in a stack; merge in order
+prio:high	e11d21	Do first
+prio:low	c2e0b2	Later

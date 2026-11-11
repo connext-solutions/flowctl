@@ -1,0 +1,34 @@
+name: Proposal
+description: A new feature, an improvement, or a design question
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who hits it (dev / tester), in which situation, and what they do instead today
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behaviour you want. If it touches an AGENTS.md invariant or an ADR, name it
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [core, cli, mcp, fixture-app, skill, ci, unknown]
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Planned phase
+      options: [2b, 2c, 2d, v1.1, unplanned]
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.config/flowctl/**)",
+      "Edit(~/.config/flowctl/**)",
+      "Write(~/.config/flowctl/**)",
+      "Read(~/.config/flowctl-owner-key/**)",
+      "Edit(~/.config/flowctl-owner-key/**)",
+      "Write(~/.config/flowctl-owner-key/**)",
+      "Edit(~/.claude/settings.json)",
+      "Write(~/.claude/settings.json)",
+      "Edit(~/.claude/settings.local.json)",
+      "Write(~/.claude/settings.local.json)",
+      "Bash(*.config/flowctl*)",
+      "Bash(*flowctl trust *)",
+      "Bash(*bin.js trust *)"
+    ]
+  }
+}

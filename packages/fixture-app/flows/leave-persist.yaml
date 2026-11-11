@@ -1,0 +1,24 @@
+name: leave-persist
+goal: Nhân viên gửi đơn nghỉ, tải lại trang, đơn đã lưu hiển thị đúng với trạng thái Chờ duyệt
+tags: [fixture, happy]
+profile: employee
+start: /requests
+inputs:
+  reason: { value: "Việc riêng {{uid}}" }
+  amount: { value: "200000" }
+steps:
+  - fill: { role: textbox, name: "Lý do" }
+    input: reason
+  - fill: { role: textbox, name: "Số tiền" }
+    input: amount
+  - click: { role: button, name: "Gửi" }
+  # Fixed wait on purpose: reload cancels the in-flight POST, and the flow DSL has no wait-for-response
+  # step. A hover on the empty status element would be deterministic but needs a weak locator; rejected.
+  # Do not remove or shorten it without a replacement. The network POST line and text "Chờ duyệt" below
+  # are not the first failure for any bug today; they are kept as clean-app checks.
+  - wait: 1000
+  - reload: true
+assertions:
+  - network: { method: POST, url: /api/requests, status: 201 }
+  - text: "Việc riêng {{uid}}"
+  - text: "Chờ duyệt"

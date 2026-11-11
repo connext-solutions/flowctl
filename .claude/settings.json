@@ -1,0 +1,58 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun run check)",
+      "Bash(bun run verify)",
+      "Bash(bun run test:unit)",
+      "Bash(bun run test:browser)",
+      "Bash(bun run test:accuracy)",
+      "Bash(bun run lint)",
+      "Bash(bun run fmt)",
+      "Bash(bun run fmt:check)",
+      "Bash(bun run typecheck)",
+      "Bash(bun run build)",
+      "Bash(bun install --frozen-lockfile)",
+      "Bash(bunx playwright install:*)",
+      "Bash(node scripts/check-arch.mjs)",
+      "Bash(node packages/cli/dist/bin.js:*)",
+      "Bash(git status:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh issue view:*)"
+    ],
+    "deny": [
+      "Read(./spike/.env)",
+      "Read(./**/.env)",
+      "Read(./**/.flows/.auth/**)",
+      "Read(./**/flows/.auth/**)",
+      "Read(//**/.flows/.auth/**)",
+      "Read(//**/flows/.auth/**)",
+      "Read(//**/.auth/**/*.json)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-bash.mjs\"" }]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/dup-export.mjs\"" }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-file.mjs\"" }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-check.mjs\"", "timeout": 180 }]
+      }
+    ]
+  }
+}

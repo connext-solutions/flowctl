@@ -1,0 +1,12 @@
+{
+  "request.amount.invalid": "Số tiền không hợp lệ",
+  "request.approve.done": "Đã duyệt đơn",
+  "request.approve.failed": "Duyệt thất bại",
+  "request.list.failed": "Không tải được danh sách",
+  "request.reason.required": "Vui lòng nhập lý do",
+  "request.reason.tooLong": "Lý do tối đa 200 ký tự",
+  "request.status.approved": "Đã duyệt",
+  "request.status.pending": "Chờ duyệt",
+  "request.submit.failed": "Gửi đơn thất bại",
+  "request.submitted": "Đã gửi đơn"
+}

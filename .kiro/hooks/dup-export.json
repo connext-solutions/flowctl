@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Block duplicate exports",
+      "trigger": "PreToolUse",
+      "description": "Refuses a new export whose name is already exported elsewhere under packages/*/src, so the existing symbol is imported instead.",
+      "matcher": "fs_write|str_replace|fs_append",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/hooks/scripts/dup-export.mjs"
+      }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+name: leave-approve
+goal: Nhân viên gửi đơn nghỉ, quản lý duyệt, nhân viên thấy trạng thái Đã duyệt
+tags: [fixture, happy]
+profile: employee
+start: /requests
+inputs:
+  reason: { value: "Việc riêng {{uid}}" }
+  amount: { value: "200000" }
+  employee: { value: "Nguyễn" }
+steps:
+  - fill: { role: textbox, name: "Lý do" }
+    input: reason
+  - fill: { role: textbox, name: "Số tiền" }
+    input: amount
+  - fill: { role: combobox, name: "Nhân viên" }
+    input: employee
+  - click: { role: option, name: "Nguyễn Văn A" }
+  - click: { role: button, name: "Gửi" }
+  - as: manager
+    goto: /approvals
+  - click: { role: button, name: "Duyệt Việc riêng {{uid}}" }
+  - as: employee
+    goto: /requests
+  - reload: true
+assertions:
+  - network: { method: POST, url: /api/requests, status: 201, requestBody: { type: LEAVE, amount: 200000 } }
+  - network: { method: PATCH, url: "/api/requests/*/approve", status: 200 }
+  - text: "Việc riêng {{uid}}"
+  - text: "Đã duyệt"
+  - noConsoleErrors: true

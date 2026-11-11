@@ -1,0 +1,48 @@
+name: CI
+
+# Budget: GitHub bills every job rounded up to the minute, so this is ONE job that runs the same
+# gate as the pre-push hook. No `push` trigger: a merged commit was already verified as a PR.
+# No paths-ignore either: this is a required check, and a skipped required check blocks the merge.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    # A cap, not a cost: a green run takes about 14 minutes (unit 7, browser 3.5, accuracy 4), so 15 cancelled
+    # passing runs. 25 leaves room for a slow runner and still stops a hung job.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: '.nvmrc'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: 'package.json'
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      # Browsers are keyed on the lockfile, which pins the Playwright version.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      # No --with-deps: the hosted image already has Chrome's libraries, and the apt step (mostly fonts from a
+      # slow mirror) took 9 of 15 minutes. If a browser test fails on a missing library, add `install-deps` back.
+      - run: bunx playwright install chromium
+      # Unit + browser + accuracy tiers. The contract tier (real Jev) needs a key and is run by hand.
+      - run: bun run verify

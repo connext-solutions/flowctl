@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Check before stopping",
+      "trigger": "Stop",
+      "description": "When packages/scripts/package.json have uncommitted changes, runs `bun run check` before the agent stops so \"done\" never means a red gate.",
+      "action": {
+        "type": "command",
+        "command": ". ~/.nvm/nvm.sh >/dev/null 2>&1 && nvm use >/dev/null 2>&1; node .kiro/hooks/scripts/stop-check.mjs",
+        "timeout": 180
+      }
+    }
+  ]
+}

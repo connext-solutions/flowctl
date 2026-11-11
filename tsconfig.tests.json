@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@flowctl/core": ["./packages/core/src/index.ts"],
+      "@flowctl/core-testing": ["./packages/core/test/support.ts"],
+      "@flowctl/fixture-app": ["./packages/fixture-app/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/test", "vitest.config.ts"]
+}

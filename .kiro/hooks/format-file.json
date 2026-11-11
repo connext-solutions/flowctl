@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Format and lint edited file",
+      "trigger": "PostToolUse",
+      "description": "After an edit to a packages TS file, formats it with oxfmt and lints with oxlint so style problems surface immediately.",
+      "matcher": "fs_write|str_replace|fs_append",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/hooks/scripts/format-file.mjs"
+      }
+    }
+  ]
+}

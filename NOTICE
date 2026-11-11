@@ -1,0 +1,8 @@
+flowctl
+Copyright 2026 The flowctl Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes code adapted from jev-ultrafast (https://github.com/browser-use/jev-ultrafast, MIT,
+Copyright (c) 2026 Browser Use) in packages/core/src/browser/snapshot-script.ts and
+packages/core/src/system1/prompts.ts. The MIT licence text is in packages/core/THIRD_PARTY_NOTICES.md.

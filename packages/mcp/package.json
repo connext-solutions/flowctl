@@ -1,0 +1,34 @@
+{
+  "name": "@flowctl/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/connext-solutions/flowctl.git",
+    "directory": "packages/mcp"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "flowctl-mcp": "dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@flowctl/core": "workspace:*",
+    "@modelcontextprotocol/server": "2.4.0",
+    "playwright": "^1.63.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@flowctl/fixture-app": "workspace:*",
+    "@modelcontextprotocol/client": "2.4.0"
+  }
+}

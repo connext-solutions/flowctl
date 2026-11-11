@@ -1,0 +1,18 @@
+{
+  "save500": { "doc": "leave/submit.md", "sentence": "Hệ thống trả về mã 201 cho yêu cầu tạo đơn." },
+  "notPersisted": { "doc": "leave/persist.md", "sentence": "Đơn vừa gửi hiện trong danh sách với đúng lý do đã nhập, giữ nguyên chữ hoa và chữ thường." },
+  "wrongBody": { "doc": "leave/submit.md", "sentence": "Đơn gửi đi có loại \"LEAVE\" và đúng số tiền đã nhập." },
+  "toastOnFail": { "doc": "leave/submit.md", "sentence": "Màn hình hiện thông báo \"Gửi đơn thất bại\" và không hiện \"Đã gửi đơn\"." },
+  "noValidation": { "doc": "leave/validation.md", "sentence": "Không có yêu cầu tạo đơn nào được gửi lên máy chủ." },
+  "consoleError": { "doc": "leave/approve.md", "sentence": "Trang không ghi lỗi nào vào console." },
+  "list500": { "doc": "leave/persist.md", "sentence": "Danh sách tải được mà không hiện lỗi \"Không tải được danh sách\"." },
+  "wrongValueAfterReload": { "doc": "leave/persist.md", "sentence": "Đơn vừa gửi hiện trong danh sách với đúng lý do đã nhập, giữ nguyên chữ hoa và chữ thường." },
+  "approve403": { "doc": "leave/approve.md", "sentence": "Hệ thống trả về mã 200 cho yêu cầu duyệt." },
+  "approveNoop": { "doc": "leave/approve.md", "sentence": "Đơn được duyệt hiện trạng thái \"Đã duyệt\"." },
+  "redirectWrong": { "doc": "leave/submit.md", "sentence": "Địa chỉ trang đổi thành \"/requests?saved=1\"." },
+  "formNotReset": { "doc": "leave/submit.md", "sentence": "Ô \"Lý do\" được xoá trống sau khi gửi." },
+  "toastInList": { "doc": "leave/submit.md", "sentence": "Màn hình hiện thông báo \"Đã gửi đơn\"." },
+  "brokenLink": { "doc": "map/pages.md", "sentence": "Mọi liên kết trong phần điều hướng mở được trang, không trang nào trả về mã 404." },
+  "page500": { "doc": "map/pages.md", "sentence": "Trang Báo cáo mở được với mã 200." },
+  "pageConsoleError": { "doc": "map/pages.md", "sentence": "Trang Báo cáo không ghi lỗi nào vào console." }
+}

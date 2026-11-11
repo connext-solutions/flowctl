@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Guard shell commands",
+      "trigger": "PreToolUse",
+      "description": "Blocks commands that break repo rules (bun --bun, bun test, --no-verify, force push, printing .env/secrets, reading .auth) and asks before destructive ones.",
+      "matcher": "execute_bash",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/hooks/scripts/guard-bash.mjs"
+      }
+    }
+  ]
+}

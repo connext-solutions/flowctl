@@ -1,0 +1,43 @@
+{
+  "name": "flowctl-monorepo",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/connext-solutions/flowctl.git"
+  },
+  "type": "module",
+  "packageManager": "bun@1.2.16",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.tests.json",
+    "test": "vitest run",
+    "lint": "oxlint packages scripts .claude/hooks --ignore-pattern '**/dist/**'",
+    "fmt": "oxfmt --write 'packages/*/src/**/*.ts' 'packages/*/test/**/*.ts' '*.ts'",
+    "fmt:check": "oxfmt --check 'packages/*/src/**/*.ts' 'packages/*/test/**/*.ts' '*.ts'",
+    "check:node": "node scripts/check-node.mjs",
+    "check:arch": "node scripts/check-arch.mjs",
+    "check:bundle": "node scripts/check-bundle-plugins.mjs",
+    "check:harness": "node --test --test-reporter=dot '.claude/hooks/*.test.mjs' 'scripts/*.test.mjs'",
+    "test:unit": "vitest run --project unit",
+    "test:browser": "vitest run --project browser",
+    "test:accuracy": "vitest run --project accuracy",
+    "test:contract": "vitest run --project contract",
+    "check": "bun run check:node && bun run check:arch && bun run check:harness && bun run lint && bun run fmt:check && bun run typecheck && bun run check:bundle && bun run test:unit",
+    "verify": "bun run check && bun run test:browser && bun run test:accuracy",
+    "prepare": "git config core.hooksPath .githooks || true"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
+    "typescript": "^5.9.0",
+    "vitest": "^5.0.3"
+  }
+}

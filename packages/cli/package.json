@@ -1,0 +1,32 @@
+{
+  "name": "@flowctl/cli",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/connext-solutions/flowctl.git",
+    "directory": "packages/cli"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "flowctl": "dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@flowctl/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@flowctl/fixture-app": "workspace:*",
+    "playwright": "^1.63.0",
+    "yaml": "^2.9.1"
+  }
+}

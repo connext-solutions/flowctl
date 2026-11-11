@@ -1,0 +1,41 @@
+# Code owners of the harness, trust and CI paths (ADR 0025 section 6, task T0.14). Owner decision 2026-11-06:
+# the repository owner alone. This file only has force together with branch protection that requires a code
+# owner review (issue #44).
+
+/.claude/                                   @lamlv-context
+/.kiro/                                     @lamlv-context
+/.githooks/                                 @lamlv-context
+/.husky/                                    @lamlv-context
+/.github/                                   @lamlv-context
+/scripts/                                   @lamlv-context
+/docs/adr/                                  @lamlv-context
+/Dockerfile*                                @lamlv-context
+**/Dockerfile*                              @lamlv-context
+/package.json                               @lamlv-context
+/packages/*/package.json                    @lamlv-context
+/bun.lock                                   @lamlv-context
+/tsconfig*.json                             @lamlv-context
+/packages/*/tsconfig*.json                  @lamlv-context
+/flowctl.config.yaml                        @lamlv-context
+/SECURITY.md                                @lamlv-context
+/AGENTS.md                                  @lamlv-context
+/packages/fixture-app/flows/                @lamlv-context
+/packages/fixture-app/contracts/            @lamlv-context
+/packages/fixture-app/spec/                 @lamlv-context
+/packages/core/src/run/                     @lamlv-context
+/packages/core/src/browser/                 @lamlv-context
+/packages/core/src/system1/                 @lamlv-context
+/packages/core/src/foundation/              @lamlv-context
+/packages/core/src/trust/                   @lamlv-context
+/packages/core/src/config/                  @lamlv-context
+/packages/core/src/flow/                    @lamlv-context
+/packages/core/src/derive/                  @lamlv-context
+/packages/core/src/provenance/              @lamlv-context
+/packages/core/src/login/                   @lamlv-context
+/packages/core/src/explore/                 @lamlv-context
+/packages/core/src/config.ts                @lamlv-context
+/packages/core/src/login.ts                 @lamlv-context
+/packages/core/src/save.ts                  @lamlv-context
+/packages/core/src/safe-fs.ts               @lamlv-context
+/packages/cli/src/                          @lamlv-context
+/packages/mcp/                              @lamlv-context

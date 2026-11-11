@@ -1,0 +1,162 @@
+# flowctl
+
+Fast, deterministic verification of web flows for developers and testers who work through coding agents
+(Claude Code, Kiro, Codex).
+
+- **Fast:** a recorded flow replays in about a second with no model. A new flow is explored by a fast
+  "System 1" model, so the coding agent spends one call instead of twenty.
+- **Accurate:** the verdict comes only from assertions written before the run (network status and request
+  body, visible text, URL, field values, console errors), never from a model's opinion.
+- **Reliable:** strict locators, assertions that wait, and evidence for every run (Playwright trace,
+  screenshot, network and console logs) that is safe to attach to a bug.
+
+> **Early preview.** The engine, the CLI and the MCP server work and are tested, but nothing is published to
+> npm yet and the interfaces may still change. Two safety limits are not finished: a run has no overall time
+> limit yet, and **replaying a saved flow is not guarded against destructive requests** (exploration is). Run
+> flowctl only against apps and environments you are allowed to change.
+
+## How it works
+
+A *flow* is a YAML file: a start page, a profile (a saved login), steps, and assertions. flowctl runs it in
+Playwright and returns `passed`, `failed`, `flaky` or `error`.
+
+1. **Explore.** Given a goal, a start page and the assertions, System 1 (by default TypeSafe Jev) reads a
+   snapshot of the page and picks the next control. When it is stuck or unsure it *escalates* to the coding
+   agent, which answers once. A model's "done" only stops the run; the assertions decide the verdict.
+2. **Save.** A passed exploration becomes a flow only after a model-free replay of the recording passes.
+3. **Replay.** Saved flows replay with no model, in CI or locally. `flowctl replay --heal` may ask System 1 to
+   repair one broken locator, never an assertion, and writes the fix only with `--accept-heals`.
+
+Design decisions are recorded in [docs/adr/](docs/adr/README.md); the vocabulary is in [CONTEXT.md](CONTEXT.md).
+
+## Install (from source)
+
+Requires Node 22.12+ (`nvm use` reads `.nvmrc`) and [Bun](https://bun.sh) as the package manager.
+
+```bash
+git clone https://github.com/connext-solutions/flowctl.git && cd flowctl
+bun install
+bunx playwright install chromium
+bun run build
+cd packages/cli && bun link    # puts `flowctl` on your PATH
+```
+
+**Apple Silicon with an x86_64 Bun (Rosetta).** If Bun prints `CPU lacks AVX support`, or `bun run lint`
+fails with `Cannot find module '@oxlint/binding-darwin-arm64'`, install the native arm64 Bun, delete
+`node_modules` and run `bun install --frozen-lockfile`; or keep your Bun and run
+`bun install --frozen-lockfile --cpu=arm64 --os=darwin` with an arm64 Node 22 first on `PATH`.
+
+## Try it on the fixture app
+
+`packages/fixture-app` is a small two-role app with seeded bugs; the test suite uses it as ground truth.
+`bun run verify` builds everything and runs the unit, browser and accuracy tiers against it (about 10 minutes).
+Sample flows live in `packages/fixture-app/flows/`.
+
+## Quickstart on your app
+
+1. Create `flowctl.config.yaml` in the repo that will own the flows:
+
+   ```yaml
+   flowsDir: .flows            # may point into another repo, e.g. ../qa-tests/flows
+   defaultEnv: local
+   envs:
+     local:   { baseUrl: http://localhost:4200, loginUrl: /login }
+     staging: { baseUrl: https://staging.example.com, loginUrl: /login }
+   profiles:
+     employee: { locale: en-US }
+     manager:  { locale: en-US }
+   system1:
+     baseUrl: https://api.typesafe.ai
+     allowedEnvs: [local, staging]   # System 1 only runs here; never list a production env
+   target:                     # optional; every key can only narrow what the trust store allows
+     scope:
+       allow: [/app/**]        # paths on the env's own origin
+       deny:  [/admin/**]      # added to the built-in deny list
+   ```
+
+   Every request and page a run opens is checked against the scope; one outside it is stopped before it leaves
+   the browser and the run ends `error: scope_violation`. If your app calls an API or SSO on another origin,
+   allow it once per machine: `flowctl trust add origin <env> call https://api.example.com`.
+
+2. Create this machine's trust store (once, interactive). You type each env's class (`production`, `shared`
+   or `local`), the production origins, the default env, the language and the locale, then a passphrase for
+   your owner key. The folder that holds `flowctl.config.yaml` must be a git repository with at least one commit.
+
+   ```bash
+   flowctl trust init
+   ```
+
+   Every command except `--help` and `trust init` refuses with exit code 3 (`trust_missing`) until this is done.
+   The store intersects every run with what you recorded: an env runs only on its recorded origin, System 1
+   stays off envs not classed `local` or `shared`, and limits cannot be loosened past the built-in ceilings.
+   `flowctl trust --help` lists the other commands (another project, env, origin, secret input names, key
+   rotation, hook consent).
+
+3. Save a session per profile and env. You log in by hand in the browser; credentials never touch flowctl:
+
+   ```bash
+   flowctl login employee --env local
+   ```
+
+4. Write a flow (`.flows/leave-approve.yaml`; a full example is
+   `packages/fixture-app/flows/leave-approve.yaml`) and replay it:
+
+   ```bash
+   flowctl replay                        # every flow, default env
+   flowctl replay leave-approve --env staging
+   flowctl replay --tag smoke --repeat 5 # flake check
+   flowctl replay --json                 # machine-readable summary
+   ```
+
+Add `<flowsDir>/.runs/` and `<flowsDir>/.auth/` to your `.gitignore`.
+
+## Use flowctl from a coding agent (MCP)
+
+The MCP server (`packages/mcp`, bin `flowctl-mcp`) lets Claude Code, Kiro or Codex test a feature end to end:
+System 1 drives the browser toward a goal, the agent answers escalations, the run is judged only by the
+assertions the agent wrote from the spec, and a passed run is saved as a flow. Setup, the tool reference and
+the limits are in [packages/mcp/README.md](packages/mcp/README.md); the agent playbook is
+[packages/mcp/skill/SKILL.md](packages/mcp/skill/SKILL.md).
+
+Exploration needs a System 1 key (`TYPESAFE_API_KEY`) in the environment of the client that starts the
+server. Replay never needs it. Never put the key in a config file, a chat or a command line.
+
+On an env classed `shared`, System 1 never clicks a control named like delete, approve, reject or pay, and the
+run blocks any request that looks destructive (any `DELETE`, or a path such as `/items/12/delete`) unless the
+agent started it with `allowDestructive: true`. On `production`, and on any origin the trust store does not
+list, nobody may.
+
+## Flow format
+
+Steps: `click | check | hover | fill | select | press | goto | reload | wait | scroll | upload | drag`, and
+`as: <profile>` to switch role. A locator must match exactly one visible element. An `upload` file lives under
+`<flowsDir>/fixtures/` (at most 10 MiB). Templates: `{{uid}}`, `{{today}}`, `{{today+1:DD/MM/YYYY}}` and
+`{{env.NAME}}` from the env's `vars`; write `{{lbrace}}` for a literal `{{`.
+
+Assertions: `network` (fetch/xhr only; `status`, `requestBody` subset, `absent`), `text` (case-sensitive;
+`within: <locator>` holds it to one element), `url`, `value`, `noConsoleErrors`. Assertions wait up to
+`assertTimeout` (10 s). Secret inputs (`{ env: NAME }`, allowed per profile with
+`flowctl trust add profile <profile> <NAME> secret`) show as `***` everywhere.
+
+`setup` and `teardown` hooks are shell commands; they run only after you consent on this machine with
+`flowctl trust hook <name>`, and only while their text and the files they call are unchanged (ADR 0021).
+
+## Results
+
+Exit codes: `0` all passed · `1` failed or flaky · `2` error (setup, session, config, hooks without consent) ·
+`3` a trust refusal.
+
+Evidence per run is in `<flowsDir>/.runs/<runId>/`: `trace-<profile>.zip` (open with
+`npx playwright show-trace <file>`), `final.png`, `network.json`, `console.json`, `run.json`, and for runs that
+ask System 1, `decisions.jsonl`. By default the trace records actions, timings, URLs and console output but no
+DOM, headers, cookies or bodies, and secret values show as `***` (ADR 0030). `flowctl replay --trace full` adds
+DOM snapshots for debugging; never share that trace.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) (commands, invariants, where to change what) and
+[CONTEXT.md](CONTEXT.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+## Licence
+
+Apache-2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE).

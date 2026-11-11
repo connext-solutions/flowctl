@@ -1,0 +1,54 @@
+name: Bug
+description: flowctl runs wrongly, reaches a wrong verdict, or crashes
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste API keys, cookies or anything from `.flows/.auth/`. Evidence under `.flows/.runs/<runId>/` is safe to attach (secret values are already `***`).
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Reported passed but the flow is actually broken (false pass)
+        - Reported failed but the flow is actually fine (false fail)
+        - Escalated / stuck where it should have continued
+        - Infrastructure error (app_unreachable, profile_expired, system1_unreachable…)
+        - Replay / heal wrong
+        - Crash / CLI or MCP error
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [core, cli, mcp, fixture-app, skill, unknown]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened and what you expected
+      placeholder: What you did, what flowctl returned (status, failed, escalation, error), what it should have returned
+    validations:
+      required: true
+  - type: textarea
+    id: flow
+    attributes:
+      label: Flow file or flow_run arguments
+      description: goal, inputs (without secret values), assertions, steps if any
+      render: yaml
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Run directory, report.html, relevant excerpts of run.json or decisions.jsonl
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "local / staging · app: my-web-app · flowctl commit: abc1234 · Node 22.22.2"
+    validations:
+      required: true

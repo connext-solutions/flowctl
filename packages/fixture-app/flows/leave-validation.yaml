@@ -1,0 +1,10 @@
+name: leave-validation
+goal: Gửi đơn không có lý do thì bị chặn, không có request nào được gửi
+tags: [fixture, negative]
+profile: employee
+start: /requests
+steps:
+  - click: { role: button, name: "Gửi" }
+assertions:
+  - text: "Vui lòng nhập lý do"
+  - network: { method: POST, url: /api/requests, absent: true }
