@@ -11,9 +11,9 @@ Fast, deterministic verification of web flows for developers and testers who wor
   screenshot, network and console logs) that is safe to attach to a bug.
 
 > **Early preview.** The engine, the CLI and the MCP server work and are tested, but the interfaces may still
-> change between releases. Two safety limits are not finished: a run has no overall time
-> limit yet, and **replaying a saved flow is not guarded against destructive requests** (exploration is). Run
-> flowctl only against apps and environments you are allowed to change.
+> change between releases. One safety limit is not finished: **replaying a saved flow is not guarded against
+> destructive requests** on a shared env (exploration is; production is refused for both). Run flowctl only
+> against apps and environments you are allowed to change.
 
 ## How it works
 
@@ -88,6 +88,9 @@ Sample flows live in `packages/fixture-app/flows/`.
        allow: [/app/**]        # paths on the env's own origin
        deny:  [/admin/**]      # added to the built-in deny list
    ```
+
+   Every run also has a wall-clock budget, `target.budgets.wallClockMs` (10 minutes, the default and the
+   maximum): when it runs out the run is stopped mid-step and ends `error: budget_exceeded`.
 
    Every request and page a run opens is checked against the scope; one outside it is stopped before it leaves
    the browser and the run ends `error: scope_violation`. If your app calls an API or SSO on another origin,
