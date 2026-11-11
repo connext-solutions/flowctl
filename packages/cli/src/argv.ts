@@ -82,6 +82,7 @@ export type Runnable = Exclude<CommandName, '--help' | McpCommand>;
 export const ARITY: Record<Runnable, (n: number) => boolean> = {
   replay: () => true,
   login: (n) => n === 1,
+  cleanup: (n) => n === 1,
   'trust init': (n) => n === 0,
   'trust hook': (n) => n > 0,
   'trust add env': (n) => n === 1,

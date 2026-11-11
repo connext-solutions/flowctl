@@ -6,6 +6,7 @@ core, print a summary, set the exit code.
 ```text
 flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
 flowctl login <profile> [--env <env>] [--config <path>]
+flowctl cleanup <run id> [--json] [--config <path>]
 flowctl trust init [--replace] [--anchor-dir <abs dir>] [--config <path>]
 flowctl trust hook <name...> [--hook-env NAME] [--pin NAME=VALUE] [--config <path>]
 flowctl trust add env <env> [--config <path>]
@@ -23,7 +24,7 @@ exits `3` with `trust_missing` before touching any file. The list lives in `COMM
 |---|---|
 | `0` | every run passed, or usage was requested with `--help` / `-h` as the first argument |
 | `1` | a run failed or a flow is flaky |
-| `2` | an infrastructure error (config, app unreachable, expired profile, System 1 unreachable, hooks without consent), or a usage error |
+| `2` | an infrastructure error (config, app unreachable, expired profile, System 1 unreachable, hooks without consent, a `ledger_*` error), a run that left records it created on a shared env (`cleanup_incomplete`), or a usage error |
 | `3` | a trust refusal: no store or project not registered (`trust_missing`), no terminal, tampered store, wrong passphrase, refused env name or class |
 
 `--trace full` adds DOM snapshots to the traces (not safe to share, ADR 0030). `--video` records a demo video per
@@ -32,6 +33,13 @@ profile with each step shown on screen, slowed down to be read, and is refused f
 
 `--json` prints the `ReplaySummary` from core; its shape and the exit codes are a contract for CI and
 agents, so changing them is a breaking change.
+
+`flowctl cleanup <run id>` removes the records a replay on a shared env created and could not remove itself (a
+crash, a timeout): it reads only that run's ledger in the trust store (`<store>/ledgers/<run id>.jsonl`, hash chain
+verified), sends each stored create entry's `cleanup` request with the flow profile's saved session, checks it with
+the `verify` request, and appends the result to the ledger, so it can run again and skips what is confirmed. A
+create whose answer never came is listed by name, never deleted by name. It exits `0` when nothing is left, else
+`2`; a run id that is not `r_` plus 1 to 32 lowercase letters or digits is a usage error.
 
 `flowctl login` opens a headed browser; finish with Enter in a terminal or by closing the window (the
 only way without a TTY). It refuses to save a session that never left the login page.

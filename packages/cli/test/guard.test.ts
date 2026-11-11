@@ -29,6 +29,7 @@ type Guarded = Exclude<
 const ARGV: Record<Guarded, string[]> = {
   replay: ['replay'],
   login: ['login', 'manager'],
+  cleanup: ['cleanup', 'r_lq3k2a1b9f0e'],
   'trust hook': ['trust', 'hook', 'leave-approve'],
   'trust add env': ['trust', 'add', 'env', 'local'],
   'trust add profile': [

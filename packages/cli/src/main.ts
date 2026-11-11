@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import {
   type ProjectSetting,
+  cleanupRun,
   COMMANDS,
   ConfigError,
   effectiveConfig,
@@ -32,7 +33,12 @@ import {
   type Values,
 } from './argv.js';
 import { waitForLogin } from './login-wait.js';
-import { formatSummary, invalidFlowResult, terminalSafe } from './summary.js';
+import {
+  formatCleanup,
+  formatSummary,
+  invalidFlowResult,
+  terminalSafe,
+} from './summary.js';
 import {
   trustAddEnv,
   trustAddProfile,
@@ -46,6 +52,7 @@ import { trustRevokeDestructive } from './trust-destructive.js';
 import { trustAddSystem1 } from './trust-system1.js';
 import { trustRotateOwner } from './trust-key.js';
 import { trustAddProductionOrigin, trustSetProject } from './trust-settings.js';
+import { MID_ROTATION, openFor } from './open-store.js';
 import { USAGE } from './usage.js';
 
 export { USAGE } from './usage.js';
@@ -140,6 +147,17 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
     process.stderr.write(`Saved session to ${path}\n`);
     return 0;
   },
+  cleanup: async (c) => {
+    const r = await cleanupRun(c.cfg, c.args[0] ?? '', {
+      store: trustedOf(c).store,
+    });
+    write(
+      c.values.json
+        ? `${JSON.stringify(r, null, 2)}\n`
+        : formatCleanup(c.args[0] ?? '', r),
+    );
+    return r.leftover.length === 0 ? 0 : 2;
+  },
   'trust init': ({ cfg, values }) => {
     (values.replace ? trustReplace : trustInit)(
       cfg,
@@ -197,31 +215,6 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
     return 0;
   },
 };
-
-const MID_ROTATION = Symbol('mid-rotation');
-
-/**
- * The store a guarded command checks. `trust key rotate-owner` is how a store left between the steps of a rotation is
- * finished or rolled back, so for it alone `rotate_incomplete` means "a store exists" and the handler recovers it.
- *
- * @throws {TrustError} whatever opening the store throws, `rotate_incomplete` for every other command.
- */
-function openFor(
-  name: Runnable,
-  deps: CliDeps,
-): TrustStore | undefined | typeof MID_ROTATION {
-  try {
-    return deps.openStore();
-  } catch (e) {
-    if (
-      name === 'trust key rotate-owner' &&
-      e instanceof TrustError &&
-      e.kind === 'rotate_incomplete'
-    )
-      return MID_ROTATION;
-    throw e;
-  }
-}
 
 /**
  * Parses `argv`, checks the trust store for a guarded command (ADR 0025 section 3), runs the command and

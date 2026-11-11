@@ -20,6 +20,7 @@ export const COMMANDS = {
   '--help': { guarded: false },
   replay: { guarded: true },
   login: { guarded: true },
+  cleanup: { guarded: true },
   'trust init': { guarded: false },
   'trust hook': { guarded: true },
   'trust add env': { guarded: true },

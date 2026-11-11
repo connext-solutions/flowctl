@@ -2,6 +2,9 @@
 export const USAGE = `Usage:
   flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
   flowctl login <profile> [--env <env>] [--config <path>]
+  flowctl cleanup <run id> [--json] [--config <path>]
+                                         remove the records a replay on a shared env created and left (from its
+                                         ledger in the trust store); exits 2 while records are left; re-runnable
   flowctl trust init [--anchor-dir <abs dir>] [--config <path>]
                                          create this machine's trust store and owner key (interactive); the
                                          store head is also kept in the keychain, or in --anchor-dir without one

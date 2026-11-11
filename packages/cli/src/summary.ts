@@ -1,5 +1,10 @@
 import { basename } from 'node:path';
-import type { FlowFileError, ReplaySummary, RunResult } from '@flowctl/core';
+import type {
+  CleanupResult,
+  FlowFileError,
+  ReplaySummary,
+  RunResult,
+} from '@flowctl/core';
 
 /**
  * Turns an unloadable flow file into an `error` result so it shows in the summary and the JSON.
@@ -98,5 +103,17 @@ export function formatSummary(s: ReplaySummary): string {
   lines.push(
     `${s.passed} passed, ${s.failed} failed, ${s.flaky} flaky, ${s.errors} errors`,
   );
+  return `${lines.join('\n')}\n`;
+}
+
+/** What `flowctl cleanup <run id>` prints: the count confirmed deleted, then one line per record left. */
+export function formatCleanup(runId: string, r: CleanupResult): string {
+  const lines = [
+    `${terminalSafe(runId)}: ${r.confirmed} record(s) confirmed deleted, ${r.leftover.length} left`,
+    ...r.leftover.map(
+      (l) =>
+        `  ⚠ ${terminalSafe(l.entry)} ${l.id === null ? `name ${terminalSafe(l.name ?? '?')}` : `id ${terminalSafe(l.id)}`}: ${l.detail}`,
+    ),
+  ];
   return `${lines.join('\n')}\n`;
 }
