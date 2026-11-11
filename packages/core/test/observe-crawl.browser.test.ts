@@ -43,8 +43,16 @@ const page = (m: AppMap, path: string) => {
 describe('observe (T2.2)', () => {
   it('finds the pages of /map breadth-first, in sorted order, with their status, links and forms', async () => {
     const cfg = await config();
-    const { map, run, file } = await observe(cfg, { browser, start: '/map' });
+    const { map, run, file, budget } = await observe(cfg, {
+      browser,
+      start: '/map',
+    });
     expect(run.status).toBe('passed');
+    expect(budget).toEqual({
+      pages: { used: 5, max: 50 },
+      wallClockMs: 600_000,
+      costUsd: 'unknown',
+    });
     expect(paths(map)).toEqual([
       '/map',
       '/map/help',
@@ -132,17 +140,23 @@ describe('observe (T2.2)', () => {
 
   it('stops at the page budget and marks the map truncated', async () => {
     const cfg = await config({ budgets: { pages: 2 } });
-    const { map, run } = await observe(cfg, { browser, start: '/map' });
+    const { map, run, budget } = await observe(cfg, { browser, start: '/map' });
     expect(paths(map)).toEqual(['/map', '/map/help']);
     expect(map.truncated).toBe(true);
     expect(run.status).toBe('passed');
+    expect(budget).toMatchObject({
+      pages: { used: 2, max: 2 },
+      stoppedBy: 'pages',
+      costUsd: 'unknown',
+    });
   });
 
   it('stops at the wall-clock budget: the run ends budget_exceeded and the map is truncated', async () => {
     const cfg = await config({ budgets: { wallClockMs: 1 } });
-    const { map, run } = await observe(cfg, { browser, start: '/map' });
+    const { map, run, budget } = await observe(cfg, { browser, start: '/map' });
     expect(run.error?.kind).toBe('budget_exceeded');
     expect(map.truncated).toBe(true);
+    expect(budget).toMatchObject({ wallClockMs: 1, stoppedBy: 'wallClock' });
   });
 
   it('refuses a start that is not a path, an unknown profile, and a denied start page', async () => {

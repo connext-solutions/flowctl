@@ -1,4 +1,5 @@
 import { RunError, type RequestGuard, type RunSession } from '../run/index.js';
+import type { PageBudget } from './budget.js';
 import type { Capture } from './capture.js';
 import type { LinkRules } from './links.js';
 import { readPage, type PageRead } from './read-page.js';
@@ -30,17 +31,17 @@ export interface Crawl {
 export async function walk(
   c: Crawl,
   start: string,
-  budget: number,
+  budget: PageBudget,
   pages: AppPage[],
 ): Promise<boolean> {
   const queue = [start];
   const seen = new Set(queue);
   let cut = false;
-  let visits = 0;
+  let first = true;
   for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
-    if (visits >= budget) return false;
-    const read = await visit(c, path, visits === 0);
-    visits++;
+    if (!budget.take()) return false;
+    const read = await visit(c, path, first);
+    first = false;
     for (const p of read?.follow ?? [])
       if (!seen.has(p)) {
         seen.add(p);

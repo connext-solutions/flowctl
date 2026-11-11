@@ -1,12 +1,8 @@
 /**
  * Observe (roadmap section 3.2): a deterministic crawler and the `AppMap` it produces.
  */
-export {
-  observe,
-  pageBudget,
-  type Observation,
-  type ObserveOptions,
-} from './crawl.js';
+export { PageBudget, type CrawlBudget } from './budget.js';
+export { observe, type Observation, type ObserveOptions } from './crawl.js';
 export {
   mayOpen,
   pageLinks,

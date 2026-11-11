@@ -1,6 +1,5 @@
 import dayjs from 'dayjs';
 import type { Browser } from 'playwright';
-import { BUDGET_CEILINGS } from '../config/index.js';
 import { resolveEnv, type LoadedConfig } from '../config.js';
 import { envClassFor } from '../explore/index.js';
 import { FlowError, type Flow } from '../flow/index.js';
@@ -13,6 +12,7 @@ import {
   type Outcome,
 } from '../run/index.js';
 import type { TrustStore } from '../trust/index.js';
+import { PageBudget, type CrawlBudget } from './budget.js';
 import { Capture } from './capture.js';
 import type { LinkRules } from './links.js';
 import { AppMapSchema, type AppMap, type AppPage } from './schema.js';
@@ -32,11 +32,12 @@ export interface ObserveOptions {
   store?: TrustStore;
 }
 
-/** What one crawl produced: the map, the run that observed it, and where `appmap.json` was written. */
+/** What one crawl produced: the map, the run that observed it, where `appmap.json` was written, and what it spent. */
 export interface Observation {
   map: AppMap;
   run: RunResult;
   file: string;
+  budget: CrawlBudget;
 }
 
 /** The flow-less run of a crawl: the profile and start page, no steps, no assertions. */
@@ -55,13 +56,6 @@ const crawlFlow = (profile: string, start: string): Flow => ({
 
 const PATH = /^\/(?!\/)[^?#\s]*$/;
 
-/** The page budget of a crawl: `target.budgets.pages`, at most the built-in ceiling (ADR 0024 section 6). */
-export const pageBudget = (cfg: LoadedConfig): number =>
-  Math.min(
-    cfg.target.budgets.pages ?? BUDGET_CEILINGS.pages,
-    BUDGET_CEILINGS.pages,
-  );
-
 /**
  * Crawls the env breadth-first from its start page and returns the {@link AppMap} (roadmap section 3.2, task T2.2):
  * no model, no click, no typing, no form submit. Each page is read once (document status, title, snapshot controls,
@@ -72,7 +66,7 @@ export const pageBudget = (cfg: LoadedConfig): number =>
  *   layer is {@link RequestGuard.forCrawl}, so nothing but reads leaves the browser on any env, and a refused request
  *   is recorded on its page (`refused`) instead of ending the crawl. A link is followed only when it stays in the
  *   `visit` scope, is not the login page, opens in the same window, and neither its label nor its path looks
- *   destructive (ADR 0024 section 5). It stops at the page budget ({@link pageBudget}) or the run's wall-clock
+ *   destructive (ADR 0024 section 5). It stops at the page budget ({@link PageBudget}) or the run's wall-clock
  *   budget; either way `truncated` is true. `appmap.json` is written into the run directory, validated against
  *   {@link AppMapSchema}.
  * @throws {ConfigError} for an unknown env.
@@ -110,13 +104,14 @@ export async function observe(
   const pages: AppPage[] = [];
   let outcome: Outcome = { status: 'passed' };
   let complete = false;
+  const budget = new PageBudget(cfg);
   try {
     await run.begin();
     const capture = new Capture(run.evidence, run.secrets);
     complete = await walk(
       { run, rules, writes, capture },
       start,
-      pageBudget(cfg),
+      budget,
       pages,
     );
   } catch (e) {
@@ -133,5 +128,6 @@ export async function observe(
     'appmap.json',
     `${JSON.stringify(map, null, 2)}\n`,
   );
-  return { map, run: await run.finish(outcome, pages.length), file };
+  const result = await run.finish(outcome, pages.length);
+  return { map, run: result, file, budget: budget.report(result) };
 }
