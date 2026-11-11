@@ -2,11 +2,8 @@ import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import type { PageSnapshot } from '../src/browser/index.js';
 import { ConfigError, parseConfig } from '../src/config.js';
-import {
-  MAX_ANSWER_BYTES,
-  System1Client,
-  type DecideInput,
-} from '../src/system1/index.js';
+import { MAX_ANSWER_BYTES, type DecideInput } from '../src/system1/index.js';
+import { JevDriver } from '../src/system1/jev.js';
 
 const page: PageSnapshot = {
   url: 'http://app.test/requests',
@@ -36,14 +33,13 @@ const thrown = (f: () => unknown): unknown => {
   return undefined;
 };
 
-const client = (url: string) =>
-  new System1Client({ baseUrl: url, apiKey: 'k' });
+const client = (url: string) => new JevDriver({ baseUrl: url, apiKey: 'k' });
 
 /**
  * What System 1 errors may show. A System 1 reply, or a proxy in front of it, is untrusted text: bodies, header
  * text and credentials in URLs must never reach `error.hint`, `run.json`, the CLI or the MCP result (#26).
  */
-describe('System1Client errors keep untrusted text out', () => {
+describe('JevDriver errors keep untrusted text out', () => {
   it('reports a 200 answer that is not JSON (a proxy or login page) as unreachable, not internal (#26)', async () => {
     const server = createServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/html' });
@@ -168,7 +164,7 @@ describe('System1Client errors keep untrusted text out', () => {
   it('refuses an API key that fetch would quote in its own error, without echoing it (#26)', () => {
     for (const key of ['sk-secret\nabc', 'sk-secret\0abc', 'sk secret', '']) {
       const e = thrown(
-        () => new System1Client({ baseUrl: 'http://127.0.0.1:9', apiKey: key }),
+        () => new JevDriver({ baseUrl: 'http://127.0.0.1:9', apiKey: key }),
       );
       expect(e).toBeInstanceOf(ConfigError);
       expect(e instanceof Error ? e.message : '').not.toContain('sk-secret');
@@ -187,7 +183,7 @@ describe('System1Client errors keep untrusted text out', () => {
       'http://10.0.0.5:8080',
     ]) {
       expect(
-        thrown(() => new System1Client({ baseUrl, apiKey: 'k' })),
+        thrown(() => new JevDriver({ baseUrl, apiKey: 'k' })),
       ).toBeInstanceOf(ConfigError);
     }
   });
@@ -263,7 +259,7 @@ describe('System1Client errors keep untrusted text out', () => {
   });
 });
 
-describe('System1Client answer size (#57)', () => {
+describe('JevDriver answer size (#57)', () => {
   it('stops reading an answer larger than MAX_ANSWER_BYTES and reports it as unreachable', async () => {
     const chunk = 'x'.repeat(64 * 1024);
     let written = 0;

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { System1Client } from '../src/system1/index.js';
+import { parseConfig } from '../src/config.js';
+import {
+  assertDriverFor,
+  createDriver,
+  type Driver,
+} from '../src/system1/index.js';
+import { JevDriver } from '../src/system1/jev.js';
 
-/** Where a System 1 client may be used (issues #14 and #15, ADR 0005). */
+/** Where a System 1 driver may be used (issues #14 and #15, ADR 0005, ADR 0022). */
 const thrown = (f: () => unknown): unknown => {
   try {
     f();
@@ -11,25 +17,45 @@ const thrown = (f: () => unknown): unknown => {
   return undefined;
 };
 
-describe('System1Client is bound to the env it was allowed for (#15)', () => {
-  it('accepts only the env fromConfig checked, and refuses a client made directly', () => {
-    const c = new System1Client({
+const cfg = parseConfig(
+  {
+    defaultEnv: 'local',
+    envs: {
+      local: { baseUrl: 'http://local.test' },
+      staging: { baseUrl: 'http://staging.test' },
+    },
+    profiles: {},
+    system1: {
       baseUrl: 'https://jev.example',
-      apiKey: 'k',
-      env: 'staging',
-    });
-    expect(() => c.assertFor('staging')).not.toThrow();
-    expect(thrown(() => c.assertFor('production'))).toMatchObject({
+      allowedEnvs: ['local', 'staging'],
+    },
+  },
+  '/tmp',
+);
+const KEY = { TYPESAFE_API_KEY: 'k' };
+
+describe('a driver is bound to the env createDriver checked it for (#15)', () => {
+  it('accepts only that env', () => {
+    const d = createDriver(cfg, 'staging', KEY);
+    expect(() => assertDriverFor(d, 'staging')).not.toThrow();
+    expect(thrown(() => assertDriverFor(d, 'local'))).toMatchObject({
       kind: 'system1_not_allowed',
     });
-    expect(
-      thrown(() =>
-        new System1Client({
-          baseUrl: 'https://jev.example',
-          apiKey: 'k',
-        }).assertFor('local'),
-      ),
-    ).toMatchObject({ kind: 'system1_not_allowed' });
+  });
+
+  it('refuses a driver built directly, a look-alike object, and no driver', () => {
+    const direct = new JevDriver({
+      baseUrl: 'https://jev.example',
+      apiKey: 'k',
+    });
+    const fake: Driver = {
+      id: 'jev',
+      decide: () => Promise.reject(new Error('never called')),
+    };
+    for (const d of [direct, fake, undefined])
+      expect(thrown(() => assertDriverFor(d, 'local'))).toMatchObject({
+        kind: 'system1_not_allowed',
+      });
   });
 
   it('allows plain http only to this machine (#14)', () => {
@@ -38,6 +64,6 @@ describe('System1Client is bound to the env it was allowed for (#15)', () => {
       'http://127.0.0.1:9',
       'http://[::1]:9',
     ])
-      expect(() => new System1Client({ baseUrl, apiKey: 'k' })).not.toThrow();
+      expect(() => new JevDriver({ baseUrl, apiKey: 'k' })).not.toThrow();
   });
 });

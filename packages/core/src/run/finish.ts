@@ -3,6 +3,7 @@ import { weakLocators, type Flow, type Step } from '../flow/index.js';
 import type { HealProposal, RunResult } from '../result.js';
 import type { HookSession } from '../trust/index.js';
 import type { Evidence } from './evidence.js';
+import { system1Metrics } from './metrics.js';
 import { runHookKind } from './hooks.js';
 import { errorMessage, RunError, type Outcome } from './outcome.js';
 import type { Profiles } from './profiles.js';
@@ -112,6 +113,8 @@ export async function finishRun(
     evidence: summary,
     ms: Date.now() - run.started,
   };
+  const metrics = system1Metrics(run.evidence.decisions);
+  if (metrics !== undefined) result.system1 = metrics;
   maskResult(result, run.secrets);
   try {
     run.evidence.save(result);

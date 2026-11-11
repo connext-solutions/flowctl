@@ -77,7 +77,7 @@ export async function openAs(
   return page;
 }
 
-/** Environment handed to `System1Client.fromConfig` in tests (the fake accepts any key). */
+/** Environment handed to `createDriver` in tests (the fake accepts any key). */
 export const VARS = { TYPESAFE_API_KEY: 'test-key' };
 
 /** Fixture config that explores with the fake System 1 at `system1Url`. */
