@@ -34,3 +34,9 @@ What it means for users: on stg, plan for about 10 s per System 1 decision, so a
 about two minutes, while replaying the saved flow takes seconds with no model. The fast path is assertions
 that already hold (no decision) and replay. Worth asking TypeSafe whether the stg-facing endpoint can be
 faster; re-measure after any change.
+
+Contract tier, 2026-11-11, untrusted-data framing in every question (issue #48): lines at 06:22:46 to 06:23:09 are
+`main` before the change (2 runs), the rest are the change (3 runs). The leave form passed 5/5 with 2 or 3 steps and
+3 or 4 decisions on both. The Enter-only todo task escalated 5/5 on both (`done_rejected` after three `DONE`, or one
+`BLOCKED` or low-confidence decision): System 1 answers `DONE` once the field shows the value and never presses
+Enter, before and after the change, so the change did not cause it.
