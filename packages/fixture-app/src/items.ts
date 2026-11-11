@@ -10,9 +10,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
  *   `POST /api/items` `{ name }` and shows the answer.
  * - `POST /api/items` answers 201 with `{ id, name }`, 409 for a name that exists, 400 without a name.
  * - `GET`, `PATCH` (`{ name }`) and `DELETE` on `/api/items/:id` answer 404 for an unknown id; `DELETE` answers 204.
- * - `POST /api/__items/next` `{ id, status, delayMs }` sets how the next create answers (a test seam, like
- *   `/api/__reset`): the id it returns, a status other than 201 (a redirect to `/items` for a 3xx; nothing is stored),
- *   and a delay before the answer.
+ * - `POST /api/__items/next` `{ id, status, delayMs, deleteDelayMs }` sets how the next create answers (a test seam,
+ *   like `/api/__reset`): the id it returns, a status other than 201 (a redirect to `/items` for a 3xx; nothing is
+ *   stored), and a delay before the answer; `deleteDelayMs` delays the answer of the next `DELETE` instead.
  * - `/items#total=N` shows "Tổng N" from the fragment, which no request carries: text only the page's `innerText`
  *   holds.
  */
@@ -97,10 +97,12 @@ export function itemsApp(): {
 } {
   let items: Item[] = [];
   let next: NextAnswer = {};
+  let deleteDelayMs: number | undefined;
   return {
     reset() {
       items = [];
       next = {};
+      deleteDelayMs = undefined;
     },
     async handle(req, res, url) {
       const p = url.pathname;
@@ -111,6 +113,11 @@ export function itemsApp(): {
       }
       if (req.method === 'POST' && p === '/api/__items/next') {
         const b = await bodyOf(req);
+        if (typeof b['deleteDelayMs'] === 'number') {
+          deleteDelayMs = b['deleteDelayMs'];
+          send(res, 200, {});
+          return true;
+        }
         next = {
           ...(typeof b['id'] === 'string' ? { id: b['id'] } : {}),
           ...(typeof b['status'] === 'number' ? { status: b['status'] } : {}),
@@ -158,6 +165,9 @@ export function itemsApp(): {
         if (typeof name === 'string') found.name = name;
         send(res, 200, found);
       } else if (req.method === 'DELETE') {
+        const delay = deleteDelayMs;
+        deleteDelayMs = undefined;
+        if (delay !== undefined) await wait(delay);
         items = items.filter((i) => i !== found);
         send(res, 204);
       } else send(res, 405, { message: 'method' });

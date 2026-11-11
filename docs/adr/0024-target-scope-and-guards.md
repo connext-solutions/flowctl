@@ -1347,13 +1347,31 @@ orchestrator, the rest by taking the stricter option each time). Not yet accepte
   the id must be canonical and of the placeholder's type; the URL is joined segment by segment and must match the
   template again with the entries' exact matcher. An id that fails is leftover `id_invalid` and nothing is sent.
 - **The end of a run.** The ledger refuses every write from the moment its cleanup starts, waits up to 15 s for the
-  writes still in flight and for the response scans, and only then reads its ids; a create answered later is never
-  recorded and stays `create_unconfirmed`. The guard judges the outcome again after the cleanup, so a ledger problem
+  writes still in flight and for the response scans, and only then reads its ids. From the end of that wait the
+  ledger takes no line from a request in flight: a create answered later, even while the cleanup runs, is never
+  recorded (its answer is aborted, not handed to the page) and stays `create_unconfirmed` with its name, so no id
+  enters after the ids were read and the `abort` line stays last. The guard judges the outcome again after the cleanup, so a ledger problem
   that arrives during it ends the run `error`. Only an env the store classes `shared` by its own name gets a ledger,
   whatever class its origin has.
 - **A torn last line.** A last ledger line without its newline that is not JSON is a cut append: `flowctl cleanup`
   drops it, cleans every line before it, and reports `tornTail` (exit 2). Any other broken line is `ledgers_invalid`
   `chain`.
+- **A ledger write that fails.** When writing or fsyncing a line fails (a full disk), the file is cut back to its
+  length before that line, so its chain stays whole, and it takes no more lines: every later append is
+  `ledgers_invalid` detail `write_failed`. The request whose line failed is aborted, the run sends no further write,
+  and the run ends `error: internal` with the cause and the `flowctl cleanup <run id>` to run once the disk is
+  fixed; the cleanup at the end of the run still runs. Any other failure while a write is judged is `internal` too,
+  never `failed`.
+- **One writer per ledger.** `ledgers/<run id>.lock` (created `O_EXCL`, mode 0600, holding the pid) is held by the
+  live run from the ledger's creation to its close and by `flowctl cleanup` while it reads and appends. While it
+  exists and its process is alive, `flowctl cleanup` is refused with `ledgers_invalid` detail `busy` (exit 3), so a
+  cleanup during a run or two cleanups at once never fork the chain or send a `DELETE` twice. A lock whose process
+  is gone is removed and taken over, and the cleanup reports `staleLock`. The lock file and the details `busy`,
+  `write_failed` and `closed` extend the file list and the detail list of ADR 0025 amendment 2026-11-02 section 4.
+- **WebSocket messages are not guarded in a replay.** A WebSocket to an origin in scope is opened in a replay on
+  `shared` and `unknown` too, and the messages the page sends over it are not judged: closing sockets would break
+  every realtime app. So **a write sent over a WebSocket is not guarded in a replay**; review flows that use one.
+  Messages from the server enter the seen-set. A test documents the gap.
 - **Ledger file.** Every run that keeps a ledger writes `bundleId: null` (no `ci` bundle exists yet); a `ci` store's
   writable `ledgers/` is not built. A `ledgers_invalid` refusal at the start of a run is reported as
   `scope_violation` naming that kind, like every other store refusal of the run's guards.

@@ -1,3 +1,6 @@
+import { spawnSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { cleanupRun } from '../src/run/index.js';
@@ -27,6 +30,7 @@ beforeEach(async () => {
 });
 
 describe('cleanupRun', () => {
+  const LOCK_ID = 'e1b2c3d4-0000-4000-8000-00000000abcd';
   it('cleans a crashed run from its ledger, reports an unanswered create by name, and sends nothing the second time', async () => {
     const { cfg, store: empty } = await app.setup();
     const flow = writeFlow(cfg, crud('items-crash', CREATE_STEPS));
@@ -103,6 +107,50 @@ describe('cleanupRun', () => {
       'id_invalid',
     ]);
     expect(await app.items()).toEqual(['QA-keep']);
+  });
+
+  it('refuses busy while the run holds the ledger, and one of two cleanups at once', async () => {
+    const { cfg, store: empty } = await app.setup();
+    const flow = writeFlow(cfg, crud('items-lock', CREATE_STEPS));
+    const store = app.confirm(cfg, empty, flow);
+    const runId = 'r_lock01';
+    const live = LedgerFile.create(store.dir, runId, null);
+    await expect(cleanupRun(cfg, runId, { store })).rejects.toMatchObject({
+      kind: 'ledgers_invalid',
+      detail: 'busy',
+    });
+    live.close();
+    await app.seed('QA-lock', LOCK_ID);
+    const f = LedgerFile.open(store.dir, runId, null).file;
+    f.append({
+      kind: 'intent',
+      seq: 1,
+      entry: 'items-lock-create',
+      name: 'QA-lock',
+    });
+    f.append({ kind: 'id', seq: 1, entry: 'items-lock-create', id: LOCK_ID });
+    f.close();
+    const both = await Promise.allSettled([
+      cleanupRun(cfg, runId, { store }),
+      cleanupRun(cfg, runId, { store }),
+    ]);
+    expect(both.map((b) => b.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const refused = both.find((b) => b.status === 'rejected');
+    expect(refused?.reason).toMatchObject({ detail: 'busy' });
+    expect(await app.items()).toEqual([]);
+  });
+
+  it('takes over a stale lock whose process is gone and notes it', async () => {
+    const { cfg, store: empty } = await app.setup();
+    const flow = writeFlow(cfg, crud('items-stale', CREATE_STEPS));
+    const store = app.confirm(cfg, empty, flow);
+    const runId = 'r_stale01';
+    LedgerFile.create(store.dir, runId, null).close();
+    const lock = join(store.dir, 'ledgers', `${runId}.lock`);
+    writeFileSync(lock, `${spawnSync('true').pid}\n`, { mode: 0o600 });
+    const r = await cleanupRun(cfg, runId, { store });
+    expect(r).toEqual({ confirmed: 0, leftover: [], staleLock: true });
+    expect(existsSync(lock)).toBe(false);
   });
 
   it('refuses a run id that is not one', async () => {

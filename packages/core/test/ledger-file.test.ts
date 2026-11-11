@@ -1,7 +1,8 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   appendFileSync,
   chmodSync,
+  existsSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -10,8 +11,21 @@ import {
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ledgerState } from '../src/run/index.js';
-import { LedgerFile } from '../src/trust/index.js';
+import { LedgerFile, TrustError } from '../src/trust/index.js';
+import { LEDGER_IO } from '../src/trust/ledger-file.js';
 import { refusal, store } from './confirm-fixture.js';
+
+/** The `detail` of the `ledgers_invalid` refusal `f` throws, or what it threw otherwise. */
+const detailOf = (f: () => unknown): string => {
+  try {
+    f();
+  } catch (e) {
+    return e instanceof TrustError && e.kind === 'ledgers_invalid'
+      ? String(e.detail)
+      : String(e);
+  }
+  return 'accepted';
+};
 
 /**
  * The run ledger file in the trust store (ADR 0025 amendment 2026-11-02 section 4, ADR 0024 amendment 2026-11-12
@@ -133,6 +147,79 @@ describe('LedgerFile', () => {
     parts[2] = parts[2]?.slice(0, 10) ?? '';
     writeFileSync(path, parts.join('\n'));
     expect(refusal(() => LedgerFile.open(dir, RUN, null))).toContain('Line 2');
+  });
+
+  it.each(['write', 'fsync'] as const)(
+    'cuts a failed %s back to the last good line and refuses every later append write_failed',
+    (which) => {
+      const s = store();
+      const f = LedgerFile.create(s.dir, RUN, null);
+      f.append({ kind: 'intent', seq: 1, entry: 'items-create', name: 'QA-a' });
+      const good = readFileSync(f.path, 'utf8');
+      const real = { ...LEDGER_IO };
+      const enospc = Object.assign(new Error('ENOSPC: no space left'), {
+        code: 'ENOSPC',
+      });
+      if (which === 'write')
+        LEDGER_IO.write = (fd, buf, off, len) => {
+          real.write(fd, buf, off, Math.min(len, 7));
+          throw enospc;
+        };
+      else
+        LEDGER_IO.fsync = () => {
+          throw enospc;
+        };
+      try {
+        expect(
+          detailOf(() =>
+            f.append({ kind: 'id', seq: 1, entry: 'items-create', id: '12' }),
+          ),
+        ).toBe('write_failed');
+      } finally {
+        Object.assign(LEDGER_IO, real);
+      }
+      expect(readFileSync(f.path, 'utf8')).toBe(good);
+      expect(
+        detailOf(() => f.append({ kind: 'none', seq: 1, status: 409 })),
+      ).toBe('write_failed');
+      f.close();
+      const again = LedgerFile.open(s.dir, RUN, null);
+      again.file.close();
+      expect(again.torn).toBe(false);
+      expect(again.lines.map((l) => l.kind)).toEqual([
+        'ledger-header',
+        'intent',
+      ]);
+    },
+  );
+
+  it('holds a lock with its pid from create to close: open meanwhile is busy, and two opens at once', () => {
+    const s = store();
+    const f = LedgerFile.create(s.dir, RUN, null);
+    const lock = join(s.dir, 'ledgers', `${RUN}.lock`);
+    expect(readFileSync(lock, 'utf8').trim()).toBe(String(process.pid));
+    expect(execFileSync('stat', ['-f', '%Lp', lock]).toString().trim()).toBe(
+      '600',
+    );
+    expect(detailOf(() => LedgerFile.open(s.dir, RUN, null))).toBe('busy');
+    f.close();
+    expect(existsSync(lock)).toBe(false);
+    const first = LedgerFile.open(s.dir, RUN, null);
+    expect(detailOf(() => LedgerFile.open(s.dir, RUN, null))).toBe('busy');
+    first.file.close();
+    LedgerFile.open(s.dir, RUN, null).file.close();
+  });
+
+  it('takes over a stale lock whose pid is gone, and says so', () => {
+    const { dir } = written();
+    const lock = join(dir, 'ledgers', `${RUN}.lock`);
+    const gone = spawnSync('true').pid;
+    writeFileSync(lock, `${gone}\n`, { mode: 0o600 });
+    const { file, staleLock } = LedgerFile.open(dir, RUN, null);
+    expect(staleLock).toBe(true);
+    expect(readFileSync(lock, 'utf8').trim()).toBe(String(process.pid));
+    file.close();
+    expect(existsSync(lock)).toBe(false);
   });
 
   it('refuses a ledgers directory with mode 0755', () => {

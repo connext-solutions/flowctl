@@ -77,13 +77,16 @@ const isCreate = (e: ConfirmEntry | undefined): e is CreateConfirm =>
  * `cleanup` of the stored create entry that minted it, with the session of that entry's flow profile, and appends a
  * `cleanup` line per id. Running it again sends nothing for an id already confirmed. Nothing is ever deleted by name:
  * a create whose answer never came is reported `create_unconfirmed` with its name. A torn last line (a crash cut the
- * write short) is dropped and reported as `tornTail`; every line before it is cleaned.
+ * write short) is dropped and reported as `tornTail`; every line before it is cleaned. It holds the run's lock
+ * (`ledgers/<run id>.lock`) throughout: while a live run or another cleanup holds it, it refuses; a lock whose process
+ * is gone is taken over and reported as `staleLock`.
  *
  * @remarks An id whose create entry is no longer valid (revoked, expired, changed) stays leftover (`entry_missing`):
  *   only a signed entry can authorise a cleanup request. The requests are sent from Node with the profile's saved
  *   session (no browser), to the entry's origin only.
  * @throws {ConfigError} when `runId` is not a run id (`r_` and up to 32 lowercase letters or digits).
- * @throws {TrustError} `ledgers_invalid` (with its detail) or `trust_entry_invalid` (no such ledger).
+ * @throws {TrustError} `ledgers_invalid` (with its detail, `busy` while another process holds the lock) or
+ *   `trust_entry_invalid` (no such ledger).
  */
 export async function cleanupRun(
   cfg: LoadedConfig,
@@ -94,7 +97,11 @@ export async function cleanupRun(
     throw new ConfigError(
       `"${runId.slice(0, 40)}" is not a run id: it is r_ and 1 to 32 lowercase letters or digits.`,
     );
-  const { file, lines, torn } = LedgerFile.open(o.store.dir, runId, null);
+  const { file, lines, torn, staleLock } = LedgerFile.open(
+    o.store.dir,
+    runId,
+    null,
+  );
   try {
     const state = ledgerState(lines);
     const entries = readConfirmEntries(
@@ -150,7 +157,12 @@ export async function cleanupRun(
         ...done.leftover.map((l) => ({ ...l, name: nameOf(l.entry, l.id) })),
       );
     }
-    return { confirmed, leftover, ...(torn ? { tornTail: true } : {}) };
+    return {
+      confirmed,
+      leftover,
+      ...(torn ? { tornTail: true } : {}),
+      ...(staleLock === true ? { staleLock } : {}),
+    };
   } finally {
     file.close();
   }

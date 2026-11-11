@@ -37,8 +37,12 @@ export const destructiveOptions = (v: Values): DestructiveOptions => ({
   days: v.days,
 });
 
-const daysOf = (d: string | undefined): number | undefined =>
-  d === undefined ? undefined : Number(d);
+/**
+ * `--days` as a number: digits only, else `NaN`, which the plan refuses (`trust_entry_invalid`), so `1e1`, ` 5` or
+ * `0x1e` never pass as a number.
+ */
+export const daysOf = (d: string | undefined): number | undefined =>
+  d === undefined ? undefined : /^[0-9]+$/.test(d) ? Number(d) : NaN;
 
 /** An answer typed at a prompt, or `fallback` for an empty line. */
 const answer = (tty: Tty, question: string, fallback: string): string => {
@@ -51,11 +55,11 @@ const list = (s: string): string[] =>
     .map((x) => x.trim())
     .filter((x) => x !== '');
 
-/** Asks the owner the attestations of one draft, each with its proposed default. */
-function ask(tty: Tty, d: Draft): Draft {
+/** Asks the owner the attestations of one draft, each with its proposed default; recorded values are escaped. */
+export function askDraft(tty: Tty, d: Draft): Draft {
   const w = d.write;
   tty.write(
-    `\n${w.method} ${w.template} (bodyKeys [${w.bodyKeys.join(',')}])\n`,
+    `\n${displayText(`${w.method} ${w.template} (bodyKeys [${w.bodyKeys.join(',')}])`)}\n`,
   );
   const kind = answer(tty, 'kind: create, mutate or skip', d.kind);
   if (kind !== 'create' && kind !== 'mutate' && kind !== 'skip')
@@ -179,7 +183,7 @@ export function trustAddDestructive(
   try {
     paged(tty, screen(p));
     const entries = p.drafts
-      .map((d) => entryOf(ask(tty, d), p.base))
+      .map((d) => entryOf(askDraft(tty, d), p.base))
       .filter((e) => e !== undefined);
     if (entries.length === 0)
       throw new TrustError(

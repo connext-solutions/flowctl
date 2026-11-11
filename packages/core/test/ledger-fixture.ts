@@ -50,11 +50,15 @@ export class LedgerApp {
     return this.next({ id });
   }
 
-  /** Sets how the next create answers: its id, a status other than 201, a delay before the answer. */
+  /**
+   * Sets how the next create answers: its id, a status other than 201, a delay before the answer; or, alone,
+   * `deleteDelayMs`, a delay before the answer of the next `DELETE`.
+   */
   async next(answer: {
     id?: string;
     status?: number;
     delayMs?: number;
+    deleteDelayMs?: number;
   }): Promise<void> {
     await fetch(`${this.url}/api/__items/next`, {
       method: 'POST',
@@ -78,15 +82,16 @@ export class LedgerApp {
    * A config with saved sessions and an empty test store that classes the fixture's origin `shared` (env `local`).
    *
    * @param localTwin also an env `dev` on the same origin, which the store classes `local`, with the same sessions:
-   *   a store `trust init` and `trust add env` refuse to write (one origin has one class), signed here directly.
+   *   a store `trust init` and `trust add env` refuse to write (one origin has one class), signed here directly. An
+   *   object signs `dev` with that class and origin instead.
    */
   async setup(
-    localTwin = false,
+    localTwin: boolean | { class: 'local' | 'shared'; origin: string } = false,
   ): Promise<{ cfg: LoadedConfig; store: TrustStore }> {
     const origin = new URL(this.url).origin;
     const cfg = fixtureConfig(
       this.url,
-      localTwin
+      localTwin !== false
         ? {
             envs: {
               local: { baseUrl: this.url, loginUrl: '/login' },
@@ -96,7 +101,7 @@ export class LedgerApp {
         : {},
     );
     await seedProfiles(cfg, this.url);
-    if (localTwin)
+    if (localTwin !== false)
       for (const p of PROFILES) {
         const to = storageStatePath(cfg, 'dev', p);
         mkdirSync(dirname(to), { recursive: true });
@@ -119,10 +124,14 @@ export class LedgerApp {
       },
       anchorDir: testAnchorDir(),
     });
-    if (localTwin) {
+    if (localTwin !== false) {
       const doc = TrustStore.open(dir).data;
       const key = testOwnerKey();
-      const dev = signEnv(key, 'dev', { origin, class: 'local' });
+      const dev = signEnv(
+        key,
+        'dev',
+        localTwin === true ? { origin, class: 'local' } : localTwin,
+      );
       replaceStoreDoc(dir, { ...doc, envs: { ...doc.envs, dev } }, key);
     }
     return { cfg, store: TrustStore.open(dir) };

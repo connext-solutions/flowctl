@@ -1,13 +1,16 @@
 import type { Page, Route } from 'playwright';
+import { RunError } from '../../foundation/index.js';
 import {
   type ConfirmEntry,
   type CreateConfirm,
   idValues,
   type LedgerFile,
+  type NewLedgerLine,
   matchEntry,
   TrustError,
   type WireRequest,
 } from '../../trust/index.js';
+import { errorMessage } from '../outcome.js';
 import {
   type CleanupResult,
   type CleanupTarget,
@@ -17,6 +20,9 @@ import {
 } from './cleanup.js';
 import { sendCreate } from './create.js';
 import { LedgerScans } from './scan.js';
+
+/** `p`, without its rejection: a route the page already closed is not a ledger problem. */
+const quiet = (p: Promise<void>): Promise<void> => p.catch(() => undefined);
 
 /** The types whose request the ledger authorises; a non-GET of any other type is refused (a form post, a beacon). */
 const AUTHORISED_TYPES = new Set(['fetch', 'xhr']);
@@ -61,8 +67,15 @@ export class RunLedger extends LedgerScans {
   readonly order: CleanupTarget[] = [];
   /** Creates sent whose answer gave no id and no 4xx yet, by `seq`. */
   readonly open = new Map<number, { entry: string; name: string }>();
+  /**
+   * The bound {@link finish} waits by, {@link IN_FLIGHT_WAIT_MS}; a test seam (a test lowers it to reach the end of the
+   * wait in time), never changed by production code.
+   */
+  static waitMs = IN_FLIGHT_WAIT_MS;
   private readonly inFlight = new Set<Promise<void>>();
   private closing = false;
+  /** Set once the wait for writes in flight ended: a create answered later records nothing ({@link record}). */
+  private sealed = false;
 
   constructor(readonly o: LedgerOptions) {
     super(o.entries.some((e) => e.kind === 'create'));
@@ -80,19 +93,26 @@ export class RunLedger extends LedgerScans {
    *
    * @remarks Once {@link finish} started, every write is refused (`closing` is set before anything else), and every
    *   call that started before is tracked until it ends, so {@link finish} can wait for it before it copies the ids. A
-   *   ledger append that fails because the file closed meanwhile (a create answered after the bounded wait) aborts
-   *   the request; its intent stays unconfirmed.
+   *   create answered after the bounded wait is refused by the ledger ({@link record}, detail `closed`) and aborted;
+   *   its intent stays unconfirmed. Any other failure (a ledger line that cannot be written, a request that cannot be
+   *   read) aborts the request and becomes the run's problem, `internal`, so the run never ends `failed` on it.
    * @param page the page that sent it (its frames' text enters the seen-set before a create).
    */
   authorise(route: Route, page: Page | undefined): Promise<void> {
     if (this.closing) {
       const r = route.request();
       this.o.refuse(r.method(), r.url(), 'the run was ending');
-      return route.abort('blockedbyclient');
+      return quiet(route.abort('blockedbyclient'));
     }
     const p = this.judge(route, page).catch((e: unknown) => {
-      if (!(e instanceof TrustError && e.detail === 'closed')) throw e;
-      return route.abort('failed').catch(() => undefined);
+      if (!(e instanceof TrustError && e.detail === 'closed'))
+        this.fail(
+          new RunError(
+            'internal',
+            `The run ledger could not judge or record a write, so it was not sent: ${errorMessage(e)}`,
+          ),
+        );
+      return quiet(route.abort('failed'));
     });
     this.inFlight.add(p);
     void p.finally(() => this.inFlight.delete(p)).catch(() => undefined);
@@ -113,14 +133,14 @@ export class RunLedger extends LedgerScans {
         req.url,
         `the run already stopped with ${this.problem.kind}`,
       );
-      return route.abort('blockedbyclient');
+      return quiet(route.abort('blockedbyclient'));
     }
     const m = matchEntry(req, this.o.entries);
     if (typeof m === 'string') {
       this.o.refuse(req.method, req.url, m);
-      return route.abort('blockedbyclient');
+      return quiet(route.abort('blockedbyclient'));
     }
-    if (m.entry.kind === 'session') return route.continue();
+    if (m.entry.kind === 'session') return quiet(route.continue());
     if (m.entry.kind === 'create') return sendCreate(this, route, page, m, req);
     const ids = idValues(m);
     const mine = this.minted.get(m.entry.ledgerFrom);
@@ -134,9 +154,9 @@ export class RunLedger extends LedgerScans {
           ? `entry ${m.entry.id}: ${ids}`
           : `entry ${m.entry.id} changes only records this run created through ${m.entry.ledgerFrom}, and id ${foreign} is not one of them`,
       );
-      return route.abort('blockedbyclient');
+      return quiet(route.abort('blockedbyclient'));
     }
-    return route.continue();
+    return quiet(route.continue());
   }
 
   /**
@@ -144,12 +164,15 @@ export class RunLedger extends LedgerScans {
    * the response scans, then removes every minted id through its create entry's `cleanup` (`cleanup.ts`), appends a
    * `cleanup` line per id and, after a ledger problem, the `abort` line last, then closes the file.
    *
+   * @remarks Once the wait ended, the ledger is sealed: a create answered later appends nothing ({@link record}), so
+   *   no id enters after the ids were copied and the `abort` line stays last. A line that cannot be written at the end
+   *   does not stop the cleanup; it becomes the run's problem, `internal`.
    * @param send sends a cleanup or verify request with the run's session.
    * @param waitMs the bound on the wait for writes in flight.
    */
   async finish(
     send: Send,
-    waitMs: number = IN_FLIGHT_WAIT_MS,
+    waitMs: number = RunLedger.waitMs,
   ): Promise<CleanupResult> {
     this.closing = true;
     let timer: NodeJS.Timeout | undefined;
@@ -158,6 +181,7 @@ export class RunLedger extends LedgerScans {
       new Promise((resolve) => (timer = setTimeout(resolve, waitMs))),
     ]);
     clearTimeout(timer);
+    this.sealed = true;
     await this.settle();
     const unconfirmed: Leftover[] = [];
     for (const i of this.open.values()) {
@@ -170,7 +194,7 @@ export class RunLedger extends LedgerScans {
     }
     try {
       const done = await cleanIds([...this.order], send, (t, result) =>
-        this.o.file.append({
+        this.closingLine({
           kind: 'cleanup',
           seq: t.seq,
           entry: t.entry.id,
@@ -179,7 +203,7 @@ export class RunLedger extends LedgerScans {
         }),
       );
       if (this.problem !== undefined)
-        this.o.file.append({ kind: 'abort', reason: this.problem.kind });
+        this.closingLine({ kind: 'abort', reason: this.problem.kind });
       return {
         confirmed: done.confirmed,
         leftover: [...unconfirmed, ...done.leftover],
@@ -193,15 +217,46 @@ export class RunLedger extends LedgerScans {
    * Records a minted id: the `id` line, fsynced, then the in-memory sets, the seen-set included, so a second 201 with
    * the same id is `ledger_replay` whatever `idFrom` read it from (a `Location` header puts it in no body).
    *
-   * @throws {TrustError} `ledgers_invalid` `closed` when the ledger already ended.
+   * @throws {TrustError} `ledgers_invalid` `closed` once the wait for writes in flight ended.
    */
   mint(entry: CreateConfirm, seq: number, id: string): void {
-    this.o.file.append({ kind: 'id', seq, entry: entry.id, id });
+    this.record({ kind: 'id', seq, entry: entry.id, id });
     this.see(id, 'a created id');
     this.open.delete(seq);
     const set = this.minted.get(entry.id) ?? new Set<string>();
     set.add(id);
     this.minted.set(entry.id, set);
     this.order.push({ entry, id, seq });
+  }
+
+  /**
+   * Appends a line of a request in flight (`intent`, `id`, `none`).
+   *
+   * @throws {TrustError} `ledgers_invalid` `closed` once the wait for writes in flight ended (ADR 0024 amendment
+   *   2026-11-13: a create answered later is never recorded); `write_failed` from the file.
+   */
+  record(line: NewLedgerLine): void {
+    this.assertOpen();
+    this.o.file.append(line);
+  }
+
+  /** @throws {TrustError} `ledgers_invalid` `closed` once the wait for writes in flight ended. */
+  assertOpen(): void {
+    if (this.sealed)
+      throw new TrustError(
+        'ledgers_invalid',
+        `The run ledger ${this.o.file.path} stopped taking writes at the end of the run; this answer is not recorded.`,
+        'closed',
+      );
+  }
+
+  /** Appends a `cleanup` or `abort` line; a write that fails becomes the run's problem and the cleanup goes on. */
+  private closingLine(line: NewLedgerLine): void {
+    try {
+      this.o.file.append(line);
+    } catch (e) {
+      if (!(e instanceof TrustError)) throw e;
+      this.fail(new RunError('internal', e.message));
+    }
   }
 }

@@ -175,7 +175,7 @@ so any edit needs a new confirmation. Then a create must carry a `QA-` name hold
 or delete may touch only ids that run created, each id goes to a ledger in the trust store before the page sees it,
 and the run deletes them at the end (`cleanup` in the result; `flowctl cleanup <run id>` after a crash). Without a
 confirmation the run ends `error: destructive_blocked`; that includes the confirming replay of `flow_save`. On
-`local` replay is unchanged.
+`local` replay is unchanged. A write sent over a WebSocket is not guarded in a replay; review flows that use one.
 
 ## Flow format
 

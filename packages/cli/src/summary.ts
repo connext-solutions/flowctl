@@ -118,6 +118,11 @@ export function formatCleanup(runId: string, r: CleanupResult): string {
           '  ⚠ the last line of the ledger was torn (a crash cut it short) and was dropped; a create it recorded shows as create_unconfirmed',
         ]
       : []),
+    ...(r.staleLock === true
+      ? [
+          '  ⚠ a lock left by a flowctl process that is gone was removed; check that no run of this id is still going',
+        ]
+      : []),
     ...r.leftover.map(
       (l) =>
         `  ⚠ ${terminalSafe(l.entry)} ${l.id === null ? `name ${terminalSafe(l.name ?? '?')}` : `id ${terminalSafe(l.id)}`}: ${l.detail}`,

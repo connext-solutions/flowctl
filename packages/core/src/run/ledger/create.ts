@@ -15,7 +15,9 @@ import { idTokens, MAX_BODY_BYTES, MAX_IDS } from './seen.js';
  *   or another status leaves the intent unconfirmed (reported by cleanup with its name). A 201 whose id was seen
  *   earlier, or is in the request, is `ledger_replay` and is not recorded; one whose natural-key echo differs is
  *   `ledger_mismatch` after its id was recorded, so cleanup removes it. "Seen earlier" is judged once every response
- *   scan in flight has finished (`seenBefore`), so a body still being read cannot hide an id.
+ *   scan in flight has finished (`seenBefore`), so a body still being read cannot hide an id. An answer that comes
+ *   after the run's wait for writes in flight is not recorded (`assertOpen`, `record` throw `closed`); a page that
+ *   closed before its answer is handed on is not a ledger problem.
  */
 export async function sendCreate(
   ledger: RunLedger,
@@ -24,13 +26,17 @@ export async function sendCreate(
   m: Matched,
   req: WireRequest,
 ): Promise<void> {
-  if (m.entry.kind !== 'create') return route.abort('blockedbyclient');
+  const abort = (): Promise<void> =>
+    route.abort('blockedbyclient').catch(() => undefined);
+  const hand = (o: Parameters<Route['fulfill']>[0]): Promise<void> =>
+    route.fulfill(o).catch(() => undefined);
+  if (m.entry.kind !== 'create') return abort();
   const e = m.entry;
   const name = stringAt(m.leaves, e.nameField);
   const uid = ledger.o.uid();
   const refuse = (why: string): Promise<void> => {
     ledger.o.refuse(req.method, req.url, `entry ${e.id}: ${why}`);
-    return route.abort('blockedbyclient');
+    return abort();
   };
   if (
     name === undefined ||
@@ -55,7 +61,7 @@ export async function sendCreate(
         `${kind}: entry ${e.id}, request ${seq}: ${why}. The run stopped and cleans up what it created.`,
       ),
     );
-    return route.abort('blockedbyclient');
+    return abort();
   };
   const seq = ++ledger.seq;
   if (ledger.order.length >= MAX_IDS)
@@ -65,8 +71,8 @@ export async function sendCreate(
       `the ledger holds ${MAX_IDS} ids (detail ids)`,
     );
   await ledger.scanPage(page);
-  if (ledger.problem !== undefined) return route.abort('blockedbyclient');
-  ledger.o.file.append({ kind: 'intent', seq, entry: e.id, name });
+  if (ledger.problem !== undefined) return abort();
+  ledger.record({ kind: 'intent', seq, entry: e.id, name });
   ledger.open.set(seq, { entry: e.id, name });
   let answer: APIResponse;
   try {
@@ -74,11 +80,12 @@ export async function sendCreate(
   } catch {
     return route.abort('failed').catch(() => undefined);
   }
+  ledger.assertOpen();
   const status = answer.status();
   if (status >= 400 && status < 500) {
-    ledger.o.file.append({ kind: 'none', seq, status });
+    ledger.record({ kind: 'none', seq, status });
     ledger.open.delete(seq);
-    return route.fulfill({ response: answer });
+    return hand({ response: answer });
   }
   if (status >= 300 && status < 400)
     return fail(
@@ -86,7 +93,7 @@ export async function sendCreate(
       seq,
       `the create answered ${status}, a redirect`,
     );
-  if (status !== 201) return route.fulfill({ response: answer });
+  if (status !== 201) return hand({ response: answer });
   const body = await answer.body();
   if (body.length > MAX_BODY_BYTES)
     return fail(
@@ -125,5 +132,5 @@ export async function sendCreate(
         `the answer's ${k} differs from the one sent`,
       );
   }
-  return route.fulfill({ response: answer, body });
+  return hand({ response: answer, body });
 }

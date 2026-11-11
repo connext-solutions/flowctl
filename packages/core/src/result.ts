@@ -79,6 +79,8 @@ export interface CleanupResult {
    * every line before it was verified and cleaned. A create whose `id` line was torn shows as `create_unconfirmed`.
    */
   tornTail?: true;
+  /** `flowctl cleanup` only: a lock left by a flowctl process that is gone was removed and taken over. */
+  staleLock?: true;
 }
 
 export interface RunResult {
