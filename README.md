@@ -111,8 +111,11 @@ Sample flows live in `packages/fixture-app/flows/`.
    Every run also has a wall-clock budget, `target.budgets.wallClockMs` (10 minutes, the default and the
    maximum): when it runs out the run is stopped mid-step and ends `error: budget_exceeded`.
 
-   Every request and page a run opens is checked against the scope; one outside it is stopped before it leaves
-   the browser and the run ends `error: scope_violation`. If your app calls an API or SSO on another origin,
+   Every request, page and frame a run opens is checked against the scope; one outside it is stopped before it
+   leaves the browser and the run ends `error: scope_violation`. A run never saves a download: the browser cancels
+   it, `network.json` notes it as `DOWNLOAD <url>`, and only a download from outside the scope fails the run.
+   WebRTC and WebTransport are disabled in run pages (best effort: a worker keeps WebTransport), so no verdict
+   rests on them. If your app calls an API or SSO on another origin,
    allow it once per machine: `flowctl trust add origin <env> call https://api.example.com`.
 
 2. Create this machine's trust store (once, interactive). You type each env's class (`production`, `shared`

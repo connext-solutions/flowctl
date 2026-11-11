@@ -720,3 +720,32 @@ review of PR #73 and the three independent reviews that followed it. The status 
   and headers are closed lists; the owner screen follows the display rules of ADR 0025 and shows entries
   derived from a recorded local run. `defaultEnv` is a scope change changed only by an owner-signed command.
   `QA-` and cleanup extend to hand-written CRUD flows on `shared`.
+
+## Amendment 2026-11-11: downloads, frames and WebRTC as implemented (section 3, rules 6 and 7)
+
+Proposed with task T1.2; not yet accepted by the owner. The status stays `proposed`. It records how three parts
+of rules 6 and 7 are implemented and where that differs from the text above.
+
+- **Downloads are always cancelled.** Every run context is created with Playwright's `acceptDownloads: false`, so
+  Chromium cancels each download and nothing is written to disk (with the default, Playwright keeps every download
+  in a temporary directory outside the run). A flow cannot declare a download yet; "refused unless the flow
+  declares them" becomes "always cancelled" until a flow-level declaration is designed. A download is still a
+  request: a link answered with an attachment is a navigation the context route judges, and a `download` link on
+  the page's own origin, which Playwright's route does not see, is judged at the request stage of the CDP hold
+  (document requests only), so one out of scope is never sent. A cancelled download is not a failure: it is noted
+  in `network.json` as `DOWNLOAD <url>` with status 0 and `note: download_cancelled`, which `network` assertions
+  never match (ADR 0010 stays fetch/xhr only). A `data:` or `blob:` download (an export the page built) sends
+  nothing and is only noted, with a `data:` URL kept as its scheme alone so its content stays out of the evidence.
+- **Frames are visits** (rule 7). A frame request out of scope is aborted by the context route in any process,
+  and the page's hold fails a redirect hop of a frame's first navigation. A frame URL change that sends no request
+  (a hash route, `history.pushState`, a `data:` or `blob:` frame, refused by rule 1) is detected and ends the run
+  `scope_violation`. `about:srcdoc` is not a visit. A cross-site frame in its own process (site isolation is off
+  in flowctl's own launch, but a caller's browser may turn it on) gets its own hold once it commits, so its later
+  redirect hops are failed before they are sent; a hop it starts before that hold is attached, or after it moves
+  to a third site's process, is detected only.
+- **WebRTC and WebTransport: an init script, no launch flag.** An init script in every frame replaces
+  `RTCPeerConnection`, `webkitRTCPeerConnection` and `WebTransport` with fixed functions that throw
+  `NotAllowedError`. No launch flag is set: `RunSession` runs in whatever browser its caller launched, and the
+  WebRTC IP-handling flags limit which addresses are used rather than turning WebRTC off, which a test without
+  outside network cannot show. Best effort as rule 6 says: a dedicated or shared worker gets no init script and
+  keeps `WebTransport`; a test pins that limit, and no WebRTC or WebTransport call is part of a verdict.

@@ -1,4 +1,4 @@
-import type { APIResponse, CDPSession, Page, Route } from 'playwright';
+import type { APIResponse, CDPSession, Frame, Page, Route } from 'playwright';
 import type { ScopeKind } from '../browser/index.js';
 import { errorMessage } from './outcome.js';
 
@@ -33,6 +33,7 @@ interface Paused {
   resourceType: string;
   request: { url: string; method: string };
   responseStatusCode?: number;
+  responseErrorReason?: string;
   responseHeaders?: { name: string; value: string }[];
 }
 
@@ -58,38 +59,47 @@ export function hopTarget(
 const locationOf = (p: Paused): string | undefined =>
   p.responseHeaders?.find((h) => h.name.toLowerCase() === 'location')?.value;
 
+/** Whether `p` is paused before it was sent (the request stage), not on its answer. */
+const atRequest = (p: Paused): boolean =>
+  p.responseStatusCode === undefined && p.responseErrorReason === undefined;
+
 /**
  * Holds every response of `page`'s frames at the response stage (CDP `Fetch`, request stage left to Playwright's
  * route) and fails a redirect answer whose `Location` the judge refuses, so the browser never sends the hop
- * (ADR 0024 section 3, "at every redirect hop"). Any other answer goes on unchanged.
+ * (ADR 0024 section 3, "at every redirect hop"). Any other answer goes on unchanged. Document requests are also
+ * held at the request stage: a `download` link on the page's own origin reaches no Playwright route, so it is
+ * judged here and failed before it is sent when the judge refuses it (rule 6).
  *
+ * @param frame a cross-site frame in its own process to hold instead of the page's own target (see `run/frames.ts`).
  * @remarks Chromium only (flowctl launches Chromium). It covers the page's main frame and its same-process frames;
- *   a cross-site frame (its own process) or a worker runs in its own target, where the context route still stops
- *   the request and the guard's `request` listener still detects a hop. Every response waits one local CDP round
- *   trip. A `continueRequest` or `failRequest` that fails is dropped on purpose: it fails when the request is
+ *   a cross-site frame (its own process) is held only when `frame` names it, and a worker runs in its own target,
+ *   where the context route still stops the request and the guard's `request` listener still detects a hop. Every
+ *   response and every document request waits one local CDP round trip. A `continueRequest` or `failRequest` that
+ *   fails is dropped on purpose: it fails when the request is
  *   already gone (the page aborted it, a navigation dropped it, the page closed), and a request that is gone sends
  *   no hop, so it is neither a violation nor an error. The target is judged without a fragment (CDP request URLs
  *   carry none), so a denied hash route reached through a redirect is caught by the guard's `watch`, after the fact.
- * @throws {Error} from Playwright when no CDP session can be opened on `page` (not Chromium, page closed).
+ * @throws {Error} from Playwright when no CDP session can be opened on `page` or `frame` (not Chromium, page closed,
+ *   a frame that shares its parent's process).
  * @see docs/adr/0024-target-scope-and-guards.md
  */
-export async function holdRedirects(page: Page, judge: Judge): Promise<void> {
-  const cdp: CDPSession = await page.context().newCDPSession(page);
+export async function holdRedirects(
+  page: Page,
+  judge: Judge,
+  frame?: Frame,
+): Promise<void> {
+  const cdp: CDPSession = await page.context().newCDPSession(frame ?? page);
   cdp.on('Fetch.requestPaused', (p) => {
-    const target = hopTarget(
-      p.responseStatusCode,
-      locationOf(p),
-      p.request.url,
-    );
+    const sending = atRequest(p);
+    const target = sending
+      ? p.request.url
+      : hopTarget(p.responseStatusCode, locationOf(p), p.request.url);
     const kind: ScopeKind = p.resourceType === 'Document' ? 'visit' : 'call';
+    const method = sending
+      ? p.request.method
+      : hopMethod(p.responseStatusCode ?? 0, p.request.method);
     const sent =
-      target !== undefined &&
-      !judge(
-        target,
-        kind,
-        hopMethod(p.responseStatusCode ?? 0, p.request.method),
-        p.resourceType,
-      )
+      target !== undefined && !judge(target, kind, method, p.resourceType)
         ? cdp.send('Fetch.failRequest', {
             requestId: p.requestId,
             errorReason: 'BlockedByClient',
@@ -98,7 +108,10 @@ export async function holdRedirects(page: Page, judge: Judge): Promise<void> {
     sent.catch(() => undefined);
   });
   await cdp.send('Fetch.enable', {
-    patterns: [{ urlPattern: '*', requestStage: 'Response' }],
+    patterns: [
+      { urlPattern: '*', resourceType: 'Document', requestStage: 'Request' },
+      { urlPattern: '*', requestStage: 'Response' },
+    ],
   });
 }
 
