@@ -2,6 +2,9 @@
 export const USAGE = `Usage:
   flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
   flowctl login <profile> [--env <env>] [--config <path>]
+  flowctl observe [--env <env>] [--profile <profile>] [--start <path>] [--json] [--out <file.json>] [--config <path>]
+                                         crawl the app read-only and write its map (appmap.json) into the run
+                                         directory, and to --out inside the flows directory (early)
   flowctl trust init [--anchor-dir <abs dir>] [--config <path>]
                                          create this machine's trust store and owner key (interactive); the
                                          store head is also kept in the keychain, or in --anchor-dir without one

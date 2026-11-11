@@ -23,7 +23,12 @@ export {
   type Outcome,
 } from './outcome.js';
 export { RunSession } from './session.js';
-export { RequestGuard, type RequestClass } from './request-guard.js';
+export {
+  RequestGuard,
+  type Refusal,
+  type RequestClass,
+} from './request-guard.js';
+export { scopeFor } from './scope-for.js';
 export { redactBody, redactResponse, redactText } from './redact.js';
 export {
   cookieMatches,
