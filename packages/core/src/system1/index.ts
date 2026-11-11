@@ -1,4 +1,11 @@
-export { MAX_ANSWER_BYTES, System1Client } from './client.js';
+export {
+  System1Client,
+  assertDriverFor,
+  createDriver,
+  type CheckedDriver,
+  type Driver,
+} from './client.js';
+export { MAX_ANSWER_BYTES } from './wire.js';
 export {
   OPS,
   TARGET_OPS,

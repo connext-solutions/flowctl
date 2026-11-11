@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { LoadedConfig } from '../src/config.js';
 import { loadFlow, type Loc } from '../src/flow/index.js';
 import { replayFlow } from '../src/replay.js';
-import { System1Client } from '../src/system1/index.js';
+import { createDriver } from '../src/system1/index.js';
 import {
   StepError,
   takeSnapshot,
@@ -66,7 +66,7 @@ describe('replay with heal', () => {
     const { cfg, file } = await setup([{ op: 'CLICK', target: 'Gửi' }]);
     const r = await replayFlow(cfg, loadFlow(file, PROFILES), {
       browser,
-      system1: System1Client.fromConfig(cfg, 'local', VARS),
+      system1: createDriver(cfg, 'local', VARS),
       acceptHeals: true,
     });
     expect(r.status, JSON.stringify(r.failed ?? r.error)).toBe('passed');
@@ -93,7 +93,7 @@ describe('replay with heal', () => {
     const { cfg, file } = await setup([{ op: 'CLICK', target: 'Gửi' }]);
     const r = await replayFlow(cfg, loadFlow(file, PROFILES), {
       browser,
-      system1: System1Client.fromConfig(cfg, 'local', VARS),
+      system1: createDriver(cfg, 'local', VARS),
     });
     expect(r.status).toBe('passed');
     expect(r.heals).toEqual([
@@ -111,7 +111,7 @@ describe('replay with heal', () => {
     const { cfg, file } = await setup([{ op: 'CLICK', target: 'Gửi', p: 0.3 }]);
     const r = await replayFlow(cfg, loadFlow(file, PROFILES), {
       browser,
-      system1: System1Client.fromConfig(cfg, 'local', VARS),
+      system1: createDriver(cfg, 'local', VARS),
     });
     expect(r).toMatchObject({
       status: 'failed',
@@ -149,7 +149,7 @@ describe('replay with heal on a duplicated control (#24)', () => {
     writeFileSync(file, text);
     const r = await replayFlow(cfg, loadFlow(file, PROFILES), {
       browser,
-      system1: System1Client.fromConfig(cfg, 'local', VARS),
+      system1: createDriver(cfg, 'local', VARS),
     });
     expect(r).toMatchObject({
       status: 'failed',
@@ -185,14 +185,16 @@ describe('onControl with a uniqueness check (heal write-back, #24)', () => {
   });
 });
 
-describe('heal checks the client against the run env (#15)', () => {
-  it('refuses a client allowed for another env, before System 1 is asked', async () => {
+describe('heal checks the driver against the run env (#15)', () => {
+  it('refuses a driver allowed for another env, before System 1 is asked', async () => {
     const { cfg, file } = await setup([{ op: 'CLICK', target: 'Gửi' }]);
-    const other = new System1Client({
-      baseUrl: s1?.url ?? 'http://127.0.0.1:9',
-      apiKey: 'k',
-      env: 'staging',
-    });
+    const s1cfg = cfg.system1;
+    if (s1cfg === undefined) throw new Error('fixture config has no system1');
+    const other = createDriver(
+      { ...cfg, system1: { ...s1cfg, allowedEnvs: ['staging'] } },
+      'staging',
+      VARS,
+    );
     const r = await replayFlow(cfg, loadFlow(file, PROFILES), {
       browser,
       system1: other,
@@ -228,7 +230,7 @@ describe('heal never turns a step into a destructive one (#48)', () => {
     writeFileSync(file, text);
     const r = await replayFlow(cfg, loadFlow(file, PROFILES), {
       browser,
-      system1: System1Client.fromConfig(cfg, 'local', VARS),
+      system1: createDriver(cfg, 'local', VARS),
       acceptHeals: true,
     });
     expect(r).toMatchObject({

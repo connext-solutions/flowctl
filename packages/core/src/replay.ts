@@ -11,7 +11,7 @@ import type {
   TraceMode,
 } from './result.js';
 import { RunSession, outcomeOf, toOutcome, type Outcome } from './run/index.js';
-import { System1Client } from './system1/index.js';
+import { createDriver, type CheckedDriver } from './system1/index.js';
 import type { TrustStore } from './trust/index.js';
 
 /**
@@ -24,7 +24,8 @@ import type { TrustStore } from './trust/index.js';
  *   step on that element and lists it in `healed`, with the old and new locator in `heals`. The flow file is
  *   updated only when the whole run passes **and** the caller confirmed with `opts.acceptHeals` (ADR 0008
  *   amendment, issue #48: page text can steer System 1, so a heal is never written silently); assertions are
- *   never touched. The caller obtains the client from `System1Client.fromConfig`, which enforces `allowedEnvs`.
+ *   never touched. The caller obtains the driver from `createDriver`, which enforces `allowedEnvs`; heal refuses any
+ *   other (`system1_not_allowed`).
  * @returns Always a {@link RunResult}; run-level problems become `status: 'error'`.
  * @throws {ConfigError} when `opts.env` is not a configured env.
  */
@@ -34,7 +35,7 @@ export async function replayFlow(
   opts: {
     env?: string;
     browser: Browser;
-    system1?: System1Client;
+    system1?: CheckedDriver;
     store?: TrustStore;
     trace?: TraceMode;
     acceptHeals?: boolean;
@@ -166,7 +167,7 @@ export async function replayMany(
 ): Promise<ReplaySummary> {
   const system1 =
     opts.heal === true
-      ? System1Client.fromConfig(cfg, resolveEnv(cfg, opts.env).name)
+      ? createDriver(cfg, resolveEnv(cfg, opts.env).name)
       : undefined;
   const browser = await chromium.launch({ headless: opts.headed !== true });
   try {
