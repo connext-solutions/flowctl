@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  appendFileSync,
   chmodSync,
   readFileSync,
   rmSync,
@@ -86,6 +87,52 @@ describe('LedgerFile', () => {
     expect(refusal(() => LedgerFile.open(dir, RUN, null))).toContain(
       'regular file',
     );
+  });
+
+  it('refuses an append after close with a typed error', () => {
+    const s = store();
+    const f = LedgerFile.create(s.dir, RUN, null);
+    f.close();
+    expect(
+      refusal(() => f.append({ kind: 'none', seq: 1, status: 409 })),
+    ).toMatch(/^ledgers_invalid: .*closed/);
+  });
+
+  it('reads every line before a torn last line, reports it, and appends after it', () => {
+    const { dir, path } = written();
+    appendFileSync(path, '{"kind":"id","seq":2,"entry":"items-cre');
+    const { file, lines, torn } = LedgerFile.open(dir, RUN, null);
+    expect(torn).toBe(true);
+    expect(lines.map((l) => l.kind)).toEqual([
+      'ledger-header',
+      'intent',
+      'id',
+      'intent',
+    ]);
+    file.append({ kind: 'none', seq: 2, status: 409 });
+    file.close();
+    const again = LedgerFile.open(dir, RUN, null);
+    again.file.close();
+    expect(again.torn).toBe(false);
+    expect(again.lines.at(-1)?.kind).toBe('none');
+  });
+
+  it('keeps a complete last line that lost only its newline, and a broken line before the last stays chain', () => {
+    const { dir, path } = written();
+    const text = readFileSync(path, 'utf8');
+    writeFileSync(path, text.slice(0, -1));
+    const { file, lines, torn } = LedgerFile.open(dir, RUN, null);
+    expect(torn).toBe(false);
+    expect(lines).toHaveLength(4);
+    file.append({ kind: 'none', seq: 2, status: 409 });
+    file.close();
+    const again = LedgerFile.open(dir, RUN, null);
+    again.file.close();
+    expect(again.lines.at(-1)?.kind).toBe('none');
+    const parts = readFileSync(path, 'utf8').split('\n');
+    parts[2] = parts[2]?.slice(0, 10) ?? '';
+    writeFileSync(path, parts.join('\n'));
+    expect(refusal(() => LedgerFile.open(dir, RUN, null))).toContain('Line 2');
   });
 
   it('refuses a ledgers directory with mode 0755', () => {

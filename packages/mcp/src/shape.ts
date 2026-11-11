@@ -1,4 +1,5 @@
 import {
+  type CleanupResult,
   MAX_DETAIL_CHARS,
   pageText,
   type ReplaySummary,
@@ -25,6 +26,19 @@ const NEXT = {
     'Not a product verdict (see error.kind and error.hint): an infrastructure problem to fix, or a guard that stopped the run (scope_violation, destructive_blocked, or ledger_replay, ledger_mismatch, ledger_overflow, ledger_exists for a confirmed write on a shared env) to start again with other input, or budget_exceeded (the run passed its wall-clock budget).',
 } as const;
 
+/** The most leftover records one run's view lists; the rest are counted (`leftoverCount`). */
+export const MAX_LEFTOVER = 20;
+
+/** `c` with at most {@link MAX_LEFTOVER} leftover records, and their full count when some were cut. */
+const cleanupView = (c: CleanupResult) =>
+  c.leftover.length <= MAX_LEFTOVER
+    ? c
+    : {
+        ...c,
+        leftover: c.leftover.slice(0, MAX_LEFTOVER),
+        leftoverCount: c.leftover.length,
+      };
+
 const runView = (r: RunResult) => ({
   runId: r.runId,
   status: r.status,
@@ -45,7 +59,7 @@ const runView = (r: RunResult) => ({
               },
       }),
   ...(r.error === undefined ? {} : { error: r.error }),
-  ...(r.cleanup === undefined ? {} : { cleanup: r.cleanup }),
+  ...(r.cleanup === undefined ? {} : { cleanup: cleanupView(r.cleanup) }),
   evidence: r.evidence.dir,
   ms: r.ms,
 });

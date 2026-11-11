@@ -1340,9 +1340,20 @@ orchestrator, the rest by taking the stricter option each time). Not yet accepte
   to the env's origins, without a browser. Both build requests only from the signed entry's origin and templates and
   do not pass the page route. An id whose create entry is no longer valid (revoked, expired, re-bound) is leftover
   with detail `entry_missing`, since only a signed entry authorises a cleanup request. Leftover details are
-  `create_unconfirmed`, `cleanup_failed`, `verify_failed`, `timeout` and `entry_missing`. The `abort` line comes
-  after the run's own `cleanup` lines, so it is the last line the run writes. A non-empty `leftover` makes `replay`
-  and `flowctl cleanup` exit 2.
+  `create_unconfirmed`, `cleanup_failed`, `verify_failed`, `timeout`, `entry_missing` and `id_invalid`. The `abort`
+  line comes after the run's own `cleanup` lines, so it is the last line the run writes. A non-empty `leftover` makes
+  `replay` and `flowctl cleanup` exit 2.
+- **A cleanup URL never leaves its template.** A ledger file can be edited, so before a cleanup or verify request
+  the id must be canonical and of the placeholder's type; the URL is joined segment by segment and must match the
+  template again with the entries' exact matcher. An id that fails is leftover `id_invalid` and nothing is sent.
+- **The end of a run.** The ledger refuses every write from the moment its cleanup starts, waits up to 15 s for the
+  writes still in flight and for the response scans, and only then reads its ids; a create answered later is never
+  recorded and stays `create_unconfirmed`. The guard judges the outcome again after the cleanup, so a ledger problem
+  that arrives during it ends the run `error`. Only an env the store classes `shared` by its own name gets a ledger,
+  whatever class its origin has.
+- **A torn last line.** A last ledger line without its newline that is not JSON is a cut append: `flowctl cleanup`
+  drops it, cleans every line before it, and reports `tornTail` (exit 2). Any other broken line is `ledgers_invalid`
+  `chain`.
 - **Ledger file.** Every run that keeps a ledger writes `bundleId: null` (no `ci` bundle exists yet); a `ci` store's
   writable `ledgers/` is not built. A `ledgers_invalid` refusal at the start of a run is reported as
   `scope_violation` naming that kind, like every other store refusal of the run's guards.

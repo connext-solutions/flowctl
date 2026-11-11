@@ -1,8 +1,12 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { expect } from 'vitest';
-import { type LoadedConfig, resolveEnv } from '../src/config.js';
+import {
+  type LoadedConfig,
+  resolveEnv,
+  storageStatePath,
+} from '../src/config.js';
 import type { Flow } from '../src/flow/index.js';
 import { confirmInputFor, confirmReadContext } from '../src/run/index.js';
 import {
@@ -10,10 +14,12 @@ import {
   initTrust,
   latestExpiry,
   planConfirm,
+  replaceStoreDoc,
   saveConfirmEntries,
   TrustStore,
 } from '../src/trust/index.js';
-import { fixtureConfig, seedProfiles } from './helpers.js';
+import { signEnv } from '../src/trust/init.js';
+import { fixtureConfig, PROFILES, seedProfiles } from './helpers.js';
 import { gitRepo, testAnchorDir, testOwnerKey } from './trust-fixture.js';
 
 /** Shared pieces of the run ledger's browser tests: the fixture's items API, a `shared` test store, entries. */
@@ -40,11 +46,20 @@ export class LedgerApp {
   }
 
   /** Sets the id the next create returns. */
-  async nextId(id: string): Promise<void> {
+  nextId(id: string): Promise<void> {
+    return this.next({ id });
+  }
+
+  /** Sets how the next create answers: its id, a status other than 201, a delay before the answer. */
+  async next(answer: {
+    id?: string;
+    status?: number;
+    delayMs?: number;
+  }): Promise<void> {
     await fetch(`${this.url}/api/__items/next`, {
       method: 'POST',
       headers: COOKIE,
-      body: JSON.stringify({ id }),
+      body: JSON.stringify(answer),
     });
   }
 
@@ -59,10 +74,34 @@ export class LedgerApp {
     expect(r.status).toBe(201);
   }
 
-  /** A config with saved sessions and an empty test store that classes the fixture's origin `shared`. */
-  async setup(): Promise<{ cfg: LoadedConfig; store: TrustStore }> {
-    const cfg = fixtureConfig(this.url);
+  /**
+   * A config with saved sessions and an empty test store that classes the fixture's origin `shared` (env `local`).
+   *
+   * @param localTwin also an env `dev` on the same origin, which the store classes `local`, with the same sessions:
+   *   a store `trust init` and `trust add env` refuse to write (one origin has one class), signed here directly.
+   */
+  async setup(
+    localTwin = false,
+  ): Promise<{ cfg: LoadedConfig; store: TrustStore }> {
+    const origin = new URL(this.url).origin;
+    const cfg = fixtureConfig(
+      this.url,
+      localTwin
+        ? {
+            envs: {
+              local: { baseUrl: this.url, loginUrl: '/login' },
+              dev: { baseUrl: this.url, loginUrl: '/login' },
+            },
+          }
+        : {},
+    );
     await seedProfiles(cfg, this.url);
+    if (localTwin)
+      for (const p of PROFILES) {
+        const to = storageStatePath(cfg, 'dev', p);
+        mkdirSync(dirname(to), { recursive: true });
+        copyFileSync(storageStatePath(cfg, 'local', p), to);
+      }
     const dir = join(mkdtempSync(join(tmpdir(), 'flowctl-ledger-')), 's');
     gitRepo(cfg.root);
     initTrust({
@@ -72,7 +111,7 @@ export class LedgerApp {
       projectDir: cfg.root,
       flowsDir: cfg.flowsPath,
       answers: {
-        envs: { local: { origin: new URL(this.url).origin, class: 'shared' } },
+        envs: { local: { origin, class: 'shared' } },
         productionOrigins: [],
         defaultEnv: 'local',
         language: 'vi',
@@ -80,25 +119,41 @@ export class LedgerApp {
       },
       anchorDir: testAnchorDir(),
     });
+    if (localTwin) {
+      const doc = TrustStore.open(dir).data;
+      const key = testOwnerKey();
+      const dev = signEnv(key, 'dev', { origin, class: 'local' });
+      replaceStoreDoc(dir, { ...doc, envs: { ...doc.envs, dev } }, key);
+    }
     return { cfg, store: TrustStore.open(dir) };
   }
 
   /**
    * Confirms `flow` as the owner would: a create entry with its cleanup and a delete entry bound to it.
    *
+   * @param o `env` the entries are for (default `local`); `only` replaces the two entries (built on the same base).
    * @returns the store opened again, holding the entries.
    */
-  confirm(cfg: LoadedConfig, store: TrustStore, flow: Flow): TrustStore {
-    const base = {
-      env: 'local',
+  confirm(
+    cfg: LoadedConfig,
+    store: TrustStore,
+    flow: Flow,
+    o: {
+      env?: string;
+      only?: (base: ConfirmBase) => ConfirmEntry[];
+    } = {},
+  ): TrustStore {
+    const env = o.env ?? 'local';
+    const base: ConfirmBase = {
+      env,
       origin: new URL(this.url).origin,
       expires: latestExpiry(new Date()),
       flow: flow.name,
-      hash: planConfirm(confirmInputFor(cfg, flow, resolveEnv(cfg, 'local')))
+      hash: planConfirm(confirmInputFor(cfg, flow, resolveEnv(cfg, env)))
         .digest,
       queryKeys: [],
     };
-    const entries: ConfirmEntry[] = [
+    const entries: ConfirmEntry[] = o.only?.(base) ?? [
       {
         ...base,
         id: `${flow.name}-create`,
@@ -132,6 +187,16 @@ export class LedgerApp {
     saveConfirmEntries(store, testOwnerKey(), entries, confirmReadContext(cfg));
     return TrustStore.open(store.dir);
   }
+}
+
+/** What every entry of one test confirmation shares. */
+export interface ConfirmBase {
+  env: string;
+  origin: string;
+  expires: string;
+  flow: string;
+  hash: string;
+  queryKeys: string[];
 }
 
 /** A flow on `/items` that types `QA-{{uid}}` as the name; its one assertion is the create's 201. */

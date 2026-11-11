@@ -55,6 +55,7 @@ export {
   type Matched,
   MAX_BULK,
   stringAt,
+  templateIds,
   type WireRequest,
 } from './match.js';
 export {

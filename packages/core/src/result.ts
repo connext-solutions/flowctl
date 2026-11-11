@@ -54,12 +54,17 @@ export interface Leftover {
   entry: string;
   id: string | null;
   name: string | null;
+  /**
+   * Why it is left: `id_invalid` is an id that no URL of the entry's cleanup templates can carry (not canonical, not
+   * of the placeholder's type), as only a ledger file edited outside flowctl holds; nothing was sent for it.
+   */
   detail:
     | 'create_unconfirmed'
     | 'cleanup_failed'
     | 'verify_failed'
     | 'timeout'
-    | 'entry_missing';
+    | 'entry_missing'
+    | 'id_invalid';
 }
 
 /**
@@ -69,6 +74,11 @@ export interface Leftover {
 export interface CleanupResult {
   confirmed: number;
   leftover: Leftover[];
+  /**
+   * `flowctl cleanup` only: the ledger's last line was torn (written in part, as a crash leaves it) and was dropped;
+   * every line before it was verified and cleaned. A create whose `id` line was torn shows as `create_unconfirmed`.
+   */
+  tornTail?: true;
 }
 
 export interface RunResult {

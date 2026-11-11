@@ -67,6 +67,21 @@ function matchPath(
 }
 
 /**
+ * The placeholder values of `path` against the destructive `template`, with the exact matcher every entry is matched
+ * by: literal segments equal, each placeholder value canonical and of its type (`{int}` an int without leading
+ * zeros, `{uuid}` a lowercase uuid), no decoding.
+ *
+ * @returns the values in order, or `undefined` when the template does not parse or the path does not match it.
+ */
+export function templateIds(
+  path: string,
+  template: string,
+): string[] | undefined {
+  const t = parseTemplate(template);
+  return typeof t === 'string' ? undefined : matchPath(path, t);
+}
+
+/**
  * Why the headers of a request break the entry's header rule, or `undefined`: the baseline names, the `sec-fetch-*`
  * and `sec-ch-ua*` families, `content-type` and `content-length` with a body, and the entry's `headers`; `host` and
  * `origin`, when present, name the entry's origin. A pseudo-header or any other name blocks the request.

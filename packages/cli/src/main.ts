@@ -160,7 +160,7 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
         ? `${JSON.stringify(r, null, 2)}\n`
         : formatCleanup(c.args[0] ?? '', r),
     );
-    return r.leftover.length === 0 ? 0 : 2;
+    return r.leftover.length === 0 && r.tornTail !== true ? 0 : 2;
   },
   'trust init': ({ cfg, values }) => {
     (values.replace ? trustReplace : trustInit)(

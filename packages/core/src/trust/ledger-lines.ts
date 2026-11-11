@@ -81,30 +81,44 @@ export const invalid = (detail: string, message: string): TrustError =>
 export const sha = (text: string): string =>
   createHash('sha256').update(text).digest('hex');
 
+/** Parses one line as JSON, or `undefined` when it is not JSON at all. */
+function json(r: string): { value: unknown } | undefined {
+  try {
+    return { value: JSON.parse(r) };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Parses and verifies the lines of a ledger file.
  *
- * @throws {TrustError} `ledgers_invalid` `chain` for a line that does not parse, does not follow the schema or does
- *   not carry the hash of the previous line, or a header naming another run; `foreign` for a missing header or one
- *   whose bundle id is not the store's.
+ * @remarks A last line without its `\n` that is not JSON is a **torn tail**: an append a crash cut short (each line is
+ *   written whole and fsynced, so only the last one can be torn). It is dropped and reported as `torn`, and every line
+ *   before it is verified as usual, so one cut write never makes the ids before it unreadable. A last line that is
+ *   JSON but breaks the schema or the chain is not torn: that is a change made outside flowctl.
+ * @returns the verified lines, the hash of the last one, and whether a torn tail was dropped.
+ * @throws {TrustError} `ledgers_invalid` `chain` for a line that does not parse (other than a torn tail), does not
+ *   follow the schema or does not carry the hash of the previous line, or a header naming another run; `foreign` for
+ *   a missing header or one whose bundle id is not the store's.
  */
 export function verifyChain(
   text: string,
   runId: string,
   bundleId: string | null,
   path: string,
-): { lines: LedgerLine[]; head: string } {
+): { lines: LedgerLine[]; head: string; torn: boolean } {
   const raw = text.split('\n');
-  if (raw.at(-1) === '') raw.pop();
+  const terminated = raw.at(-1) === '';
+  if (terminated) raw.pop();
+  const torn = !terminated && json(raw.at(-1) ?? '') === undefined;
+  if (torn) raw.pop();
   let prev = ZERO;
   const lines: LedgerLine[] = [];
   for (const [i, r] of raw.entries()) {
-    let parsed;
-    try {
-      parsed = LedgerLineSchema.safeParse(JSON.parse(r));
-    } catch {
-      parsed = undefined;
-    }
+    const j = json(r);
+    const parsed =
+      j === undefined ? undefined : LedgerLineSchema.safeParse(j.value);
     if (parsed?.success !== true || parsed.data.prev !== prev)
       throw invalid(
         'chain',
@@ -124,7 +138,7 @@ export function verifyChain(
     throw invalid('chain', `${path} is the ledger of another run.`);
   if (header.bundleId !== bundleId)
     throw invalid('foreign', foreignHint(path, runId));
-  return { lines, head: prev };
+  return { lines, head: prev, torn };
 }
 
 const foreignHint = (path: string, runId: string): string =>

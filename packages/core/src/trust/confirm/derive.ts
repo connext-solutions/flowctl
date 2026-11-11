@@ -1,3 +1,4 @@
+import { TrustError } from '../errors.js';
 import { leavesOf, readBody } from './body.js';
 import { literalPrefix, parseTemplate } from './grammar.js';
 import type { ConfirmEntry } from './schema.js';
@@ -225,9 +226,21 @@ export interface EntryBase {
   hash: string;
 }
 
-/** The entry an answered draft becomes, or `undefined` for a skipped one. */
+/**
+ * The entry an answered draft becomes, or `undefined` for a skipped one.
+ *
+ * @remarks The method is the recorded one, never the answer's: a `create` is only a recorded `POST`, and a `mutate`
+ *   only a recorded `PATCH`, `PUT` or `DELETE`, so the owner cannot sign a method the recording never sent.
+ * @throws {TrustError} `trust_entry_invalid` for a `create` on a write that is not a `POST`, or a `mutate` on one
+ *   that is not a `PATCH`, `PUT` or `DELETE` (a `POST` on a record has no entry kind).
+ */
 export function entryOf(d: Draft, base: EntryBase): ConfirmEntry | undefined {
   const w = d.write;
+  const refuse = (why: string): TrustError =>
+    new TrustError(
+      'trust_entry_invalid',
+      `${d.id}: ${why} (recorded ${w.method} ${w.template}); nothing was written.`,
+    );
   const common = {
     ...base,
     id: d.id,
@@ -236,6 +249,8 @@ export function entryOf(d: Draft, base: EntryBase): ConfirmEntry | undefined {
     queryKeys: w.queryKeys,
     ...(w.contentType === undefined ? {} : { contentType: w.contentType }),
   };
+  if (d.kind === 'create' && w.method !== 'POST')
+    throw refuse(`a create entry is only a recorded POST, not ${w.method}`);
   if (d.kind === 'create')
     return {
       ...common,
@@ -252,16 +267,16 @@ export function entryOf(d: Draft, base: EntryBase): ConfirmEntry | undefined {
         verify: { template: d.verify },
       },
     };
-  if (
-    d.kind === 'mutate' &&
-    (w.method === 'PATCH' || w.method === 'PUT' || w.method === 'DELETE')
-  )
-    return {
-      ...common,
-      kind: 'mutate',
-      method: w.method,
-      ledgerFrom: d.ledgerFrom,
-      idPositions: d.idPositions,
-    };
-  return undefined;
+  if (d.kind === 'skip') return undefined;
+  if (w.method !== 'PATCH' && w.method !== 'PUT' && w.method !== 'DELETE')
+    throw refuse(
+      `a mutate entry is a recorded PATCH, PUT or DELETE; a ${w.method} on a record has no entry kind`,
+    );
+  return {
+    ...common,
+    kind: 'mutate',
+    method: w.method,
+    ledgerFrom: d.ledgerFrom,
+    idPositions: d.idPositions,
+  };
 }

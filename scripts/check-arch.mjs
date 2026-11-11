@@ -80,6 +80,7 @@ const SLEEP_ALLOWED = new Map([
   ['packages/core/src/browser/secret-fill.ts', 'the fill settle and the CDP insert timeout'],
   ['packages/core/src/run/deadline.ts', 'the wall-clock budget timer (ADR 0024 section 6)'],
   ['packages/core/src/run/ledger/cleanup.ts', 'the cleanup retry and verify delays, 1 s and 2 s within 120 s (ADR 0024 amendment 2026-11-12 section 7)'],
+  ['packages/core/src/run/ledger/run-ledger.ts', 'the bound on the wait for writes in flight when a run ends (ADR 0024 section 5)'],
   ['packages/core/src/run/video.ts', 'demo-video pacing so a viewer can read each step (ADR 0032)'],
   ['packages/core/src/browser/snapshot.ts', 'bounded poll for an SPA first control'],
   ['packages/core/src/run/verifier.ts', 'bounded assertion polling'],
@@ -87,6 +88,7 @@ const SLEEP_ALLOWED = new Map([
   ['packages/core/src/trust/hookrun/spawn.ts', 'hook timeout timer and pipe drain'],
   ['packages/core/src/system1/client.ts', 'retry backoff'],
   ['packages/fixture-app/src/server.ts', 'simulated slow API'],
+  ['packages/fixture-app/src/items.ts', 'a create answered late, for the run ledger tests'],
   ['packages/mcp/src/runs.ts', 'bounded wait of one tool call (ADR 0012)'],
 ]);
 /**

@@ -5,7 +5,8 @@ import type { HookSession } from '../trust/index.js';
 import type { Evidence } from './evidence.js';
 import { runHookKind } from './hooks.js';
 import { errorMessage, RunError, type Outcome } from './outcome.js';
-import type { RunLedger, Send } from './ledger/index.js';
+import type { Send } from './ledger/index.js';
+import type { ScopeGuard } from './scope-guard.js';
 import type { Profiles } from './profiles.js';
 import { redactText } from './redact.js';
 
@@ -24,14 +25,21 @@ export interface FinishInput {
   hooks: HookSession | undefined;
   /** Resolved `{ env }` input values; masked as `***` in the result and `run.json`. */
   secrets: readonly string[];
-  /** The run ledger of a replay on a `shared` env with stored confirmations; cleaned up before the contexts close. */
-  ledger?: RunLedger;
+  /**
+   * The run's scope guard. Its request layer's run ledger (a replay on a `shared` env with stored confirmations) is
+   * cleaned up before the contexts close, and its overrule is applied again after that cleanup.
+   */
+  guard?: ScopeGuard;
 }
 
 /**
  * Ends a run: the body of `RunSession.finish`, which documents the contract.
  *
- * @remarks Secret input values and credential-looking values (`password=…`, `Bearer …`, a JSON `token`, hook output
+ * @remarks The guard's overrule is applied again once the run ledger's cleanup is done: a create still in flight
+ *   when the run ended, or a response scan that finished late, can bring a ledger problem (`ledger_replay`,
+ *   `ledger_overflow`…) after the caller judged the outcome, and no verdict stands on such a run (ADR 0004).
+ *
+ *   Secret input values and credential-looking values (`password=…`, `Bearer …`, a JSON `token`, hook output
  *   included) are masked in `failed.got` and `error.hint` before `run.json` is written and before the result is
  *   returned, because a result reaches an orchestrator, which is a model (invariant 4, ADR 0030).
  * @see RunSession.finish
@@ -67,11 +75,12 @@ export async function finishRun(
     console: [],
     trace: run.evidence.trace,
   };
-  const ledger = run.ledger;
+  const ledger = run.guard?.writes?.ledger;
   const cleanup =
     ledger === undefined
       ? undefined
       : await stage('cleanup', () => ledger.finish(senderOf(run)));
+  const judged = run.guard?.overrule(outcome) ?? outcome;
   await stage('close', () => run.profiles.closeAll());
   if (run.evidence.video !== undefined)
     summary.videos = run.evidence.video.files;
@@ -92,8 +101,8 @@ export async function finishRun(
   }
   hooks?.close();
   const final: Outcome =
-    outcome.status === 'error'
-      ? outcome
+    judged.status === 'error'
+      ? judged
       : refused !== undefined
         ? { status: 'error', error: { kind: refused.kind, hint: refused.hint } }
         : failures.length > 0
@@ -104,7 +113,7 @@ export async function finishRun(
                 hint: `finish: ${failures.join('; ')}`,
               },
             }
-          : outcome;
+          : judged;
   const result: RunResult = {
     runId: run.runId,
     flow: run.flow.name,

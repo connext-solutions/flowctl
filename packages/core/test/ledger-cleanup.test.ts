@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cleanIds, idTokens, SeenSet } from '../src/run/index.js';
-import type { CleanupTiming } from '../src/run/ledger/index.js';
-import { CREATE, refusal } from './confirm-fixture.js';
+import { type CleanupTiming, cleanupUrl } from '../src/run/ledger/index.js';
+import { CREATE, refusal, STG } from './confirm-fixture.js';
 
 /**
  * The seen-set of id-shaped tokens and the cleanup procedure (ADR 0024 amendment 2026-11-12 "destructive ledger
@@ -109,5 +109,46 @@ describe('cleanIds', () => {
       clock(50_000),
     );
     expect(r.leftover.map((l) => `${l.id} ${l.detail}`)).toContain('1 timeout');
+  });
+});
+
+describe('cleanupUrl and forged ids', () => {
+  it('fills the one placeholder segment by segment, only with a canonical id of its type', () => {
+    const T = '/api/items/{int}';
+    expect(cleanupUrl(STG, T, '12')).toBe(`${STG}/api/items/12`);
+    for (const id of [
+      'x/../../admin/tenants/1',
+      '$&',
+      '$`',
+      '007',
+      '12?all=1',
+      'a1b2c3d4-0000-4000-8000-00000000abcd',
+    ])
+      expect(cleanupUrl(STG, T, id), id).toBeUndefined();
+    expect(cleanupUrl(STG, '/api/items/{int}/{int}', '12')).toBeUndefined();
+  });
+
+  it('sends nothing for a traversal or $& id from a forged ledger and leaves them id_invalid', async () => {
+    const sent: string[] = [];
+    const lines: string[] = [];
+    const r = await cleanIds(
+      [target('x/../../admin/tenants/1', 1), target('$&', 2), target('12', 3)],
+      (method, url) => {
+        sent.push(`${method} ${url}`);
+        return Promise.resolve(404);
+      },
+      (x, result) => lines.push(`${x.id} ${result}`),
+      clock(),
+    );
+    expect(sent).toEqual([
+      `DELETE ${STG}/api/items/12`,
+      `GET ${STG}/api/items/12`,
+    ]);
+    expect(r.leftover.map((l) => `${l.id} ${l.detail}`)).toEqual([
+      '$& id_invalid',
+      'x/../../admin/tenants/1 id_invalid',
+    ]);
+    expect(r.confirmed).toBe(1);
+    expect(lines).toContain('$& leftover');
   });
 });

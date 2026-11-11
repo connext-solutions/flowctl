@@ -10,7 +10,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
  *   `POST /api/items` `{ name }` and shows the answer.
  * - `POST /api/items` answers 201 with `{ id, name }`, 409 for a name that exists, 400 without a name.
  * - `GET`, `PATCH` (`{ name }`) and `DELETE` on `/api/items/:id` answer 404 for an unknown id; `DELETE` answers 204.
- * - `POST /api/__items/next` `{ id }` sets the id the next create returns (a test seam, like `/api/__reset`).
+ * - `POST /api/__items/next` `{ id, status, delayMs }` sets how the next create answers (a test seam, like
+ *   `/api/__reset`): the id it returns, a status other than 201 (a redirect to `/items` for a 3xx; nothing is stored),
+ *   and a delay before the answer.
+ * - `/items#total=N` shows "Tổng N" from the fragment, which no request carries: text only the page's `innerText`
+ *   holds.
  */
 export const ITEMS_PATH = '/items';
 
@@ -19,13 +23,28 @@ interface Item {
   name: string;
 }
 
+/** How the next create answers (`POST /api/__items/next`). */
+interface NextAnswer {
+  id?: string;
+  /** A status other than 201; a 3xx redirects to `/items`. Nothing is stored. */
+  status?: number;
+  /** Milliseconds to wait before answering. */
+  delayMs?: number;
+}
+
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 const ITEMS_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><link rel="icon" href="data:,"><title>Mục</title></head><body>
 <h1>Mục</h1>
 <form id="f"><label>Tên mục <input name="name" aria-label="Tên mục"></label><button type="submit">Tạo</button></form>
 <p role="status" id="msg"></p>
+<p id="total"></p>
 <ul id="list"></ul>
 <script>
 const msg = document.getElementById('msg');
+const total = /^#total=(.*)$/.exec(location.hash);
+if (total) document.getElementById('total').textContent = 'Tổng ' + total[1];
 async function load() {
   const r = await fetch('/api/items');
   const { items } = await r.json();
@@ -77,11 +96,11 @@ export function itemsApp(): {
   reset(): void;
 } {
   let items: Item[] = [];
-  let next: string | undefined;
+  let next: NextAnswer = {};
   return {
     reset() {
       items = [];
-      next = undefined;
+      next = {};
     },
     async handle(req, res, url) {
       const p = url.pathname;
@@ -92,7 +111,13 @@ export function itemsApp(): {
       }
       if (req.method === 'POST' && p === '/api/__items/next') {
         const b = await bodyOf(req);
-        next = typeof b['id'] === 'string' ? b['id'] : undefined;
+        next = {
+          ...(typeof b['id'] === 'string' ? { id: b['id'] } : {}),
+          ...(typeof b['status'] === 'number' ? { status: b['status'] } : {}),
+          ...(typeof b['delayMs'] === 'number'
+            ? { delayMs: b['delayMs'] }
+            : {}),
+        };
         send(res, 200, {});
         return true;
       }
@@ -100,13 +125,23 @@ export function itemsApp(): {
         if (req.method === 'GET') send(res, 200, { items });
         else if (req.method === 'POST') {
           const name = (await bodyOf(req))['name'];
-          if (typeof name !== 'string' || name === '')
+          const answer = next;
+          next = {};
+          if (answer.delayMs !== undefined) await wait(answer.delayMs);
+          if (answer.status !== undefined) {
+            res.writeHead(
+              answer.status,
+              answer.status >= 300 && answer.status < 400
+                ? { location: '/items' }
+                : {},
+            );
+            res.end();
+          } else if (typeof name !== 'string' || name === '')
             send(res, 400, { message: 'name' });
           else if (items.some((i) => i.name === name))
             send(res, 409, { message: 'exists' });
           else {
-            const item = { id: next ?? randomUUID(), name };
-            next = undefined;
+            const item = { id: answer.id ?? randomUUID(), name };
             items.push(item);
             send(res, 201, item);
           }

@@ -43,6 +43,18 @@ export interface DestructivePlan {
 const refuse = (why: string): TrustError =>
   new TrustError('trust_entry_invalid', `${why}; nothing was written.`);
 
+/**
+ * `days` as the life of new or renewed entries: a whole number from 1 to 90, 30 when left out.
+ *
+ * @throws {TrustError} `trust_entry_invalid` otherwise (`--days abc` reaches here as `NaN`).
+ */
+function daysOf(days: number | undefined): number {
+  const d = days ?? 30;
+  if (!Number.isInteger(d) || d < 1 || d > 90)
+    throw refuse('--days is a whole number from 1 to 90');
+  return d;
+}
+
 /** The store's verified env `name`, or a refusal. */
 function envOf(
   store: TrustStore,
@@ -80,7 +92,7 @@ export function currentDigest(
  * run of the same flow on an env the store classes `local`) and the proposed drafts.
  *
  * @param days the life of the new entries, 1 to 90 (default 30).
- * @throws {TrustError} `trust_entry_invalid` for an unknown env or flow, an env classed neither `shared` nor `local`,
+ * @throws {TrustError} `trust_entry_invalid` for `days` outside 1 to 90, an unknown env or flow, an env classed neither `shared` nor `local`,
  *   an unconfirmable flow (each reason listed), a recorded run of another flow, not on a `local` env or not passed,
  *   a bound file that is not UTF-8 text or changed while it was read, or a recording with no write.
  * @throws {ConfigError} when the run's evidence cannot be read.
@@ -90,6 +102,7 @@ export function planDestructive(
   store: TrustStore,
   o: { flow: string; env: string; fromRun: string; days?: number; now?: Date },
 ): DestructivePlan {
+  const days = daysOf(o.days);
   const flow = flowNamed(cfg, o.flow);
   const env = resolveEnv(cfg, o.env);
   const target = envOf(store, env.name);
@@ -139,7 +152,6 @@ export function planDestructive(
   const { writes, skipped } = recordedWrites(run.calls, recordedOn.origin);
   if (writes.length === 0)
     throw refuse(`Run ${o.fromRun} sent no write to ${recordedOn.origin}`);
-  const days = o.days ?? 30;
   const now = o.now ?? new Date();
   const expires = utcDate(dayjs(now).add(days * 24, 'hour'));
   return {
@@ -184,9 +196,7 @@ export function planRenew(
   store: TrustStore,
   o: { ids?: readonly string[]; env?: string; days?: number; now?: Date },
 ): Renewal[] {
-  const days = o.days ?? 30;
-  if (!Number.isInteger(days) || days < 1 || days > 90)
-    throw refuse('--days is a whole number from 1 to 90');
+  const days = daysOf(o.days);
   const stored = storedConfirmEntries(store);
   const now = o.now ?? new Date();
   const expires = utcDate(dayjs(now).add(days * 24, 'hour'));

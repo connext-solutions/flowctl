@@ -10,11 +10,12 @@ export {
   cleanIds,
   type CleanupTarget,
   type CleanupTiming,
-  fillTemplate,
+  cleanupUrl,
   type Send,
 } from './cleanup.js';
 export { cleanupRun, ledgerState, type LedgerState } from './cleanup-run.js';
 export { confirmInputFor, confirmReadContext } from './context.js';
+export { idOf } from './id-of.js';
 export { type LedgerOptions, RunLedger } from './run-ledger.js';
 export {
   currentDigest,

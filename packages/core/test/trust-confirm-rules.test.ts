@@ -84,6 +84,10 @@ describe('destructiveConfirm rules', () => {
       [{ ...SESSION, headers: ['x-http-method-override'] }],
     ],
     ['no contentType on a POST', [{ ...SESSION, contentType: undefined }]],
+    [
+      'two entries for the same flow, env, method and template',
+      [CREATE, { ...CREATE, id: 'items-create-2' }],
+    ],
   ];
 
   it.each(BAD)('refuses %s at write and writes nothing', (_what, entries) => {

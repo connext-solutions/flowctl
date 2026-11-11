@@ -3,6 +3,7 @@ import {
   constants,
   fstatSync,
   fsyncSync,
+  ftruncateSync,
   lstatSync,
   openSync,
   readSync,
@@ -64,6 +65,8 @@ function ledgersDir(storeDir: string): string {
  * every append written and fsynced before it returns.
  */
 export class LedgerFile {
+  private closed = false;
+
   private constructor(
     private readonly fd: number,
     private prev: string,
@@ -114,6 +117,9 @@ export class LedgerFile {
    * a link and without blocking, checked to be a regular file of this user with one link, and its hash chain, header,
    * run id and bundle id verified.
    *
+   * @remarks A torn last line (see `verifyChain`) is cut off the file, so the next append starts a line of its own,
+   *   and `torn` is `true`; a complete last line that lost only its `\n` gets it back.
+   *
    * @throws {TrustError} `ledgers_invalid` (`not_directory`, `owner`, `mode`, `not_regular`, `chain`, `foreign`);
    *   `trust_entry_invalid` when no ledger has that run id.
    */
@@ -121,7 +127,7 @@ export class LedgerFile {
     storeDir: string,
     runId: string,
     bundleId: string | null,
-  ): { file: LedgerFile; lines: LedgerLine[] } {
+  ): { file: LedgerFile; lines: LedgerLine[]; torn: boolean } {
     const dir = ledgersDir(storeDir);
     const path = join(dir, `${runId}.jsonl`);
     let fd: number;
@@ -163,29 +169,61 @@ export class LedgerFile {
         if (n === 0) break;
         read += n;
       }
-      const { lines, head } = verifyChain(
-        buf.subarray(0, read).toString('utf8'),
+      const bytes = buf.subarray(0, read);
+      const { lines, head, torn } = verifyChain(
+        bytes.toString('utf8'),
         runId,
         bundleId,
         path,
       );
-      return { file: new LedgerFile(fd, head, path), lines };
+      const file = new LedgerFile(fd, head, path);
+      if (torn) ftruncateSync(fd, bytes.lastIndexOf(0x0a) + 1);
+      else if (bytes.at(-1) !== 0x0a) file.write(Buffer.from('\n'));
+      fsyncSync(fd);
+      return { file, lines, torn };
     } catch (e) {
       closeSync(fd);
       throw e;
     }
   }
 
-  /** Appends `line` with `prev`, then fsyncs; returns only once the line is on disk. */
+  /**
+   * Appends `line` with `prev`, then fsyncs; returns only once the whole line is on disk.
+   *
+   * @throws {TrustError} `ledgers_invalid` `closed` after {@link close}: a write that answers after the run's ledger
+   *   ended is never recorded, and its intent stays unconfirmed.
+   */
   append(line: NewLedgerLine): void {
+    if (this.closed)
+      throw invalid(
+        'closed',
+        `The ledger ${this.path} is closed; nothing more is recorded in it.`,
+      );
     const text = JSON.stringify({ ...line, prev: this.prev });
-    writeSync(this.fd, `${text}\n`);
+    this.write(Buffer.from(`${text}\n`));
     fsyncSync(this.fd);
     this.prev = sha(text);
   }
 
-  /** Closes the file; appending afterwards throws. */
+  /**
+   * Writes all of `buf`: `writeSync` may write part of it, so it is called again for the rest.
+   *
+   * @throws {TrustError} `ledgers_invalid` `short_write` when the file takes no byte.
+   */
+  private write(buf: Buffer): void {
+    let done = 0;
+    while (done < buf.length) {
+      const n = writeSync(this.fd, buf, done, buf.length - done);
+      if (n <= 0)
+        throw invalid('short_write', `${this.path} took no byte of a line.`);
+      done += n;
+    }
+  }
+
+  /** Closes the file once; appending afterwards throws. */
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
     closeSync(this.fd);
   }
 }

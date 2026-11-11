@@ -184,6 +184,44 @@ describe('planDestructive', () => {
     writeFlow(cfg, 'Tạo', { pass: { env: 'QA_PASSWORD' } });
     expect(plan({})).toContain('unconfirmable');
   });
+
+  it('refuses --days that is not a whole number from 1 to 90', () => {
+    const { cfg, store } = project();
+    const fromRun = recordRun(cfg, {});
+    for (const days of [Number('abc'), 0, -1, 200, 1.5])
+      expect(
+        refusal(() =>
+          planDestructive(cfg, store, {
+            flow: 'items-crud',
+            env: 'stg',
+            fromRun,
+            days,
+          }),
+        ),
+        String(days),
+      ).toMatch(/^trust_entry_invalid: --days is a whole number from 1 to 90/);
+  });
+});
+
+describe('entryOf', () => {
+  it('refuses a create on a write that is not a POST, and a mutate on a POST', () => {
+    const { cfg, store } = project();
+    const p = planDestructive(cfg, store, {
+      flow: 'items-crud',
+      env: 'stg',
+      fromRun: recordRun(cfg, {}),
+    });
+    const [create, del, approve] = p.drafts;
+    if (create === undefined || del === undefined || approve === undefined)
+      throw new Error('three drafts');
+    expect(refusal(() => entryOf({ ...del, kind: 'create' }, p.base))).toMatch(
+      /^trust_entry_invalid: .*DELETE/,
+    );
+    expect(
+      refusal(() => entryOf({ ...approve, kind: 'mutate' }, p.base)),
+    ).toMatch(/^trust_entry_invalid: .*POST/);
+    expect(entryOf(approve, p.base)).toBeUndefined();
+  });
 });
 
 describe('planRenew', () => {

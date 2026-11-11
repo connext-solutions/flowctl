@@ -106,10 +106,18 @@ export function formatSummary(s: ReplaySummary): string {
   return `${lines.join('\n')}\n`;
 }
 
-/** What `flowctl cleanup <run id>` prints: the count confirmed deleted, then one line per record left. */
+/**
+ * What `flowctl cleanup <run id>` prints: the count confirmed deleted, a warning when the ledger's last line was torn,
+ * then one line per record left.
+ */
 export function formatCleanup(runId: string, r: CleanupResult): string {
   const lines = [
     `${terminalSafe(runId)}: ${r.confirmed} record(s) confirmed deleted, ${r.leftover.length} left`,
+    ...(r.tornTail === true
+      ? [
+          '  ⚠ the last line of the ledger was torn (a crash cut it short) and was dropped; a create it recorded shows as create_unconfirmed',
+        ]
+      : []),
     ...r.leftover.map(
       (l) =>
         `  ⚠ ${terminalSafe(l.entry)} ${l.id === null ? `name ${terminalSafe(l.name ?? '?')}` : `id ${terminalSafe(l.id)}`}: ${l.detail}`,

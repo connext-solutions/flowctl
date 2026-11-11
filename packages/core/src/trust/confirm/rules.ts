@@ -162,8 +162,10 @@ function createProblem(e: CreateConfirm, t: Segment[]): string | undefined {
 }
 
 /**
- * The rules between entries: ids are unique, and a `mutate` entry's `ledgerFrom` names a valid `create` entry of the
- * same env, origin and flow whose literal path prefix its template shares.
+ * The rules between entries: ids are unique, no two entries name the same method and template for one flow and env
+ * (the matcher would take the first and the second could never be reviewed apart), and a `mutate` entry's
+ * `ledgerFrom` names a valid `create` entry of the same env, origin and flow whose literal path prefix its template
+ * shares.
  *
  * @param valid the entries that broke no rule on their own.
  * @returns a problem per entry id; an entry whose `ledgerFrom` is invalid is invalid too.
@@ -177,6 +179,17 @@ export function crossProblems(
   for (const e of valid)
     if ((count.get(e.id) ?? 0) > 1)
       out.set(e.id, `the id ${e.id} is used twice`);
+  const routes = new Map<string, string>();
+  for (const e of valid) {
+    const key = JSON.stringify([e.flow, e.env, e.method, e.template]);
+    const other = routes.get(key);
+    if (other !== undefined && !out.has(e.id))
+      out.set(
+        e.id,
+        `entry ${other} already names ${e.method} ${e.template} for flow ${e.flow} on env ${e.env}`,
+      );
+    else routes.set(key, e.id);
+  }
   for (const e of valid) {
     if (e.kind !== 'mutate' || out.has(e.id)) continue;
     const c = valid.find((x) => x.id === e.ledgerFrom);

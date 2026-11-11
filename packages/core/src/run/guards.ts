@@ -107,6 +107,10 @@ export function guardFor(
  * env and flow whose `hash` is the flow's current confirmation digest (ADR 0024 section 5). Entries for an older
  * version of the flow authorise nothing; the guard's hint then says the flow changed.
  *
+ * @remarks The guard's class comes from the origin, the entries from the env's name, so both must agree: the store
+ *   must class the env itself `shared`. An env the store classes otherwise (or does not list) gets no ledger, even on
+ *   the origin of a shared env, so its writes stay refused.
+ *
  * @throws {RunError} `ledger_exists` from creating the ledger file.
  * @throws {TrustError} `ledgers_invalid`, `trust_tampered` from the store.
  */
@@ -118,7 +122,8 @@ function startLedger(
   store: TrustStore | undefined,
   run: GuardRun,
 ): void {
-  if (store === undefined) return;
+  if (store === undefined || trustedEnv(store, env.name)?.class !== 'shared')
+    return;
   const mine = readConfirmEntries(
     store,
     confirmReadContext(cfg),

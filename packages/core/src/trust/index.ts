@@ -220,6 +220,7 @@ export {
   parseStrictJson,
   readBody,
   stringAt,
+  templateIds,
   type WireRequest,
 } from './confirm/index.js';
 export {

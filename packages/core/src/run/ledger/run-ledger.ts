@@ -1,11 +1,11 @@
 import type { Page, Route } from 'playwright';
-import { RunError } from '../../foundation/index.js';
 import {
   type ConfirmEntry,
   type CreateConfirm,
   idValues,
   type LedgerFile,
   matchEntry,
+  TrustError,
   type WireRequest,
 } from '../../trust/index.js';
 import {
@@ -16,20 +16,16 @@ import {
   type Send,
 } from './cleanup.js';
 import { sendCreate } from './create.js';
-import { MAX_TEXT_BYTES, SeenSet } from './seen.js';
+import { LedgerScans } from './scan.js';
 
 /** The types whose request the ledger authorises; a non-GET of any other type is refused (a form post, a beacon). */
 const AUTHORISED_TYPES = new Set(['fetch', 'xhr']);
 
-/** The request types whose URL and body enter the seen-set (those the request layer judges). */
-const SCANNED_REQUESTS = new Set([
-  'document',
-  'fetch',
-  'xhr',
-  'ping',
-  'eventsource',
-  'other',
-]);
+/**
+ * The longest {@link RunLedger.finish} waits for writes still in flight when the run ends; a create not answered by
+ * then stays unconfirmed (reported with its name) and its late answer is never recorded.
+ */
+export const IN_FLIGHT_WAIT_MS = 15_000;
 
 /** What a run gives its ledger. */
 export interface LedgerOptions {
@@ -56,33 +52,20 @@ export interface LedgerOptions {
  * @remarks A ledger problem (`ledger_replay`, `ledger_mismatch`, `ledger_overflow`) is kept as {@link problem}: the
  *   run ends with it at its next step or check, no write is sent after it, and cleanup still runs.
  */
-export class RunLedger {
+export class RunLedger extends LedgerScans {
   /** The run's request counter: `seq` of the ledger lines. */
   seq = 0;
-  readonly seen: SeenSet | undefined;
   /** Ids minted in this run, by create entry id. */
   readonly minted = new Map<string, Set<string>>();
   /** Every minted id in order of entry. */
   readonly order: CleanupTarget[] = [];
   /** Creates sent whose answer gave no id and no 4xx yet, by `seq`. */
   readonly open = new Map<number, { entry: string; name: string }>();
-  private first: RunError | undefined;
-  private readonly pending = new Set<Promise<void>>();
+  private readonly inFlight = new Set<Promise<void>>();
+  private closing = false;
 
   constructor(readonly o: LedgerOptions) {
-    this.seen = o.entries.some((e) => e.kind === 'create')
-      ? new SeenSet()
-      : undefined;
-  }
-
-  /** The first ledger problem of the run, if any. */
-  get problem(): RunError | undefined {
-    return this.first;
-  }
-
-  /** Keeps the first problem; later ones are dropped. */
-  fail(e: RunError): void {
-    this.first ??= e;
+    super(o.entries.some((e) => e.kind === 'create'));
   }
 
   /** Whether a request of `method` and resource `type` is judged here instead of by the plain replay rule. */
@@ -92,67 +75,31 @@ export class RunLedger {
     );
   }
 
-  /** Adds the URL and body of a request the run sends to the seen-set. */
-  scanRequest(url: string, body: Buffer | null, type: string): void {
-    if (this.seen === undefined || !SCANNED_REQUESTS.has(type.toLowerCase()))
-      return;
-    this.guarded(() => {
-      this.seen?.add(url, 'a request URL');
-      if (body !== null)
-        this.seen?.add(body.toString('utf8'), 'a request body');
-    });
-  }
-
-  /** Scans a response body before the page sees it (`ScanBody` of the redirect hold); never rejects. */
-  scanResponse = (
-    length: number | undefined,
-    read: () => Promise<string>,
-  ): Promise<void> => {
-    if (this.seen === undefined) return Promise.resolve();
-    const p = (async (): Promise<void> => {
-      if (length !== undefined)
-        this.guarded(() => this.seen?.fits(length, 'a response body'));
-      if (this.first?.kind === 'ledger_overflow') return;
-      const text = await read().catch(() => '');
-      this.guarded(() => this.seen?.add(text, 'a response body'));
-    })();
-    this.pending.add(p);
-    void p.finally(() => this.pending.delete(p));
-    return p;
-  };
-
-  /** Scans the text of every frame of `page`, then waits for every response scan in flight. */
-  async scanPage(page: Page | undefined): Promise<void> {
-    if (this.seen === undefined) return;
-    for (const f of page?.frames() ?? []) {
-      const text = await f
-        .evaluate(() => document.body?.innerText ?? '')
-        .catch(() => '');
-      this.guarded(() => this.seen?.add(text, 'the page text', MAX_TEXT_BYTES));
-    }
-    await Promise.allSettled([...this.pending]);
-  }
-
-  /** Adds the tokens of `text` to the seen-set; an overflow becomes the run's problem. */
-  see(text: string, what: string): void {
-    this.guarded(() => this.seen?.add(text, what));
-  }
-
-  private guarded(work: () => void): void {
-    try {
-      work();
-    } catch (e) {
-      if (e instanceof RunError) this.fail(e);
-      else throw e;
-    }
-  }
-
   /**
    * Sends `route`'s request when an entry authorises it, else aborts it and notes why.
    *
+   * @remarks Once {@link finish} started, every write is refused (`closing` is set before anything else), and every
+   *   call that started before is tracked until it ends, so {@link finish} can wait for it before it copies the ids. A
+   *   ledger append that fails because the file closed meanwhile (a create answered after the bounded wait) aborts
+   *   the request; its intent stays unconfirmed.
    * @param page the page that sent it (its frames' text enters the seen-set before a create).
    */
-  async authorise(route: Route, page: Page | undefined): Promise<void> {
+  authorise(route: Route, page: Page | undefined): Promise<void> {
+    if (this.closing) {
+      const r = route.request();
+      this.o.refuse(r.method(), r.url(), 'the run was ending');
+      return route.abort('blockedbyclient');
+    }
+    const p = this.judge(route, page).catch((e: unknown) => {
+      if (!(e instanceof TrustError && e.detail === 'closed')) throw e;
+      return route.abort('failed').catch(() => undefined);
+    });
+    this.inFlight.add(p);
+    void p.finally(() => this.inFlight.delete(p)).catch(() => undefined);
+    return p;
+  }
+
+  private async judge(route: Route, page: Page | undefined): Promise<void> {
     const r = route.request();
     const req: WireRequest = {
       method: r.method().toUpperCase(),
@@ -160,11 +107,11 @@ export class RunLedger {
       headers: await r.allHeaders(),
       body: r.postDataBuffer(),
     };
-    if (this.first !== undefined) {
+    if (this.problem !== undefined) {
       this.o.refuse(
         req.method,
         req.url,
-        `the run already stopped with ${this.first.kind}`,
+        `the run already stopped with ${this.problem.kind}`,
       );
       return route.abort('blockedbyclient');
     }
@@ -193,17 +140,27 @@ export class RunLedger {
   }
 
   /**
-   * Ends the ledger: removes every minted id through its create entry's `cleanup` (`cleanup.ts`), appends a
+   * Ends the ledger: refuses every new write, waits (at most {@link IN_FLIGHT_WAIT_MS}) for the writes in flight and
+   * the response scans, then removes every minted id through its create entry's `cleanup` (`cleanup.ts`), appends a
    * `cleanup` line per id and, after a ledger problem, the `abort` line last, then closes the file.
    *
    * @param send sends a cleanup or verify request with the run's session.
+   * @param waitMs the bound on the wait for writes in flight.
    */
-  async finish(send: Send): Promise<CleanupResult> {
-    await Promise.allSettled([...this.pending]);
-    const names = new Map<number, string>();
+  async finish(
+    send: Send,
+    waitMs: number = IN_FLIGHT_WAIT_MS,
+  ): Promise<CleanupResult> {
+    this.closing = true;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.allSettled(this.inFlight),
+      new Promise((resolve) => (timer = setTimeout(resolve, waitMs))),
+    ]);
+    clearTimeout(timer);
+    await this.settle();
     const unconfirmed: Leftover[] = [];
-    for (const [seq, i] of this.open) {
-      names.set(seq, i.name);
+    for (const i of this.open.values()) {
       unconfirmed.push({
         entry: i.entry,
         id: null,
@@ -212,7 +169,7 @@ export class RunLedger {
       });
     }
     try {
-      const done = await cleanIds(this.order, send, (t, result) =>
+      const done = await cleanIds([...this.order], send, (t, result) =>
         this.o.file.append({
           kind: 'cleanup',
           seq: t.seq,
@@ -221,8 +178,8 @@ export class RunLedger {
           result,
         }),
       );
-      if (this.first !== undefined)
-        this.o.file.append({ kind: 'abort', reason: this.first.kind });
+      if (this.problem !== undefined)
+        this.o.file.append({ kind: 'abort', reason: this.problem.kind });
       return {
         confirmed: done.confirmed,
         leftover: [...unconfirmed, ...done.leftover],
@@ -232,9 +189,15 @@ export class RunLedger {
     }
   }
 
-  /** Records a minted id: the `id` line, fsynced, then the in-memory sets. */
+  /**
+   * Records a minted id: the `id` line, fsynced, then the in-memory sets, the seen-set included, so a second 201 with
+   * the same id is `ledger_replay` whatever `idFrom` read it from (a `Location` header puts it in no body).
+   *
+   * @throws {TrustError} `ledgers_invalid` `closed` when the ledger already ended.
+   */
   mint(entry: CreateConfirm, seq: number, id: string): void {
     this.o.file.append({ kind: 'id', seq, entry: entry.id, id });
+    this.see(id, 'a created id');
     this.open.delete(seq);
     const set = this.minted.get(entry.id) ?? new Set<string>();
     set.add(id);

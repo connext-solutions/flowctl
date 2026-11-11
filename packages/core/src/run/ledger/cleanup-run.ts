@@ -76,7 +76,8 @@ const isCreate = (e: ConfirmEntry | undefined): e is CreateConfirm =>
  * `<store>/ledgers/<run id>.jsonl` after verifying its chain, removes every id not yet confirmed deleted through the
  * `cleanup` of the stored create entry that minted it, with the session of that entry's flow profile, and appends a
  * `cleanup` line per id. Running it again sends nothing for an id already confirmed. Nothing is ever deleted by name:
- * a create whose answer never came is reported `create_unconfirmed` with its name.
+ * a create whose answer never came is reported `create_unconfirmed` with its name. A torn last line (a crash cut the
+ * write short) is dropped and reported as `tornTail`; every line before it is cleaned.
  *
  * @remarks An id whose create entry is no longer valid (revoked, expired, changed) stays leftover (`entry_missing`):
  *   only a signed entry can authorise a cleanup request. The requests are sent from Node with the profile's saved
@@ -93,7 +94,7 @@ export async function cleanupRun(
     throw new ConfigError(
       `"${runId.slice(0, 40)}" is not a run id: it is r_ and 1 to 32 lowercase letters or digits.`,
     );
-  const { file, lines } = LedgerFile.open(o.store.dir, runId, null);
+  const { file, lines, torn } = LedgerFile.open(o.store.dir, runId, null);
   try {
     const state = ledgerState(lines);
     const entries = readConfirmEntries(
@@ -149,7 +150,7 @@ export async function cleanupRun(
         ...done.leftover.map((l) => ({ ...l, name: nameOf(l.entry, l.id) })),
       );
     }
-    return { confirmed, leftover };
+    return { confirmed, leftover, ...(torn ? { tornTail: true } : {}) };
   } finally {
     file.close();
   }

@@ -68,6 +68,43 @@ describe('cleanupRun', () => {
     expect(ledgerLines(store, runId)).toEqual(lines);
   });
 
+  it('sends no request for a forged id that would leave the template, and leaves it id_invalid', async () => {
+    const { cfg, store: empty } = await app.setup();
+    const flow = writeFlow(cfg, crud('items-forged', CREATE_STEPS));
+    const store = app.confirm(cfg, empty, flow);
+    const id = 'c1b2c3d4-0000-4000-8000-00000000abcd';
+    await app.seed('QA-keep', id);
+    const runId = 'r_forged01';
+    const f = LedgerFile.create(store.dir, runId, null);
+    for (const [seq, forged] of [
+      `x/../${id}`,
+      '$&',
+      `../items/${id}`,
+    ].entries()) {
+      f.append({
+        kind: 'intent',
+        seq: seq + 1,
+        entry: 'items-forged-create',
+        name: 'QA-x',
+      });
+      f.append({
+        kind: 'id',
+        seq: seq + 1,
+        entry: 'items-forged-create',
+        id: forged,
+      });
+    }
+    f.close();
+    const r = await cleanupRun(cfg, runId, { store });
+    expect(r.confirmed).toBe(0);
+    expect(r.leftover.map((l) => l.detail)).toEqual([
+      'id_invalid',
+      'id_invalid',
+      'id_invalid',
+    ]);
+    expect(await app.items()).toEqual(['QA-keep']);
+  });
+
   it('refuses a run id that is not one', async () => {
     const { cfg, store } = await app.setup();
     for (const bad of ['../x', 'R_1', `r_${'a'.repeat(33)}`])

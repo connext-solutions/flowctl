@@ -283,7 +283,7 @@ export class RunSession {
         prepared: this.prepared !== undefined,
         hooks: this.hooks,
         secrets: this.prepared?.secrets ?? [],
-        ledger: this.guard?.writes?.ledger,
+        guard: this.guard,
       },
       final,
       stepsDone,
