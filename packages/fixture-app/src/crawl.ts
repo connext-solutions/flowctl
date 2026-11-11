@@ -74,9 +74,17 @@ const helpPage = `${head('Trợ giúp')}<body><h1>Trợ giúp</h1><a href="/map"
 
 const popupPage = `${head('Popup')}<body><h1>Popup</h1></body></html>`;
 
-/** What the server sends for a `/map` request: a page, a redirect, a script, or `undefined` (not a map path). */
+/**
+ * What the server sends for a `/map` or `/guard` request: a page, a redirect, a script, a file (sent as an attachment
+ * named `filename`), or `undefined` (not such a path).
+ */
 export type CrawlAnswer =
-  | { status: number; type: 'html' | 'js'; body: string }
+  | {
+      status: number;
+      type: 'html' | 'js' | 'csv';
+      body: string;
+      filename?: string;
+    }
   | { status: 302; location: string }
   | { purge: true };
 

@@ -63,7 +63,7 @@ superseded_by: "0007"  # only when status: superseded
 | [0021](0021-hook-consent.md) | Shell hooks run only with consent recorded on this machine (amended: consent in the trust store; no blanket flag; digest covers the files the hook calls; hooks run with an allowlisted environment; amended 2026-11-12: pointer for the closure items of the testable-rule list) | accepted |
 | [0022](0022-driver-seam.md) | System 1 becomes a Driver interface; Jev and a generic LLM client are adapters | proposed |
 | [0023](0023-spec-provider-seam.md) | SpecProvider seam and the private-plugin boundary (amended 2026-11-12: the expected item carries no judgement; number binding is reviewer-signed; `context` normalisation and `leadIn`) | proposed |
-| [0024](0024-target-scope-and-guards.md) | Target scope, credentials and run guards, anchored in the trust store (amended 2026-11-12: production read-only replay grammar details; destructive ledger details; matcher tokens and the owner-decision marker table) | proposed |
+| [0024](0024-target-scope-and-guards.md) | Target scope, credentials and run guards, anchored in the trust store (amended 2026-11-12: production read-only replay grammar details; destructive ledger details; matcher tokens and the owner-decision marker table; amended: downloads always cancelled, frames as visits, WebRTC off by init script) | proposed |
 | [0025](0025-trust-store.md) | Trust anchors live in an owner-controlled per-machine trust store; repo files can only tighten | proposed |
 | [0026](0026-template-syntax.md) | Template syntax is a closed grammar; errors are strict and found at load | accepted |
 | [0027](0027-mcp-server-package.md) | The MCP server is its own package on the v2 MCP SDK; every tool is guarded | accepted |

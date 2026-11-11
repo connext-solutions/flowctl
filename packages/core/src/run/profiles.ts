@@ -7,6 +7,7 @@ import {
 } from '../config.js';
 import type { Step } from '../flow/index.js';
 import { assertNotSymlink } from '../safe-fs.js';
+import { limitContext, RUN_CONTEXT } from './context-limits.js';
 import type { Evidence } from './evidence.js';
 import { RunError, errorMessage } from './outcome.js';
 import type { ScopeGuard } from './scope-guard.js';
@@ -126,7 +127,8 @@ export class Profiles {
    *
    * @remarks The scope guard and then evidence are attached to a new context before its first navigation, so the
    *   initial load is held to the run's scope (ADR 0024 section 3) and its requests and console errors are captured
-   *   (ADR 0010). Service workers are blocked on every run context.
+   *   (ADR 0010). Every run context is created with {@link RUN_CONTEXT} (no service worker, no download kept) and
+   *   limited by {@link limitContext} (no WebRTC, cancelled downloads noted and judged).
    * @throws {RunError} `profile_expired` when no session is saved for this env/profile, or
    *   `app_unreachable` / `profile_expired` from {@link goto}.
    */
@@ -153,11 +155,18 @@ export class Profiles {
       storageState: loadState(state, sessionOrigins(this.cfg, this.env)),
       locale: this.cfg.profiles[profile]?.locale,
       viewport: VIEWPORT,
-      serviceWorkers: 'block',
+      ...RUN_CONTEXT,
       ...this.evidence.video?.contextOptions(),
     });
-    await this.guard?.attach(context);
+    const guard = this.guard;
+    await guard?.attach(context);
     await this.evidence.attach(context, profile);
+    await limitContext(
+      context,
+      profile,
+      (e) => this.evidence.network.push(e),
+      guard === undefined ? undefined : (u) => void guard.allows(u, 'visit'),
+    );
     const page = await context.newPage();
     page.setDefaultTimeout(this.cfg.stepTimeout);
     page.setDefaultNavigationTimeout(this.cfg.navigationTimeout);

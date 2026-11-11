@@ -10,6 +10,7 @@ import type { LoadedConfig, ResolvedEnv } from '../config.js';
 import { RunError, type ErrorKind } from '../foundation/index.js';
 import type { Outcome } from './outcome.js';
 import { errorMessage } from './outcome.js';
+import { watchFrames } from './frames.js';
 import { answerFirstHop, holdRedirects } from './redirect-hold.js';
 import type { RequestGuard } from './request-guard.js';
 import {
@@ -69,10 +70,13 @@ export function scopeFor(
  * - WebSockets go through `routeWebSocket` the same way, as `call`;
  * - service workers are blocked on the context (`serviceWorkers: 'block'`, set by the caller), so none can serve or
  *   send requests the route does not see;
- * - a main-frame URL change without a request (`history.pushState`, a hash route) is checked when it happens;
+ * - a frame is a visit: one out of scope is not entered, and a URL change of any frame without a request
+ *   (`history.pushState`, a hash route, a `data:` frame) is checked when it happens ({@link watchFrames});
  * - a redirect answer whose `Location` is out of scope is failed before the browser sends the hop
- *   ({@link holdRedirects}; a popup's first navigation through {@link answerFirstHop}); a hop neither sees (a
- *   cross-site frame, a worker, a later hop of a popup's first navigation) is still detected.
+ *   ({@link holdRedirects}, also on a cross-site frame in its own process; a popup's first navigation through
+ *   {@link answerFirstHop}); a hop neither sees (a worker, a later hop of a popup's first navigation) is still
+ *   detected;
+ * - downloads are cancelled and judged like any request (`run/context-limits.ts`).
  *
  * The first problem is kept with its kind: a request or page out of scope (`scope_violation`), a page the hold could
  * not be attached to (`internal`), a popup whose first answer could not be fetched (`app_unreachable`).
@@ -81,7 +85,8 @@ export function scopeFor(
  * @remarks A same-page URL change happens in the page before flowctl can see it, so it is detected, not prevented.
  *   A popup in scope whose first answer cannot be fetched (a dead link) ends the run `app_unreachable`, where a plain
  *   browser would show an error page; a broken link is reported as infrastructure, not as a product bug.
- *   Downloads, uploads and WebRTC are not covered yet.
+ *   Uploads come only from `<flows root>/fixtures/` (`readFixture`); WebRTC and WebTransport are disabled, best
+ *   effort, by `limitContext`, not by this guard.
  */
 export class ScopeGuard {
   private first: RunError | undefined;
@@ -221,22 +226,13 @@ export class ScopeGuard {
     }
   }
 
-  /**
-   * Checks every main-frame URL change of `page`, including those that send no request.
-   *
-   * @remarks `about:blank` (a new page) and `chrome-error:` (the page Chromium shows for a navigation that failed,
-   *   including one this guard aborted) are not visits, so a failed load stays `app_unreachable`.
-   */
+  /** Checks every frame URL change of `page`, main frame and subframes, including those that send no request ({@link watchFrames}). */
   watch(page: Page): void {
-    page.on('framenavigated', (f) => {
-      const url = f.url();
-      if (
-        f === page.mainFrame() &&
-        url !== 'about:blank' &&
-        !url.startsWith('chrome-error:')
-      )
-        this.allows(url, 'visit');
-    });
+    watchFrames(
+      page,
+      (url) => void this.allows(url, 'visit'),
+      (url, kind, method, type) => this.judge(url, kind, method, type),
+    );
   }
 
   /**
