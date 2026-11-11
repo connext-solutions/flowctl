@@ -14,6 +14,8 @@ export interface JudgeCtx {
   closurePaths: ReadonlySet<string> | undefined;
   /** Whether an interpreter named by a `#!` line exists as a regular executable file. */
   interpreterOk: (path: string) => boolean;
+  /** Which allowlist judges: ADR 0021's (`hook`) or the narrower one of a destructive confirmation (`confirm`). */
+  purpose: 'hook' | 'confirm';
 }
 
 type Lexical =

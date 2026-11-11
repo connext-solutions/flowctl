@@ -25,6 +25,10 @@ export const OPTIONS = {
   pin: { type: 'string', multiple: true },
   'anchor-dir': { type: 'string' },
   replace: { type: 'boolean', default: false },
+  'from-run': { type: 'string' },
+  renew: { type: 'boolean', default: false },
+  'renew-env': { type: 'string' },
+  days: { type: 'string' },
   config: { type: 'string' },
   profile: { type: 'string' },
   start: { type: 'string' },
@@ -37,7 +41,7 @@ export type Values = ReturnType<
 >['values'];
 
 /** Trust subcommands whose next word names the command too: `trust add env`, `trust key rotate-owner`. */
-const GROUPS = new Set(['add', 'key']);
+const GROUPS = new Set(['add', 'key', 'revoke']);
 
 /** The registered command named by the positionals, and its own arguments. */
 export function resolve(positionals: string[]): {
@@ -85,6 +89,7 @@ export type Runnable = Exclude<CommandName, '--help' | McpCommand>;
 export const ARITY: Record<Runnable, (n: number) => boolean> = {
   replay: () => true,
   login: (n) => n === 1,
+  cleanup: (n) => n === 1,
   observe: (n) => n === 0,
   'trust init': (n) => n === 0,
   'trust hook': (n) => n > 0,
@@ -98,6 +103,8 @@ export const ARITY: Record<Runnable, (n: number) => boolean> = {
   'trust key rotate-owner': (n) => n === 0,
   'trust add system1': (n) => n >= 3,
   'trust add origin': (n) => n === 3,
+  'trust add destructive': () => true,
+  'trust revoke destructive': (n) => n === 1,
 };
 
 /** True when `name` is a registered command the CLI runs (not `--help`, not an MCP tool). */

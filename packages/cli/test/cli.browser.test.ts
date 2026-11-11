@@ -259,6 +259,22 @@ describe('flowctl trust (ADR 0021, ADR 0025)', () => {
     },
   );
 
+  it('trust revoke destructive exits 3 before any prompt when the store has no such entry (T1.3)', async () => {
+    expect(
+      await cli([
+        'trust',
+        'revoke',
+        'destructive',
+        'items-create',
+        '--config',
+        configFile,
+      ]),
+    ).toBe(3);
+    expect(err.join('')).toContain(
+      'no destructiveConfirm entry "items-create"',
+    );
+  });
+
   it('refuses the removed `trust <name>` form and names the new command', async () => {
     expect(await cli(['trust', 'leave-approve', '--config', configFile])).toBe(
       2,

@@ -77,6 +77,7 @@ export function page(
     calls: [],
     consoleErrors: [],
     refused: [],
+    navigationRefused: false,
   };
 }
 

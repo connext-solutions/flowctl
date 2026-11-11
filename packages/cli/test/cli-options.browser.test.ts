@@ -235,3 +235,44 @@ describe('flowctl login', () => {
     expect(err.join('')).toContain('nope');
   });
 });
+
+describe('flowctl cleanup', () => {
+  it('cleanup refuses a run id that is not one (exit 2) and a run without a ledger (exit 3) (T1.3)', async () => {
+    for (const bad of ['../x', 'R_1', `r_${'a'.repeat(33)}`]) {
+      err.length = 0;
+      expect(await cli(['cleanup', bad, '--config', configFile])).toBe(2);
+      expect(err.join('')).toContain('is not a run id');
+    }
+    err.length = 0;
+    expect(
+      await cli(['cleanup', 'r_lq3k2a1b9f0e', '--config', configFile]),
+    ).toBe(3);
+    expect(err.join('')).toContain('no ledger for run r_lq3k2a1b9f0e');
+  });
+
+  it('trust add destructive without --from-run, or with --renew and --renew-env together, is a usage error (T1.3)', async () => {
+    const add = ['trust', 'add', 'destructive'];
+    expect(
+      await cli([
+        ...add,
+        'leave-submit',
+        '--env',
+        'local',
+        '--config',
+        configFile,
+      ]),
+    ).toBe(2);
+    expect(
+      await cli([
+        ...add,
+        'x',
+        '--renew',
+        '--renew-env',
+        'local',
+        '--config',
+        configFile,
+      ]),
+    ).toBe(2);
+    expect(err.join('')).toContain('--from-run <run id>');
+  });
+});

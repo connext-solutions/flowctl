@@ -28,6 +28,20 @@ export {
   type Refusal,
   type RequestClass,
 } from './request-guard.js';
+export { confirmReadContext, envClassFor } from './guards.js';
+export {
+  cleanIds,
+  cleanupRun,
+  confirmInputFor,
+  idTokens,
+  ledgerState,
+  type DestructivePlan,
+  planDestructive,
+  planRenew,
+  type Renewal,
+  RunLedger,
+  SeenSet,
+} from './ledger/index.js';
 export { scopeFor } from './scope-for.js';
 export { redactBody, redactResponse, redactText } from './redact.js';
 export {

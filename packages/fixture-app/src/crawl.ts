@@ -4,14 +4,31 @@
  *
  * @remarks The decoys are always on: a crawl that stays in scope must never follow them. The crawl-class bugs are
  *   switched on one at a time like the other seeded bugs, and are caught by the free checks of T2.4 (no 4xx/5xx,
- *   no console error, no broken link), not by a flow assertion, so they are not in `BUG_MODES`.
+ *   no console error, no broken link, no unreachable page), not by a flow assertion, so they are not in `BUG_MODES`.
+ *   `/map/report` always loads its summary from `/map/api/summary` (a fetch), which answers 200 on the clean app.
  */
 
-/** Seeded bugs a crawl must find on its own. */
+/**
+ * Seeded bugs a crawl must find on its own.
+ *
+ * @remarks
+ * - `brokenLink`: the "Trợ giúp" link on `/map` points to `/map/missing`, which answers 404.
+ * - `page500`: `/map/report` answers 500.
+ * - `pageConsoleError`: `/map/report` logs a console error.
+ * - `pageNoAnswer`: the "Trợ giúp" link on `/map` points to `/map/down`, where the server destroys the socket
+ *   (status 0, nothing refused). `/map` also sends a beacon (a write the crawl refuses) when it is left, so that late
+ *   refusal lands on `/map/down` and must not explain its missing answer.
+ * - `call500`: the summary fetch of `/map/report` answers 500.
+ * - `call404`: the summary fetch of `/map/report` answers 404. No free check judges a 4xx call (ADR 0033 amendment
+ *   2026-11-12), so this mode is a documented non-detection, not a caught bug.
+ */
 export const CRAWL_BUG_MODES = [
   'brokenLink',
   'page500',
   'pageConsoleError',
+  'pageNoAnswer',
+  'call500',
+  'call404',
 ] as const;
 export type CrawlBugMode = (typeof CRAWL_BUG_MODES)[number];
 
@@ -38,13 +55,21 @@ export const DECOYS = {
 const head = (title: string): string =>
   `<!doctype html><html lang="vi"><head><meta charset="utf-8"><link rel="icon" href="data:,"><title>${title}</title></head>`;
 
+/** Where the "Trợ giúp" link of `/map` points under `bug`. */
+const helpHref = (bug: string): string =>
+  bug === 'brokenLink'
+    ? '/map/missing'
+    : bug === 'pageNoAnswer'
+      ? '/map/down'
+      : '/map/help';
+
 const mapPage = (bug: string): string => `${head('Sơ đồ')}<body>
 <h1>Sơ đồ</h1>
 <nav>
   <a href="/requests">Đơn từ</a>
   <a href="/approvals">Phê duyệt</a>
   <a href="/map/report">Báo cáo</a>
-  <a href="${bug === 'brokenLink' ? '/map/missing' : '/map/help'}">Trợ giúp</a>
+  <a href="${helpHref(bug)}">Trợ giúp</a>
 </nav>
 <section aria-label="Không đi theo">
   <a href="${DECOYS.offScope}">Cài đặt hệ thống</a>
@@ -63,10 +88,12 @@ const mapPage = (bug: string): string => `${head('Sơ đồ')}<body>
   <button type="button" onclick="fetch('${DECOYS.sideEffectGet}')"><svg width="12" height="12"><path d="M1 1h10v10H1z"/></svg></button>
 </section>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('${DECOYS.serviceWorker}').catch(() => {});</script>
+${bug === 'pageNoAnswer' ? "<script>addEventListener('beforeunload', () => navigator.sendBeacon('/map/api/left', 'map'));</script>" : ''}
 </body></html>`;
 
 const reportPage = (bug: string): string => `${head('Báo cáo')}<body>
-<h1>Báo cáo</h1><a href="/map">Sơ đồ</a>
+<h1>Báo cáo</h1><a href="/map">Sơ đồ</a><p id="summary">Đang tải…</p>
+<script>fetch('/map/api/summary').then((r) => r.ok ? r.json() : { total: '—' }).then((d) => { document.getElementById('summary').textContent = 'Tổng: ' + d.total; });</script>
 <script>${bug === 'pageConsoleError' ? "console.error('seeded bug: report failed to render');" : ''}</script>
 </body></html>`;
 
@@ -75,22 +102,24 @@ const helpPage = `${head('Trợ giúp')}<body><h1>Trợ giúp</h1><a href="/map"
 const popupPage = `${head('Popup')}<body><h1>Popup</h1></body></html>`;
 
 /**
- * What the server sends for a `/map` or `/guard` request: a page, a redirect, a script, a file (sent as an attachment
- * named `filename`), or `undefined` (not such a path).
+ * What the server sends for a `/map` or `/guard` request: a page, a redirect, a script, JSON, a file (sent as an
+ * attachment named `filename`), `destroy` (the socket is closed with no answer), or `undefined` (not such a path).
  */
 export type CrawlAnswer =
   | {
       status: number;
-      type: 'html' | 'js' | 'csv';
+      type: 'html' | 'js' | 'csv' | 'json';
       body: string;
       filename?: string;
     }
   | { status: 302; location: string }
-  | { purge: true };
+  | { purge: true }
+  | { destroy: true };
 
 /**
  * The answer for `pathname` under `/map`, given the active bug mode (or `''`). `/map/purge` is a side-effecting
- * GET: the caller wipes the request store when it gets `{ purge: true }`.
+ * GET: the caller wipes the request store when it gets `{ purge: true }`, and destroys the socket on
+ * `{ destroy: true }`.
  */
 export function crawlRoute(
   pathname: string,
@@ -121,6 +150,14 @@ export function crawlRoute(
       };
     case '/map/purge':
       return { purge: true };
+    case '/map/down':
+      return bug === 'pageNoAnswer' ? { destroy: true } : undefined;
+    case '/map/api/summary':
+      return {
+        status: bug === 'call500' ? 500 : bug === 'call404' ? 404 : 200,
+        type: 'json',
+        body: JSON.stringify({ total: 3 }),
+      };
     default:
       return undefined;
   }

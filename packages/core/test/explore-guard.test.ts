@@ -3,11 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { destructiveWord } from '../src/browser/index.js';
-import {
-  ActionGuard,
-  DestructiveAction,
-  envClassFor,
-} from '../src/explore/guard.js';
+import { ActionGuard, DestructiveAction } from '../src/explore/guard.js';
+import { envClassFor } from '../src/run/index.js';
 import { type InitAnswers, initTrust, TrustStore } from '../src/trust/index.js';
 import {
   editStore,

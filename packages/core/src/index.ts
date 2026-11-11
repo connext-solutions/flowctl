@@ -25,7 +25,18 @@ export {
 export { exitCodeFor, replayFlow, replayMany, summarize } from './replay.js';
 export { login, type LoginOptions } from './login.js';
 export type * from './result.js';
-export { RunError, RunSession, verify } from './run/index.js';
+export {
+  cleanupRun,
+  confirmInputFor,
+  confirmReadContext,
+  type DestructivePlan,
+  planDestructive,
+  planRenew,
+  type Renewal,
+  RunError,
+  RunSession,
+  verify,
+} from './run/index.js';
 export {
   addEnvOrigin,
   addProfileEnvVar,
@@ -37,6 +48,14 @@ export {
   checkProjectSetting,
   assertNoStore,
   addTrustedEnv,
+  confirmLine,
+  type ConfirmEntry,
+  type Draft,
+  entryOf,
+  renewConfirmEntries,
+  saveConfirmEntries,
+  readConfirmEntries,
+  revokeConfirmEntry,
   type EnvVarKind,
   type CommandName,
   COMMANDS,
@@ -106,11 +125,16 @@ export {
 } from './explore/index.js';
 export {
   appMapPath,
+  freeChecks,
   observe,
   observeSummary,
   writeAppMap,
   type AppMap,
+  type CheckFinding,
+  type CheckId,
+  type CheckResult,
   type CrawlBudget,
+  type FreeChecks,
   type Observation,
   type ObserveOptions,
   type ObserveSummary,

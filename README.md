@@ -11,9 +11,11 @@ Fast, deterministic verification of web flows for developers and testers who wor
   screenshot, network and console logs) that is safe to attach to a bug.
 
 > **Early preview.** The engine, the CLI and the MCP server work and are tested, but the interfaces may still
-> change between releases. One safety limit is not finished: **replaying a saved flow is not guarded against
-> destructive requests** on a shared env (exploration is; production is refused for both). Run flowctl only
-> against apps and environments you are allowed to change.
+> change between releases. On a shared env a replay writes only what the machine's owner confirmed for that exact
+> flow version (`flowctl trust add destructive`), changes only records the run itself created, and removes them at
+> the end. Run ledgers in a CI store and read-only replay on production are not built yet. Production is refused
+> for every write. Run flowctl only against apps and environments you are allowed
+> to change.
 
 ## How it works
 
@@ -42,10 +44,11 @@ Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/t
 | Destructive-action guard for exploration: labels and the request layer | done |
 | Wall-clock budget per run (`budget_exceeded`) | done |
 | Demo videos of a replay with a step overlay (ADR 0032) | done |
-| Destructive-action guard for **replay** on shared envs, stored confirmations and the run ledger | open |
+| Destructive-action guard for replay: every write refused on shared and unlisted envs | done |
+| Stored destructive confirmations and the run ledger (CRUD flows on shared envs, `flowctl cleanup`) | done, first version |
 | Read-only replay on production, computed System 1 cost | open |
-| Observe: read-only crawler and `AppMap` (`flowctl observe`, ADR 0033) | early |
-| Free checks on the map, Derive (test cases from specs), Reconcile (classify failures) | planned |
+| Observe: read-only crawler, `AppMap` and free checks (`flowctl observe`, ADR 0033) | early |
+| Derive (test cases from specs), Reconcile (classify failures) | planned |
 
 Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
 
@@ -165,7 +168,15 @@ server. Replay never needs it. Never put the key in a config file, a chat or a c
 On an env classed `shared`, System 1 never clicks a control named like delete, approve, reject or pay, and the
 run blocks any request that looks destructive (any `DELETE`, or a path such as `/items/12/delete`) unless the
 agent started it with `allowDestructive: true`. On `production`, and on any origin the trust store does not
-list, nobody may.
+list, nobody may. A **replay** on such an env is stricter: every `GET` whose path looks destructive is refused,
+and so is every other request, except on a `shared` env a `fetch` or `xhr` write that a **stored confirmation**
+authorises. The owner writes one in a terminal with `flowctl trust add destructive <flow> --env <env> --from-run
+<run id>`, from a passing replay of the flow on a `local` env: it binds the flow, the files it uses and its vars,
+so any edit needs a new confirmation. Then a create must carry a `QA-` name holding the run's `{{uid}}`, a change
+or delete may touch only ids that run created, each id goes to a ledger in the trust store before the page sees it,
+and the run deletes them at the end (`cleanup` in the result; `flowctl cleanup <run id>` after a crash). Without a
+confirmation the run ends `error: destructive_blocked`; that includes the confirming replay of `flow_save`. On
+`local` replay is unchanged. A write sent over a WebSocket is not guarded in a replay; review flows that use one.
 
 ## Observe (early)
 
@@ -185,12 +196,19 @@ flowctl observe --start /home --env staging [--json] [--out .flows/maps/app.json
 The map (`appmap.json` in the run directory, and a copy at `--out`, which must be inside the flows directory) lists,
 per page: path, document status, title, the controls of the page snapshot, forms with their fields (label, type,
 required, submit), links, fetch/xhr calls (method, path, status) and console errors, with credential-looking text as
-`***`, and the requests refused while the page was open. A call to another origin keeps its origin. It stops at
+`***`, the requests refused while the page was open, and whether its own navigation was refused. A call to another origin keeps its origin. It stops at
 `target.budgets.pages` (at most 50) or the run's wall-clock budget, then says `truncated`. A request the guards only
 detect after it was sent, an expired session (including a page that routes itself to the login page) and a refused
-start page end the crawl with an error. Exit `0` when the crawl
-finished (a map is not a verdict), `2` on an error. Free checks on the map (broken links, 5xx, console errors) are not
-built yet.
+start page end the crawl with an error.
+
+Then the free checks run on the map and are written to `checks.json` beside it: `no-console-error`, `no-4xx`
+(document statuses; a 4xx fetch/xhr call is not judged, since apps probe with expected 401, 404 or 422 answers),
+`no-5xx` (document and fetch/xhr call statuses), `no-broken-link` (a link to a page that answered 4xx, 5xx or nothing)
+and `no-unreachable-page` (a page that gave no answer although the guards did not refuse its navigation; a redirect
+the scope refused is not one). Each finding names the page and what was seen there, and points at the `appmap.json` entry it stands on. The
+command prints the verdict and up to 20 findings (`--json`: `checks` with the status, failed ids, count and file).
+Exit `0` when the crawl finished and every check passed, `1` when a check failed, `2` on an error (no checks are run
+then). A pass on a truncated map covers only the pages it holds (ADR 0033, amendment).
 
 ## Flow format
 

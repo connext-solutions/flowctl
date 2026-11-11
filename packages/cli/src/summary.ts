@@ -1,5 +1,10 @@
 import { basename } from 'node:path';
-import type { FlowFileError, ReplaySummary, RunResult } from '@flowctl/core';
+import type {
+  CleanupResult,
+  FlowFileError,
+  ReplaySummary,
+  RunResult,
+} from '@flowctl/core';
 
 /**
  * Turns an unloadable flow file into an `error` result so it shows in the summary and the JSON.
@@ -80,6 +85,11 @@ export function formatSummary(s: ReplaySummary): string {
     ...(r.teardownFailed
       ? [`  ⚠ teardown failed (see ${terminalSafe(r.evidence.dir, Infinity)})`]
       : []),
+    ...(r.cleanup === undefined || r.cleanup.leftover.length === 0
+      ? []
+      : [
+          `  ⚠ cleanup_incomplete: ${r.cleanup.leftover.length} record(s) left: ${terminalSafe(r.cleanup.leftover.map((l) => `${l.entry} ${l.id ?? `name ${l.name ?? '?'}`} (${l.detail})`).join(', '))}; run flowctl cleanup ${terminalSafe(r.runId)}`,
+        ]),
     ...(r.weakLocators.length > 0
       ? [`  ⚠ weak locators: ${terminalSafe(r.weakLocators.join(', '))}`]
       : []),
@@ -93,5 +103,35 @@ export function formatSummary(s: ReplaySummary): string {
   lines.push(
     `${s.passed} passed, ${s.failed} failed, ${s.flaky} flaky, ${s.errors} errors`,
   );
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * What `flowctl cleanup <run id>` prints: the count confirmed deleted, a warning when the ledger's last line was torn,
+ * when a stale lock was taken over and when a ledger line could not be written, then one line per record left.
+ */
+export function formatCleanup(runId: string, r: CleanupResult): string {
+  const lines = [
+    `${terminalSafe(runId)}: ${r.confirmed} record(s) confirmed deleted, ${r.leftover.length} left`,
+    ...(r.tornTail === true
+      ? [
+          '  ⚠ the last line of the ledger was torn (a crash cut it short) and was dropped; a create it recorded shows as create_unconfirmed',
+        ]
+      : []),
+    ...(r.staleLock === true
+      ? [
+          '  ⚠ a lock left by a flowctl process that is gone was removed; check that no run of this id is still going',
+        ]
+      : []),
+    ...(r.writeFailed === undefined
+      ? []
+      : [
+          `  ⚠ the ledger could not be written (${terminalSafe(r.writeFailed)}); the ids below stay listed in it: fix the disk and run flowctl cleanup ${terminalSafe(runId)} again`,
+        ]),
+    ...r.leftover.map(
+      (l) =>
+        `  ⚠ ${terminalSafe(l.entry)} ${l.id === null ? `name ${terminalSafe(l.name ?? '?')}` : `id ${terminalSafe(l.id)}`}: ${l.detail}`,
+    ),
+  ];
   return `${lines.join('\n')}\n`;
 }

@@ -2,12 +2,6 @@ import type { Page } from 'playwright';
 import { destructiveWord } from '../browser/index.js';
 import type { By } from '../flow/index.js';
 import type { RequestClass } from '../run/index.js';
-import {
-  isLoopback,
-  openTrustStore,
-  type TrustStore,
-  trustedEnv,
-} from '../trust/index.js';
 
 /** Roles whose click acts: a field, cell, row or tab only selects or focuses, so it is never guarded. */
 const ACTION_ROLES = new Set([
@@ -30,52 +24,10 @@ export class DestructiveAction extends Error {}
  */
 export type GuardClass = RequestClass;
 
-const hostOf = (origin: string): string | undefined => {
-  try {
-    return new URL(origin).hostname;
-  } catch {
-    return undefined;
-  }
-};
-
-/**
- * The class the guard uses for `origin`: `production` when the store lists a production origin on the same
- * host (any scheme or port, ADR 0024 section 2); else the store's class for an env on exactly this origin;
- * else `local` for loopback and `unknown` otherwise.
- *
- * @remarks Only the matching entries are verified, so one bad entry for another env does not stop every
- *   exploration. The default store is opened only for a non-loopback origin, so tests on a local fixture never
- *   read the owner's store.
- * @throws {TrustError} `trust_tampered` when a matching entry is not owner-signed.
- */
-export function envClassFor(
-  origin: string,
-  store: TrustStore | undefined,
-): GuardClass {
-  const s = store ?? (isLoopback(origin) ? undefined : openTrustStore());
-  if (s !== undefined) {
-    const host = hostOf(origin);
-    for (const [p, entry] of Object.entries(s.data.productionOrigins))
-      if (hostOf(p) === host) {
-        s.assertSigned(
-          { id: p, kind: 'productionOrigins', value: {} },
-          entry.sig,
-        );
-        return 'production';
-      }
-    for (const [name, e] of Object.entries(s.data.envs))
-      if (e.origin === origin) {
-        const verified = trustedEnv(s, name);
-        if (verified !== undefined) return verified.class;
-      }
-  }
-  return isLoopback(origin) ? 'local' : 'unknown';
-}
-
 /**
  * Stops destructive actions of an exploration on a `shared`, `production` or `unknown` env (ADR 0024 section 5,
  * interim): System 1 never takes one, and the orchestrator only on a `shared` env when the request set
- * `allowDestructive`. Replay of a saved flow is not guarded here: it only does what its reviewed file says.
+ * `allowDestructive`. A replay has no label guard: its request layer (`RequestGuard.forReplay`) refuses every write.
  *
  * @remarks Only action roles are checked ({@link ACTION_ROLES}; an unknown role, e.g. a `testId`-only target,
  *   counts as one), by label. Not caught: an unnamed icon-only control, a `goto` to a GET that changes data,

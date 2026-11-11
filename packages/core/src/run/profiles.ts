@@ -23,7 +23,10 @@ import {
  *
  * @throws {RunError} `profile_expired` when the file is not a storage state; log in again.
  */
-function loadState(path: string, origins: readonly string[]): StorageState {
+export function loadState(
+  path: string,
+  origins: readonly string[],
+): StorageState {
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8'));

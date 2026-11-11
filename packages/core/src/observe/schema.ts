@@ -7,13 +7,14 @@ import { ARIA_ROLES } from '../flow/index.js';
  */
 export const PAGE_PATH = /^\/(?!\/)[^?#\s]*$/;
 
-const Path = z
+/** A {@link PAGE_PATH} of at most 2,048 characters. */
+export const Path = z
   .string()
   .max(2048)
   .regex(PAGE_PATH, 'must be a path: /..., no query or fragment');
 
 /** Text read from the page (names, titles, console lines): untrusted, bounded, never a key or a command. */
-const PageText = z.string().max(300);
+export const PageText = z.string().max(300);
 
 /** A control as Playwright names it (role and accessible name), the same pair a flow locator uses. */
 export const ControlSchema = z
@@ -40,7 +41,7 @@ export const FormSchema = z
   .strict();
 
 /** An origin and nothing else: `https://host[:port]`. */
-const Origin = z
+export const Origin = z
   .string()
   .url()
   .refine((u) => new URL(u).origin === u, 'must be an origin, no path');
@@ -63,6 +64,8 @@ export const CallSchema = z
  * One page the crawler visited: the document `status` (0 when the navigation got no response), its controls,
  * the same-origin links it offers, its forms, the calls and console errors seen while it was open, and what the
  * run's guards refused while it was open (`refused`: a request out of scope, or a write; the request was aborted).
+ * `navigationRefused` is true only when the guards refused the page's own navigation (its request or a redirect hop
+ * of it), which explains a status 0; `refused` may also hold a late refusal of the page opened before it.
  */
 export const PageSchema = z
   .object({
@@ -75,6 +78,7 @@ export const PageSchema = z
     calls: z.array(CallSchema).max(500),
     consoleErrors: z.array(PageText).max(100),
     refused: z.array(z.enum(['scope_violation', 'destructive_blocked'])).max(2),
+    navigationRefused: z.boolean(),
   })
   .strict();
 

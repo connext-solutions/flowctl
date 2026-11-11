@@ -72,5 +72,5 @@ superseded_by: "0007"  # only when status: superseded
 | [0030](0030-evidence-safe-to-share.md) | Evidence is safe to share by default; a full trace is an explicit opt-in | proposed |
 | [0031](0031-github-release-tarballs.md) | Releases are GitHub Releases with npm tarballs; no npm registry | accepted |
 | [0032](0032-demo-video.md) | Demo videos: an opt-in replay recording with a step overlay that assertions cannot see | accepted |
-| [0033](0033-read-only-crawl.md) | Observe crawls read-only and breadth-first; a page is a path; a refused request is an observation | accepted |
+| [0033](0033-read-only-crawl.md) | Observe crawls read-only and breadth-first; a page is a path; a refused request is an observation (amended 2026-11-12: free checks, exit 1) | accepted |
 | [0034](0034-spec-to-map-matching.md) | Derive matches spec operations to the AppMap by fixed text rules, with evidence, and never breaks a tie | accepted |
