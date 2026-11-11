@@ -825,3 +825,110 @@ these come from the command's own input or store, not from repository content): 
 `review_refused_on_ci_store` (a `review` run against a `ci` store; `store_writable_in_ci` is a different
 case, a writable store), `trust_missing` (any guarded command, `review` included, with no store) and
 `trust_tampered` (a bad export bundle).
+
+## Amendment 2026-11-12: Unicode policy, token boundaries, settle time and "visible and enabled"
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+Task T0.33 lists vague rules to make testable. This amendment closes the items this ADR owns: 7 (NFKC policy), 8
+(token boundaries in spec text), 11 (the settle time of section g) and 13 ("visible and enabled" in section g).
+Item 9 (number binding, unit and polarity) is decided in ADR 0023 amendment 2026-11-12; the case-approval record of
+section f carries the reviewer-signed `polarity` and `number` fields that amendment defines. Where a sentence of
+sections d or g conflicts with this amendment, this amendment governs.
+
+### 1. Where each Unicode rule applies (item 7)
+
+NFKC is never used to **match** or to produce bytes. It is used only as a **refusal test** in section d (and, in
+ADR 0025, to count passphrase code points). The two rules that looked contradictory act on different inputs:
+
+| Input | Normalisation applied | Refused |
+|---|---|---|
+| Spec quote, expected `text` and `value`, assertion value (section d) | NFC, then ASCII whitespace runs collapsed and trimmed | text whose NFKC form differs from its NFC form; the categories section d lists; non-ASCII `Nd` digits |
+| `context` strings (ADR 0023 amendment 2026-11-12) | the same as the row above | the same as the row above |
+| Strings inside canonical JSON (section m) | NFC only | lone surrogates, invalid UTF-8 |
+| Scope paths (ADR 0024 section 3) | none: percent-decode to a fixed point, strip `;params`, resolve dot segments; `deny` compared lower-cased | `?`, `#`, `\` and control characters after decoding |
+| Production paths and query text (ADR 0024 section 2a) | none | any byte outside 0x21 to 0x7E after the one decode |
+| Destructive matcher (ADR 0024 section 5) | NFC, then lower case | nothing |
+| `.git` component (ADR 0024 section 1a rule 6) | case folding, compared in NFC and in NFD | a match |
+| Hook path words (ADR 0021 amendment 2026-11-02 section 2) | none | a word not in NFC |
+
+Why: human text is compared with what a reviewer read, so a compatibility character that looks like another is
+refused; a path or a signed byte string is compared exactly, so folding would merge two different values into
+one. *Rejected:* NFKC folding of spec text before comparison, which would make `ﬁ` equal to `fi` in a signed quote.
+
+### 2. Token boundaries in spec text (item 8)
+
+Section d requires the declared `value` to occur exactly once in `text`, at token boundaries. Both strings are
+first normalised as in section d. An occurrence of `value` at code-point positions `[i, j)` is **at token
+boundaries** when all of these hold:
+
+1. the code point before `i`, if any, and the code point at `j`, if any, are not a letter (`L`), mark (`M`) or
+   number (`N`), not `_` and not `-`;
+2. if `value` starts with a digit, the two code points before `i` are not a digit followed by `.` or `,`;
+3. if `value` ends with a digit, the two code points from `j` are not `.` or `,` followed by a digit.
+
+Occurrences are counted with overlaps. "Exactly once" means one occurrence at token boundaries; zero or two or
+more refuses the item (`sourceRef` refused at save, `stale_sourceRef` at `check`). The same rule defines a
+**number token** in ADR 0023 amendment 2026-11-12. Slugs and path placeholders are judged by ADR 0024 amendment
+2026-11-12 (read-only replay), section 2, not by this rule.
+
+| `value` | `text` | At a boundary |
+|---|---|---|
+| `5` | `5 items` | yes |
+| `5` | `15 items` | no (rule 1) |
+| `5` | `1.5 kg` | no (rule 2) |
+| `5` | `5.5 kg` | no (rule 3) |
+| `5` | `Total 5.` | yes |
+| `5` | `5%` | yes |
+| `5` | `-5` | no (rule 1) |
+| `OK` | `BOOK` | no (rule 1) |
+| `order-12` | `order-12-b` | no (rule 1) |
+| `order-12` | `(order-12)` | yes |
+
+### 3. The settle time of section g (item 11)
+
+- **`NETWORK_IDLE_MS` is 1000 ms.** It is a constant in core, next to the verifier that evaluates `absent`. It is
+  not a repository key and not a store key, so a pull request cannot shorten it and make `absent` vacuous.
+- **Request window.** The window opens when the action step starts. It closes at the first instant after the
+  action step returns at which no fetch or XHR request of the run is in flight and none has started for
+  `NETWORK_IDLE_MS`. EventSource and WebSocket traffic is not counted, since `network` assertions do not observe it
+  (ADR 0010).
+- The window must close within the effective `assertTimeout` (default 10 000 ms, ceiling 60 000 ms) after the
+  action step returns. If it does not, the `absent` assertion **fails** with reason `network_not_idle`; it never
+  passes on an unsettled window.
+- The `absent` assertion is evaluated once, at the end of the run (as the verifier does today), and never before
+  its window has closed. It counts every matching fetch or XHR request sent from the window's opening to the end of
+  the run.
+- Why 1000 ms: Playwright's `networkidle` uses 500 ms, and a debounced request (a common 300 to 800 ms pattern)
+  must fall inside the window. Cost: an application with a constant long-poll XHR cannot use `absent`.
+  *Rejected:* a repository setting for the value.
+
+### 4. "Visible and enabled" for the `absent` action (item 13)
+
+The action step of section g acts on a control that is visible and enabled when all of these hold at the moment it
+runs:
+
+1. immediately before the action, `locator.isVisible()` and `locator.isEnabled()` both return `true`;
+2. neither the element nor an ancestor has `aria-disabled="true"` or the `inert` attribute (checked by one
+   evaluation in the page, immediately before the action);
+3. Playwright performs the action **without** `force`, so its actionability checks (visible, stable, receives
+   events, enabled) pass, and the action returns without error.
+
+At save, Derive refuses an `absent` whose action fails any of these in the confirming replay (`absent` refused as
+vacuous). At replay, a failure of 1 or 2 ends the step `action_failed` before the action runs, so the `absent`
+assertion is never evaluated after an action that did not happen.
+
+### Tests this implies
+
+- A quote holding `ﬁ` (U+FB01) is refused; the same text with `fi` resolves.
+- A `context` heading holding U+200B is refused.
+- A canonical JSON string in NFD is written in NFC; NFKC is never applied to it.
+- Each row of the boundary table in section 2 gives the stated result.
+- `value` `5` in `5 items and 5 more` is refused (two occurrences).
+- A request sent 900 ms after the action is inside the window and fails `absent`.
+- A page that keeps one XHR in flight past `assertTimeout` fails `absent` with `network_not_idle`.
+- A repository key that tries to set the idle time is refused by the strict config schema.
+- An EventSource opened by the action does not keep the window open.
+- An `absent` whose button has `aria-disabled="true"`, sits under an `inert` ancestor, or is `disabled`: refused at
+  save; at replay the step ends `action_failed` and the assertion is not evaluated.
+- An `absent` whose action would need `force` to click (an overlay covers the button): refused at save.

@@ -769,3 +769,24 @@ One test per line; "passes" means no `uncovered` entry from that command.
   utilities (section 4 of the amendment of 2026-11-01). Re-hashing before each hook narrows the window and does
   not close it.
 - `curl` without `-m` and long `sleep` (up to 999 s) can hold a run: a denial of service, not a bypass.
+
+## Amendment 2026-11-12: closure items of the testable-rule list
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+Task T0.33 lists four closure rules of this ADR to make testable (items 1 to 4). Each was already decided by
+Amendment 2026-11-02 of this ADR, which task T0.27 delivered. This amendment records where each one lives and adds
+no rule.
+
+| T0.33 item | Decided in Amendment 2026-11-02 |
+|---|---|
+| 1. Definition of "path word" | Section 2: the position table (classes R, W, T), the decision order, and the normalisation |
+| 2. Quote-state table for `~` and globs | Section 1: the four states `U`, `S`, `D`, `E` and the per-character table, including `~` after `=` and `:` |
+| 3. Depth counting | Section 7: hook text at depth 0, depth 5 allowed and 6 refused, per-chain enumeration, `cycle` over `limit_exceeded` |
+| 4. Case-insensitivity of the refused env-name patterns | Section 9, "Case folding": names and patterns compared upper-cased (ASCII), for this ADR and for ADR 0025 section 4 |
+
+### Tests this implies
+
+- Section 12 of Amendment 2026-11-02, items 1 (quote states), 2 (path words) and 9 (env names, including
+  `pythonpath` and `Http_Proxy`), and the nine tests listed in section 7 (depth and cycles), cover items 1 to 4; no
+  further test is added.

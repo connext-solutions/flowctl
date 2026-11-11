@@ -749,3 +749,493 @@ of rules 6 and 7 are implemented and where that differs from the text above.
   WebRTC IP-handling flags limit which addresses are used rather than turning WebRTC off, which a test without
   outside network cannot show. Best effort as rule 6 says: a dedicated or shared worker gets no init script and
   keeps `WebTransport`; a test pins that limit, and no WebRTC or WebTransport call is part of a verdict.
+
+## Amendment 2026-11-12: production read-only replay grammar details
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+Closes task T0.30. Each rule completes section 2a. Where a sentence of section 2a conflicts with this amendment,
+this amendment governs. Error codes are those of section 2a (`prod_request_blocked`, `readonly_replay_not_trusted`,
+`profile_expired`, `trust_entry_invalid`) unless a new one is named here. An entry that breaks any rule below is
+ignored as a whole with `trust_entry_invalid`, never partially applied.
+
+### 1. The `query` rule of a template
+
+```yaml
+productionOrigins:
+  "https://app.example":
+    allowReadOnlyReplay:
+      templates:
+        - class: xhr
+          path: /api/orders
+          query:
+            - { name: page, type: int }
+            - { name: from, type: date }
+            - { name: status, type: "enum[open|closed]" }
+        - class: document
+          path: /orders/{int}
+        - class: graphql
+          path: /graphql
+          query:
+            - { name: operationName, type: "literal:OrderList" }
+            - { name: extensions, type: "sha256[<64 lowercase hex>]" }
+          headers: [x-requested-with]
+```
+
+- `query` is a list of objects with exactly the keys `name` and `type`. A missing key, another key, or a value
+  that is not a list makes the entry invalid.
+- `name` matches `^[A-Za-z0-9_.-]{1,64}$` and is compared byte for byte with the decoded query name. Names are
+  unique within one template.
+- `type` is one of the anchored value types of section 2a, spelled as there (`int`, `date`, `uuid`, `slug`,
+  `enum[a|b]`, `literal:<text>`, `sha256[h1|h2]`). The parsed YAML string is what counts; YAML quoting is needed
+  for types that contain `[`, `|` or `:`.
+- Every listed name is optional and may appear at most once. No name is required. Order is free; the order sent
+  is kept for the canonical re-serialisation check of section 2a.
+- An absent `query` and `query: []` mean the same: no query string. A request whose URL has a `?`, even with
+  nothing after it, is aborted.
+- `assetQuery` names follow the `name` rule; their values must match `^[A-Za-z0-9._-]{1,64}$`.
+- **GraphQL.** In a `graphql` template, the `extensions` value, decoded once, must be byte-equal to
+  `{"persistedQuery":{"version":1,"sha256Hash":"<h>"}}` with `<h>` one of the hashes its `sha256[...]` type lists.
+  The names `query` and `variables` cannot be listed in a `graphql` template (the entry is invalid), because no
+  value type admits a document or JSON. A persisted query that needs variables cannot run on production.
+- **Limits per entry:** 128 templates, 16 `query` items per template, 8 `headers` names per template, 16
+  `assetPaths`, 8 `assetQuery` names. Over a limit, the entry is invalid.
+
+### 2. Path segments, placeholders, trailing slash and boundaries
+
+- A template `path` starts with `/`, has at most 2048 bytes and 32 segments. A **literal segment** matches
+  `^[A-Za-z0-9._~-]{1,128}$` and is not `.` or `..`. A **placeholder segment** is exactly `{int}`, `{uuid}` or
+  `{slug}`. Any other segment makes the entry invalid.
+- **The only boundary of a placeholder is `/`.** `{int}.json`, `v{int}` and `{slug}-{int}` are invalid templates.
+  The request segment `12.json` does not match `{int}`. A `.` inside a literal segment is literal: `/export.csv`
+  matches only itself. `{slug}` (`^[a-z0-9-]{1,64}$`) admits no `.`, `_` or upper case, so `a.b` and `A-b` do not
+  match it.
+- Rule 7 of section 2a (destructive tokens and `deny`) runs on the whole request path **after** the match,
+  placeholder values included: a request `/items/delete` that matches `/items/{slug}` is aborted.
+- **Trailing slash.** A template may end with `/`. Matching is exact: `/orders` and `/orders/` are two templates
+  and neither matches the other's request. The "first and last segments are literal" rule is judged on the
+  segments before a final `/`, and the empty-segment refusal of path step (c) does not apply to the one empty
+  string after a final `/`. The template `/` alone is valid for class `document` only; it is the one template
+  without a segment.
+
+### 3. Text after the decode: printable ASCII only, no Unicode normalisation
+
+This replaces "a decoded segment must be valid UTF-8 in NFC" in path step (b), and applies the same rule to query
+names and values. After the single decode, every byte of a path segment, a query name and a query value is in
+0x21 to 0x7E. Any other byte aborts the request. **No NFC, NFD or NFKC is applied anywhere in production
+matching.** Why: every literal and every value type is ASCII, so a non-ASCII byte can never match, and refusing
+it before any normalisation means no Unicode table can change a decision. *Rejected:* NFKC folding, which merges
+distinct server paths into one allowed path.
+
+### 4. Redirect hops on production
+
+- **Every hop must match a template.** A hop is a new request and must pass all seven request rules of section 2a
+  on its own, judged before the browser sends it (the redirect hold of section 3). Its class is the class of the
+  request that started the chain: the hop of a navigation must match a `document` template, the hop of an XHR an
+  `xhr` template. Rule 6 (subresources) applies to a hop only when the first request of the chain was a
+  subresource.
+- A hop to another origin, including another scheme or port of the production host, is aborted.
+- At most 5 hops per chain; the 6th is aborted. An aborted hop is reported like any request (`method origin class
+  sha256(path)[:8]`).
+- Why: a hop admitted without a template would let a listed `GET` redirect to an unlisted path whose `GET` has a
+  side effect.
+
+### 5. Headers on a `GET`
+
+Header names are compared after ASCII lower-casing. The values of listed headers are not judged, except:
+
+| Header | Rule |
+|---|---|
+| `host` | Optional. If present, equal to the entry's authority (the host, plus `:port` only when not 443), host compared lower-cased; else abort |
+| `origin` | Optional. If present, byte-equal to the entry's origin; `null` or any other value aborts |
+| `content-length`, `content-type`, `transfer-encoding`, `expect`, `te`, `trailer` | Never allowed: they are not in the list, and a `GET` carries no body |
+| `:method`, `:scheme`, `:authority`, `:path` (HTTP/2 and HTTP/3 pseudo-headers, when the request object shows them) | `:method` is `GET`, `:scheme` is `https`, `:authority` follows the `host` rule, `:path` is byte-equal to the judged raw path and query. Any other name that starts with `:` aborts |
+| every other name | the exact list and the two families of section 2a rule 5, plus the template's `headers` |
+
+**What Playwright and Chromium add.** A production context is created with no `extraHTTPHeaders`, no
+`httpCredentials` and no `proxy`; a configuration or profile setting that would add one refuses the run before it
+starts (`readonly_replay_not_trusted`). `userAgent` and `locale` may be set; they change only the values of
+`user-agent` and `accept-language`. The list of section 2a is not extended: `sec-purpose`, `purpose`, `sec-gpc`,
+`x-client-data`, `if-range` and `if-unmodified-since` stay out (`sec-purpose` and `purpose` mark prefetches,
+which are disabled). A browser test records the header names that the pinned Playwright and Chromium send for a
+navigation, a fetch, an XHR, an EventSource and each asset type, and fails on a name outside the list; an engine
+upgrade that adds a header fails that test, not a production run.
+
+### 6. Assets
+
+- **Source maps are not assets.** `.map` stays off the extension list of rule 6, so a `.js.map` or `.css.map`
+  request needs a template, and `trust add readonly-replay` refuses a template whose path ends in `.map`. Why: a
+  source map holds application source, and only developer tools request it.
+- An `assetPaths` entry starts and ends with `/`, each of its segments follows the literal-segment rule of
+  section 2 above, and it is matched as a byte prefix of the raw path.
+
+### 7. Time values
+
+- **`sessionMaxAge`** matches `^[1-9][0-9]{0,2}h$`: whole hours, from `1h` to `168h`. It is required;
+  `trust add readonly-replay` proposes `24h`. Another unit, `0h`, or more than `168h` makes the entry invalid.
+- **`expires`** is `YYYY-MM-DD`, a real calendar date, read in UTC. The entry is valid through
+  `<expires>T23:59:59.999Z` and absent from `00:00:00Z` of the next day. It is at most 90 days after the UTC date
+  of signing: `trust add` refuses a later date with `expires_invalid` (exit 2, ADR 0025 amendment 2026-11-02
+  section 8), and a stored entry beyond it is `trust_entry_invalid`.
+- **`createdAt`** inside a session file is written by flowctl as ISO 8601 UTC with milliseconds
+  (`2026-11-12T08:30:00.000Z`, through dayjs). Any other form, or a value more than 300 seconds ahead of the
+  verifier's clock, is `profile_expired`. A session is expired when `now - createdAt >= sessionMaxAge`.
+- The clock is the verifier's clock: a stated trust assumption, as in ADR 0020 amendment 2026-11-02 section n,
+  limit 5.
+
+### 8. Step kinds and assertions on production
+
+The flow schema has these step kinds (`flow/schema.ts`, `flow/steps.ts`): `click`, `check`, `hover`, `fill`,
+`select`, `press`, `goto`, `reload`, `wait`, `scroll`, `upload`, `drag`, `as`. The closed list of section 2a maps
+onto them as follows; a flow with a refused kind is refused before it starts (`readonly_replay_not_trusted`).
+
+| Step kind | On production |
+|---|---|
+| `goto`, `click`, `fill`, `press`, `select` | allowed |
+| `wait` | allowed; it is the whole of `wait*` in section 2a (waits `ms`, captures nothing) |
+| `as` | allowed only to a profile in `profiles` (section 2a) |
+| `check`, `hover`, `scroll`, `reload`, `drag` | refused |
+| `upload` | refused (section 1a rule 11, section 2a) |
+| a kind added to the schema later | refused until an amendment lists it |
+
+`expect*` names no step kind: expectations are the flow's `assertions`, not steps. Each assertion kind is allowed
+on production and records only what this table says; none stores page or response content.
+
+| Assertion | Recorded |
+|---|---|
+| `text` (with or without `within`) | pass or fail, and the length of the matched text |
+| `url` | pass or fail, and the template the URL matched (placeholders, no values) |
+| `value` | pass or fail, and the length of the field value |
+| `network` | method, template and status; a `requestBody` field refuses the flow before it starts (a `GET` has no body) |
+| `noConsoleErrors` | pass or fail, and the number of errors; console text is not kept |
+
+Why the step list is not widened: section 2a's list is the accepted surface on a trust boundary, and widening it
+needs its own amendment. *Rejected:* admitting `check`, `hover`, `scroll` and `reload` now on the grounds that the
+request layer contains them.
+
+### 9. WebRTC, WebTransport and workers
+
+On a run in `redacted-production` mode the browser is launched with `--disable-quic` and
+`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`. An init script, added before the first navigation and
+run in every frame and popup, deletes `RTCPeerConnection`, `webkitRTCPeerConnection`, `RTCDataChannel`,
+`RTCRtpSender`, `RTCRtpReceiver`, `RTCSessionDescription`, `RTCIceCandidate`, `WebTransport`, `Worker` and
+`SharedWorker` from the page's global object. Workers are removed because an init script does not run inside a
+worker, where `WebTransport` exists. Cost: an application that needs a dedicated or shared worker cannot run
+read-only replay.
+
+**Test wording.** The test is named "WebRTC and WebTransport are removed from production pages (best effort)". It
+asserts that the launch arguments contain both flags; that in the top page, a same-origin iframe and a popup,
+`typeof` of each deleted name is `"undefined"`; and that `new Worker(...)` throws. Its description states that it
+does not prove the absence of UDP or QUIC traffic, and that no verdict depends on WebRTC or WebTransport.
+
+### Tests this implies
+
+- A template with `query: [{ name: page, type: int }]` admits `?page=2`, `?` alone is aborted, `?page=2&page=3` is
+  aborted, `?Page=2` is aborted.
+- A `query` item with a third key, a duplicate `name`, or a `name` with a space makes the whole entry invalid.
+- A `graphql` template that lists `variables` or `query` is invalid; an `extensions` value with another key order
+  or extra whitespace is aborted.
+- 129 templates in one entry: `trust_entry_invalid`.
+- `{int}.json`, `v{int}` and `{slug}-{int}` are invalid templates; `/a/12.json` does not match `/a/{int}`.
+- `/items/delete` against `/items/{slug}` is aborted by rule 7.
+- `/orders/` does not match `/orders` and the reverse; `/` matches only a `document` request for `/`.
+- A path segment or query value that decodes to `é` (`%C3%A9`) is aborted, also when its NFC and NFKC forms are
+  equal.
+- A navigation to a listed path that answers 302 to an unlisted path: the hop is aborted before it is sent.
+- A chain of six listed redirects: the 6th hop is aborted.
+- A hop to `http://` or another port of the production host is aborted.
+- `origin: null`, a `host` with another port, `content-type` on a `GET`, and a pseudo-header `:foo` each abort the
+  request.
+- A profile with `extraHTTPHeaders` refuses a production run before it starts.
+- The header-name inventory test under the pinned Playwright passes with the list of section 2a unchanged.
+- A request for `/assets/app.js.map` with no template is aborted; `trust add` refuses a template ending in `.map`.
+- `sessionMaxAge` of `0h`, `169h`, `24` and `1d` makes the entry invalid; `168h` is valid.
+- `expires: 2026-11-12` is valid at `2026-11-12T23:59:59.999Z` and absent at `2026-11-13T00:00:00.000Z`.
+- `trust add readonly-replay` with an `expires` 91 days after today ends `expires_invalid`.
+- A session `createdAt` 301 seconds in the future, or without milliseconds, is `profile_expired`.
+- A flow with a `check`, `hover`, `scroll`, `reload`, `drag` or `upload` step is refused before it starts on
+  production; a schema test fails when a step kind is added without a row in the table of section 8.
+- A `network` assertion with `requestBody` refuses the flow on production.
+- A seeded marker in page text is absent from `run.json` after `text`, `value` and `url` assertions pass and fail.
+- The WebRTC and WebTransport best-effort test of section 9.
+
+## Amendment 2026-11-12: destructive ledger details
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+Closes task T0.31. Each rule completes section 5 ("The run ledger" and the `destructiveConfirm` schema). Where a
+sentence of section 5 conflicts with this amendment, this amendment governs.
+
+### 1. Id-shaped tokens and the seen-set
+
+- **Id-shaped** means one of the two placeholder types a destructive template may use (section 5, ledger rule 6:
+  `{slug}` is invalid there): an **int** (`^(0|[1-9][0-9]{0,17})$`) or a **uuid** (8-4-4-4-12 hex).
+- **Extraction from text.** Every maximal run of ASCII digits of length 1 to 18, whatever its neighbours,
+  canonicalised by dropping leading zeros (`007` gives `7`, `000` gives `0`); runs longer than 18 digits are
+  ignored, since no int id can be that long. Every match of the uuid pattern in either letter case, canonicalised
+  to lower case. **There is no length floor**: a one-digit run counts. Why: a floor would let a short existing id
+  enter the ledger. Cost: a created id equal to any number seen earlier aborts the run (`ledger_replay`, fail
+  closed). *Rejected:* a floor of 4 digits.
+- **Sources**, scanned in order of arrival: the URL and the body of every request the run sent; the body of every
+  response of type `document`, `fetch`, `xhr` and `eventsource`, and every WebSocket frame received, after
+  decompression, read as UTF-8 with invalid bytes replaced; and the `innerText` of every frame, read immediately
+  before a request that matches a `create` entry is sent. Scripts, styles, images, fonts and media are not
+  scanned.
+- The id of a create response is checked against the seen-set **before** that response's own body is added.
+- **Memory bound.** At most 100 000 distinct canonical tokens per run (a few MiB). A response body over 8 MiB or an
+  `innerText` read over 2 MiB cannot be scanned whole. Each of these ends the run `ledger_overflow` with detail
+  `seen` or `body`, and cleanup starts; detail `ids` is the 500-id cap of ledger rule 9. A run keeps a seen-set
+  only when at least one `create` entry applies to it.
+
+### 2. Paths in an entry are JSON Pointers
+
+- `bodyKeys`, `nameField`, `naturalKeys`, and the `body:` forms of `idFrom` and `idPositions` are JSON Pointers
+  (RFC 6901), for example `/data/id`, with the escapes `~0` and `~1`. Dotted paths are not accepted.
+- A segment that is exactly `*` stands for every index of an array and never matches an object member; a body
+  that holds a member whose key is `*` is blocked. A numeric segment (`0` or `[1-9][0-9]*`) selects one index; the
+  segment `-` is refused.
+- `idPositions` writes an array of ids as `body:/ids/*`. This replaces the `body:<path>[]` spelling of section 5.
+- For an `urlencoded` body a pointer has exactly one segment (`/name`), the form field name.
+- **Body discipline** (ledger rule 4): every leaf of the body (a string, number, boolean, `null`, empty object or
+  empty array) has a pointer which, with each array index replaced by `*`, must be in `bodyKeys`. `nameField` and
+  each `naturalKeys` pointer must be present and hold strings.
+- **`idFrom: body:<pointer>`**: the value is a JSON string or number. A number must be an int; a string must match
+  int (no leading zeros) or uuid (canonicalised to lower case). An absent value, an array, an object or any other
+  shape ends the run `ledger_mismatch`.
+- **`idFrom: header:Location`**: exactly one `Location` header, resolved against the request URL, on the same
+  origin, whose path matches the entry's `cleanup.template`; the id is that template's one placeholder value.
+  Otherwise `ledger_mismatch`.
+
+### 3. A lost create response: intent lines, no sweep
+
+- Before a request that matches a `create` entry is sent, the run appends and fsyncs an **intent** line
+  `{"kind":"intent","seq":<n>,"entry":"<entry id>","name":"<nameField value>","prev":"..."}`; `seq` numbers the
+  run's requests from 1. When the 201 arrives and the id enters, an **id** line
+  `{"kind":"id","seq":<n>,"entry":"<entry id>","id":"<id>","prev":"..."}` follows, fsynced before the response
+  reaches the page (ledger rule 9). An answer with a status from 400 to 499 writes
+  `{"kind":"none","seq":<n>,"status":<s>,"prev":"..."}`.
+- An intent with neither an `id` line nor a `none` line (no answer, a 5xx, a closed page, a crash) is
+  **unconfirmed**. It is reported in `cleanup_incomplete` with detail `create_unconfirmed` and the `nameField`
+  value, so a person can find the record.
+- **No sweep.** flowctl never lists records by `prefix` and deletes them, because a name never authorises a
+  mutation (section 5, "Confirm"). *Rejected:* a sweep through a GET list by prefix, which would delete a `QA-`
+  record of another run or of a person.
+
+### 4. Concurrent runs and the shared `QA-` namespace
+
+- Runs never share a ledger: each run has its own file, and authorisation is by (create-entry id, record id) in
+  that run's ledger, so a run never mutates a record that another run created, even through the same entry.
+- The create request's `nameField` value must start with `prefix` **and contain the run's `{{uid}}` value** (8
+  lowercase hex characters, `flow/templates.ts`); otherwise the request is blocked. `naturalKeys` keep the prefix
+  rule only, because a code field may be too short for the uid. Two concurrent runs therefore never create the
+  same name, and a natural-key collision ends in the attested `conflictStatus` with no write.
+- `{{uid}}`, `{{today}}` and `{{today+N}}` / `{{today-N}}` are values flowctl generates. They are **not** run-time
+  inputs for the "unconfirmable" rule of section 5: the digest binds the flow text that holds them. A flow
+  `inputs` value, an `env:` input or a secret that reaches a covered request still makes the flow unconfirmable.
+
+### 5. Retries, duplicates, and several creates in one flow
+
+- flowctl never retries a non-GET request. An application retry is a new request judged on its own: a second 201
+  with a new id enters the ledger (two records, both cleaned); a second 201 with the id of the first is
+  `ledger_replay`, because the first response body put the id into the seen-set; the run aborts, and cleanup still
+  removes that id, which the first `id` line recorded. A `conflictStatus` answer creates nothing.
+- One `create` entry may mint any number of ids within the 500-id cap; each matching request adds at most one. A
+  response with an array at `idFrom` is `ledger_mismatch`. A flow that creates records at several endpoints needs
+  one `create` entry per endpoint; a child that names its parent binds the parent through ledger rule 5 (a ledger
+  id of the same run).
+
+### 6. `session` entries cover login only
+
+The built-in `deny` list of section 3 (`/**/logout`, `/**/logout/**`, `/**/log-out`, `/**/logoff`,
+`/**/signout`, `/**/sign-out` in `browser/scope.ts`) wins over every entry, so no flow sends a logout, on any env
+class. `kind: session` covers login and session-refresh endpoints only. `trust add destructive` refuses a
+`session` entry whose template matches a built-in or store `deny` pattern, and such a stored entry is
+`trust_entry_invalid`. Why: logging a profile out ends the stored session that later runs use.
+
+### 7. Cleanup order, retry and verify
+
+- **Order:** ledger ids in reverse order of entry (last created first), so a child created after its parent is
+  removed first. Every id goes through the `cleanup` of the `create` entry that minted it, and through the request
+  layer like any other request.
+- **Cleanup request:** sent once; on a network error or a 5xx answer, sent once more after 1 s. 2xx, 404 and 410
+  count as done. Any other answer makes the id leftover, and no verify is sent for it.
+- **Verify:** a `GET` on the verify template, at most 3 attempts, the second 1 s after the first and the third 2 s
+  after the second. 404 or 410 on any attempt confirms the deletion; anything else after the third attempt is
+  leftover.
+- **Bound:** cleanup of one run takes at most 120 s; ids not reached by then are leftover. A failing id never stops
+  the others.
+- `flowctl cleanup <run id>` appends `{"kind":"cleanup","seq":<n>,"entry":"<entry id>","id":"<id>",
+  "result":"confirmed"|"leftover","prev":"..."}` lines to the same chained ledger. An id already confirmed is
+  skipped, so cleanup can run again.
+
+### 8. Run id, ledger file and where the ledger errors are reported
+
+- **Run id.** The format `RunSession` generates today: `r_`, the time in milliseconds in base 36, then 4 lowercase
+  hex characters (`run/session.ts`), checked against `^r_[0-9a-z]{1,32}$` (the `RUN_ID` pattern of
+  `run/evidence.ts` with a length cap). This replaces `NAME_PATTERN` for run ids in ledger rule 10 and in ADR 0025
+  amendment 2026-11-02 section 4, since `NAME_PATTERN` has no `_`. A run id has no `/`, `.` or other separator and
+  is never a path.
+- **File.** The ledger is `<store>/ledgers/<run id>.jsonl`, in the fixed directory of ADR 0025 amendment 2026-11-02
+  section 4, with the header line that section defines. This replaces "a `ledgers` directory named in the
+  provisioned store" in ledger rule 9 (the edit that ADR 0025 amendment section 9 leaves to this ADR). The
+  `O_EXCL` create fails on an existing name; the run then ends `error: ledger_exists` before its first request,
+  and a new run gets a new id.
+- **Reporting.** `ledger_replay`, `ledger_mismatch`, `ledger_overflow` and `ledger_exists` are run error kinds,
+  next to `destructive_blocked`. The outcome is `error`, never `passed` or `failed` (ADR 0004). `run.json`, the CLI
+  summary and the MCP result carry the kind and a hint that names the entry id and the `seq`, never a response
+  body. The CLI exits as for any run error. The ledger gets `{"kind":"abort","reason":"<kind>","prev":"..."}` as
+  the last line the run writes.
+- **Cleanup result.** `cleanup_incomplete` is a separate field of the result, `cleanup: { confirmed: <n>, leftover:
+  [{ entry, id, name, detail }] }`, with `id: null` for an unconfirmed intent. The verdict is unchanged and CI
+  exits non-zero, as section 5 says.
+
+### 9. Renewing `expires`, and following an origin change
+
+- `expires` of a `destructiveConfirm` entry follows the same rule as `allowReadOnlyReplay` (the amendment above,
+  section 7): a UTC date, at most 90 days after signing.
+- **Renewal without re-reading flows.** `flowctl trust add destructive --renew <entry id>...` (interactive, nonce,
+  owner-key signature, ADR 0025 section 3) writes a new `expires` (`--days N`, 1 to 90, default 30) for each named
+  entry, **only if** the flow's current confirmation digest equals the entry's `hash`. An entry whose digest
+  changed is refused with `renew_digest_changed` and needs the full `trust add destructive`. The screen prints one
+  line per entry in the fixed format of section 5, plus the old and new dates. An expired entry may be renewed the
+  same way.
+- **Origin.** `origin` is never edited in place. When the store's origin for an env changes (`trust add env`),
+  every entry of that env whose `origin` differs is `trust_entry_invalid`. `flowctl trust add destructive
+  --renew-env <env>` re-binds them: it prints the old origin, the new origin and every affected entry line, and
+  writes them with the new `origin` and a fresh `expires`, again only for entries whose digest still matches.
+- Why: the digest already binds the flow, its closure and its `vars`, so re-reading unchanged flows adds nothing;
+  the origin is the one bound value outside the digest, and the owner sees it change.
+
+### Tests this implies
+
+- Page text `Total 7` then a create returning id `7`: `ledger_replay`; returning `0007` as a JSON string:
+  `ledger_mismatch` (leading zeros).
+- A create returning uuid `ABCD...` that appeared earlier in lower case: `ledger_replay`.
+- An earlier `GET /items/55` request, then a create returning 55: `ledger_replay`.
+- A digit run of 19 digits in a body is not added to the seen-set.
+- 100 001 distinct tokens: `ledger_overflow` detail `seen`; a 9 MiB JSON response on a run with a create entry:
+  `ledger_overflow` detail `body`.
+- `idFrom: body:/data/id` reads `{"data":{"id":12}}`; `body:/data/items/0/id` reads the first element; `body:/-`
+  and a dotted path are refused at `trust add`.
+- `bodyKeys: [/lines/*/qty]` admits `{"lines":[{"qty":1},{"qty":2}]}` and blocks `{"lines":[{"qty":1,"x":0}]}`;
+  a body member named `*` is blocked.
+- `idFrom: header:Location` with a cross-origin `Location`, or two `Location` headers: `ledger_mismatch`.
+- Kill the run after the intent line and before the answer: `flowctl cleanup` reports `create_unconfirmed` with the
+  name; nothing is deleted by name.
+- A 409 answer writes a `none` line and is not reported as unconfirmed.
+- Two concurrent runs with the same create entry: each run's mutate of the other run's id is blocked.
+- A create whose `nameField` lacks the run's uid is blocked; a flow using `{{uid}}` in that field is confirmable.
+- An app retry that returns the same id twice: `ledger_replay`, and cleanup confirms that id deleted.
+- A response with an array at `idFrom`: `ledger_mismatch`.
+- `trust add destructive` refuses a `session` entry for `/api/logout`; a stored one is `trust_entry_invalid`.
+- Parent created before child: cleanup deletes the child first.
+- Cleanup answering 500 then 204: one retry, then verify; verify 200, 200, 404: confirmed; verify 200 three times:
+  leftover.
+- A cleanup that runs past 120 s leaves the remaining ids leftover.
+- Running `flowctl cleanup` twice sends no request for ids confirmed by the first run.
+- `flowctl cleanup ../x`, `cleanup R_1` and a 33-character id are refused as usage errors; `r_lq3k2a1b9f0e` is
+  accepted.
+- A ledger file that already exists for the run id: `error: ledger_exists` before the first request.
+- `ledger_replay` appears as `error.kind` in `run.json`, the CLI summary and the MCP result, and the ledger's last
+  run line is the `abort` line.
+- `--renew` of an entry whose flow changed: `renew_digest_changed`; of an unchanged one: a new `expires`, nothing
+  else in the entry differs.
+- An env origin changed in the store: its entries are `trust_entry_invalid` until `--renew-env`.
+
+## Amendment 2026-11-12: testable rules for scope, guards and owner-decision markers
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+Task T0.33 lists vague rules to make testable. This amendment closes the items this ADR owns (5, 6, 8 for paths,
+12 by pointer, 14, 15). Items 1 to 4 are in ADR 0021, items 7, 8 (spec text), 11 and 13 in ADR 0020, items 9 and
+10 in ADR 0023, each in an amendment of 2026-11-12.
+
+### 1. Items closed by the two amendments above, or elsewhere
+
+| Item | Closed by |
+|---|---|
+| 5. Shape of the `query` rule | Amendment 2026-11-12 (read-only replay), section 1 |
+| 6. "Id-shaped" token | Amendment 2026-11-12 (ledger), section 1 |
+| 7. NFKC policy, for this ADR | One table in ADR 0020 amendment 2026-11-12, section 1. In short: scope paths get no Unicode normalisation; production paths are printable ASCII only; the destructive matcher uses NFC; `.git` components (section 1a rule 6) use case folding plus NFC and NFD |
+| 8. Token boundary of `{slug}` and literals in paths | Amendment 2026-11-12 (read-only replay), section 2 |
+| 12. Store writability (`faccessat`, ACLs, effective uid 0) | ADR 0025 amendment 2026-11-02, section 3: seven ordered checks, `access(2)` with `W_OK` for ACLs and read-only mounts (Node has no `faccessat(AT_EACCESS)`), euid 0 refused, capability and group checks. Nothing is added here |
+
+### 2. What a "token" is in the destructive matcher (item 14)
+
+This documents `destructiveWord` and `destructiveRequest` in `browser/destructive.ts`, which are already shipped.
+It replaces "tokenised on case change, `_`, `-`, `/` and whitespace" in section 5.
+
+1. **Input.** A control's accessible name, `data-testid` or `href`; for a request, the URL path (never the query)
+   percent-decoded up to 4 rounds, stopping at a malformed escape. The scope guard has already refused a path that
+   does not settle within 5 rounds (section 3, rule 3).
+2. **Normalise.** NFC, then a split is inserted between a lowercase letter or a digit and a following uppercase
+   letter (`\p{Ll}` or `\p{N}`, then `\p{Lu}`), then the text is lower-cased (locale-independent).
+3. **Split.** On every run of code points that are not a letter (`L`), a mark (`M`) or a number (`N`). A **token**
+   is a non-empty maximal run of letters, marks and numbers after these steps.
+4. **Safe phrases** (`SAFE_PHRASES`) are tokenised the same way and removed first; each removal leaves an empty
+   token, so it also breaks adjacency.
+5. **Match.** A word-list entry (`DESTRUCTIVE_WORDS`, plus the repo's `target.destructiveWords`) is tokenised the
+   same way and matches when its tokens equal consecutive tokens of the input. A multi-word entry such as `từ
+   chối` needs both tokens in order.
+
+Consequences: `DeleteAll` gives `delete all` (match); `delete_all` and `delete-all` match; `Resend` is one token
+(no match on `send`); `2Delete` matches; `delete2` is one token (no match); a decomposed `xóa` matches after NFC.
+**Stated gap:** an uppercase run before a capitalised word is not split, so `XMLDelete` is one token and does not
+match. The request layer's non-GET rule and the stored confirmations are the line behind the label matcher.
+
+### 3. What an "Owner decision" marker means (item 15)
+
+1. A marker **Owner decision** (bold or italic, singular or plural) marks a choice reserved to the owner. It names
+   one recommended default and at least one alternative.
+2. The normative text around a marker is written to the recommended default, and implementations build that
+   default. If the text and the marker disagree, the recommended default governs and the text is a defect, fixed
+   by an amendment.
+3. A marker is settled by an acceptance line. "Including the recommended default of each decision it marks"
+   settles every marker of that amendment at its default. A different choice is recorded with its date in the
+   acceptance line or next to the marker (as ADR 0021 amendment 2026-11-02 section 9 does for locales).
+4. Text decided under a delegation, such as the amendments of 2026-11-12, carries no marker: each choice is a
+   decision, and the first line says who made it.
+5. This table is the one place that lists every marker of ADRs 0020, 0021, 0023, 0024 and 0025 with its
+   recommended default and how it was settled. A new marker adds a row here in the same change.
+
+| ADR, section | Choice | Recommended default | Settled |
+|---|---|---|---|
+| 0020 h | `unclassified` in CI after the migration | enforce after T4.16 | accepted with defaults, 2026-11-02 |
+| 0020 i.1 (a) | CI with no floor | label only | accepted with defaults, 2026-11-02 |
+| 0020 i.1 (b), l | merge-base rule | adopt when T4.5 lands, `ci` workflow only | accepted with defaults, 2026-11-06 |
+| 0020 j rule 2 | duplicate flow stems | refuse | accepted with defaults, 2026-11-06 |
+| 0020 j | source of the revision number | computed by the approval command | accepted with defaults, 2026-11-06 |
+| 0020 l | when floors are raised | at every CI store provisioning | accepted with defaults, 2026-11-06 |
+| 0020 l | headline "verified" figure | `verifiedChecked` only | accepted with defaults, 2026-11-06 |
+| 0020 m rule 8 | type of an expected item's `value` | string only | accepted with defaults, 2026-11-06 |
+| 0020 n limit 1 | `steps` and `preconditions` in the signed unit | leave unsigned | accepted with defaults, 2026-11-06 |
+| 0020 o | when `handWritten` is exported | at every CI store provisioning, with the floors | accepted with defaults, 2026-11-06 |
+| 0021 amendment 2026-11-01, 2.2 b | utility list | as written | accepted with defaults, 2026-11-02 |
+| 0021 amendment 2026-11-02, 2 | hook scratch directory | provide `.hook-tmp/` | accepted with defaults, 2026-11-03 |
+| 0021 amendment 2026-11-02, 8 | `#!/bin/dash` | keep, with the interpreter check | accepted with defaults, 2026-11-03 |
+| 0021 amendment 2026-11-02, 9 | `TZ` | the pattern | accepted with defaults, 2026-11-03 |
+| 0021 amendment 2026-11-02, 9 | `LANG` and `LC_*` | the general locale pattern | **changed** by the owner, 2026-11-03: English and Vietnamese only |
+| 0021 amendment 2026-11-02, 10 | env values | 10.1 to 10.3 as written | accepted with defaults, 2026-11-03 |
+| 0021 amendment 2026-11-02, 11 | `curl` allowlist; `cp`/`mv`/`rm` operand counts; class R files are shell scripts | as written | accepted with defaults, 2026-11-03 |
+| 0023 | none | | |
+| 0024 1a | cross-repo flows layout | store-registered flows root | text accepted, 2026-11-02 |
+| 0024 2a | screenshots on production | never kept | text accepted, 2026-11-02 |
+| 0024 5 | a `POST` that acts on a ledger id | no entry kind; blocked on `shared` | text accepted, 2026-11-02 |
+| 0024 5 | `defaultEnv` | recorded default in the store | text accepted, 2026-11-02 |
+| 0025 3 | sign the rows marked "no" | sign them | **decided** by the owner, 2026-11-02: signed |
+| 0025 5 | CI `hooks` entry per flows directory | no, one entry per flow | text accepted, 2026-11-02 |
+| 0025 6 | refuse inside a detected agent session without the rules | no, warn only | text accepted, 2026-11-02 |
+| 0025 amendment 2026-11-02, 2 | hosted runners | `signed` layout with a typed phrase | accepted with defaults, 2026-11-06 |
+| 0025 amendment 2026-11-02, 5 | confirmation during owner-key rotation | one summary screen, one nonce | accepted with defaults, 2026-11-06 |
+| 0025 amendment 2026-11-02, 7 | host without a keychain | refuse unless `--anchor-dir` | accepted with defaults, 2026-11-06 |
+
+### Tests this implies
+
+- `destructiveWord` gives `delete` for `DeleteAll`, `delete_all`, `delete-all` and `2Delete`, and nothing for
+  `Resend`, `delete2` and `XMLDelete` (the last pins the stated gap, so a change to it is deliberate).
+- `destructiveWord` matches `xóa` given in NFD, matches `Từ chối` and does not match `Gửi duyệt`, `Người duyệt đơn`
+  or `Từ khoá`.
+- `destructiveRequest('GET', 'https://app.test/items/12/%2564elete')` gives `delete`;
+  `destructiveRequest('GET', 'https://app.test/items?action=delete')` gives nothing (the query is not read).
+- A docs test lists every line of ADRs 0020, 0021, 0023, 0024 and 0025 that contains `Owner decision` as a marker
+  (outside this section) and fails unless each one maps to a row of the table above.
