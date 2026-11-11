@@ -26,5 +26,6 @@ export {
   WALK_LIMITS,
   type WalkedFile,
   type WalkLimits,
+  type WalkOptions,
   walkContained,
 } from './walk.js';

@@ -24,6 +24,8 @@
  * - every package directory is known to `PACKAGE_DEPS`;
  * - fixed waits (`waitForTimeout`, timer sleeps) only in `SLEEP_ALLOWED` files (`.claude/rules/performance.md`);
  * - core never prints or exits (`console.*`, `process.exit`, `process.stdout`) (`.claude/rules/reliability.md`);
+ * - `core/src/reconcile/` never imports `child_process` (with or without `node:`): the code index reads
+ *   untrusted repositories and never starts git or any other process (ADR 0035);
  * - no new env-input path in `packages/*\/src` (T0.13): a new read of the process environment or `env` input key
  *   fails unless listed in `env-input-baseline.mjs` (ADR 0024 section 7; flow inputs are also checked against the
  *   trust store allowlist since T1.14); a baseline entry whose
@@ -105,11 +107,15 @@ const GENERATOR_SAVE_OK =
   /^(?:packages\/core\/(?:src\/derive\/|src\/save\.ts$|test\/derive\/)|scripts\/(?:check-arch|check-arch\.helpers|check-arch\.(?:boundary-source|wiring|layers|imports|calls|rounds|late)\.test|plugin-boundary|module-specs)\.mjs$)/;
 const squash = (text) =>
   text
-    .replace(/\\u\{([0-9a-f]+)\}|\\u([0-9a-f]{4})|\\x([0-9a-f]{2})/gi, (_, a, b, c) =>
-      String.fromCodePoint(Number.parseInt(a ?? b ?? c, 16)),
-    )
+    .replace(/\\u\{([0-9a-f]+)\}|\\u([0-9a-f]{4})|\\x([0-9a-f]{2})/gi, (m, a, b, c) => {
+      const cp = Number.parseInt(a ?? b ?? c, 16);
+      return cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+    })
     .replace(/\$\{[\s'"`]*\}/g, '')
     .replace(/['"`+\s]/g, '');
+/** Folders whose code reads untrusted repositories and may never start a process (ADR 0035). */
+const NO_SPAWN = /^packages\/core\/src\/reconcile\//i;
+const CHILD_PROCESS = /^(?:node:)?child_process(?:\/|$)/i;
 const SLEEP = /\bwaitForTimeout\(|\bsetTimeout\b/;
 const CORE_OUTPUT = /\bconsole\.\w+\(|\bprocess\.(exit|stdout|stderr)\b/;
 const INTERNAL_DOCS = ['docs', 'super' + 'powers'].join('/');
@@ -308,6 +314,8 @@ for (const file of files) {
       report(file, n, `specifier ${JSON.stringify(written).slice(1, -1)} contains a control character; Node strips tab, LF and CR from specifiers, so the name cannot be trusted`);
     const decoded = safeDecode(written.replace(/[\t\n\r]/g, ''));
     const spec = decoded.startsWith('.') ? decoded.replace(/[?#][\s\S]*$/, '') : decoded;
+    if (NO_SPAWN.test(file) && CHILD_PROCESS.test(spec))
+      report(file, n, `reconcile never starts a process (ADR 0035): ${spec}; read files through trust/contain`);
     if (spec.startsWith('.') && (spec.includes('\\') || raw.includes('\\'))) {
       report(file, n, `relative import ${JSON.stringify(spec).slice(1, -1)} contains a backslash (or a backslash escape); Node reads \\ as a slash, so the layer checks cannot follow it`);
       continue;

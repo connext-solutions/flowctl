@@ -130,6 +130,7 @@ export {
   WALK_LIMITS,
   type WalkedFile,
   type WalkLimits,
+  type WalkOptions,
   walkContained,
 } from './contain/index.js';
 export { canonicalJson } from './canonical.js';

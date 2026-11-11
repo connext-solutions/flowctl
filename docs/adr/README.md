@@ -74,3 +74,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0032](0032-demo-video.md) | Demo videos: an opt-in replay recording with a step overlay that assertions cannot see | accepted |
 | [0033](0033-read-only-crawl.md) | Observe crawls read-only and breadth-first; a page is a path; a refused request is an observation (amended 2026-11-12: free checks, exit 1) | accepted |
 | [0034](0034-spec-to-map-matching.md) | Derive matches spec operations to the AppMap by fixed text rules, with evidence, and never breaks a tie | accepted |
+| [0035](0035-code-index.md) | The code index walks contained files with a lexer; it never runs git | accepted |

@@ -78,3 +78,22 @@ describe('check-arch bypass round: entry file reached through a directory', () =
   it('treats a SRC directory in capitals as src', () =>
     fails({ 'packages/core/SRC/flow/a.ts': "import { d } from '../derive/index.js';\n" }, /may not import core\/derive/));
 });
+
+describe('check-arch: reconcile never starts a process (ADR 0035)', () => {
+  const FILE = 'packages/core/src/reconcile/code/a.ts';
+  const SPAWN = /reconcile never starts a process/;
+  const CASES = {
+    'node: import': "import { execFileSync } from 'node:child_process';\nexport const a = execFileSync;\n",
+    'bare import': "import * as cp from 'child_process';\nexport const a = cp;\n",
+    'dynamic import': "export const a = () => import('node:child_process');\n",
+    require: "export const a = require('child_process');\n",
+  };
+  for (const [name, text] of Object.entries(CASES)) it(`fails: ${name}`, () => fails({ [FILE]: text }, SPAWN));
+  it('lets another core folder import it', () =>
+    passes({ 'packages/core/src/trust/a.ts': "import { spawn } from 'node:child_process';\nexport const a = spawn;\n" }));
+});
+
+describe('check-arch: escapes past the last code point', () => {
+  it('passes a file holding \\u{110000} instead of crashing', () =>
+    passes({ 'packages/core/test/a.test.ts': "export const a = '\\\\u{110000}';\n" }));
+});

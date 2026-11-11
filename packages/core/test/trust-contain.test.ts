@@ -266,6 +266,20 @@ describe('walkContained', () => {
       'path_not_contained',
     );
   });
+
+  it('does not enter a pruned directory name, at any depth, reports it, and lists a file of that name', () => {
+    const dir = tmp();
+    put(dir, 'node_modules/x/a.md');
+    put(dir, 'src/node_modules/b.md');
+    put(dir, 'src/dist');
+    for (let i = 0; i < 20; i++) put(dir, `dist/f${i}.md`);
+    const root = openRoot(dir, 'specs');
+    const walked = walkContained(root, { maxEntries: 10 }, undefined, {
+      prune: new Set(['node_modules', 'dist']),
+    });
+    expect(walked.files.map((f) => f.path)).toEqual(['src/dist']);
+    expect(walked.skipped).toHaveLength(3);
+  });
 });
 
 describe('ByteBudget', () => {
