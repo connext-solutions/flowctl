@@ -26,25 +26,14 @@ import {
   type NetEntry,
 } from './net-entry.js';
 import { finalScreenshot } from './final-shot.js';
+import { VideoRecorder } from './video.js';
 import { redactResponse, redactText } from './redact.js';
+import type { DecisionLogEntry } from './decision-log.js';
 
 /** Names of run directories; pruning never touches anything else in `.runs`. */
 export const RUN_ID = /^r_[0-9a-z]+$/;
 
-/** One line of `decisions.jsonl`: what System 1 saw, answered, and what flowctl did with it. */
-export interface DecisionLogEntry {
-  at: string;
-  source: 'explore' | 'heal';
-  /** Actions executed before this decision (explore) or the flow step being healed (heal). */
-  step: number;
-  url: string;
-  /** Round trip to System 1. */
-  ms: number;
-  ranked: { op: string; p: number }[];
-  targets: Record<string, { control: string; p: number }>;
-  input?: { key: string; p: number };
-  outcome: string;
-}
+export type { DecisionLogEntry } from './decision-log.js';
 
 /**
  * Owns one run's directory `<runsDir>/<runId>/` and everything written into it.
@@ -69,10 +58,13 @@ export class Evidence {
   private readonly entries: DecisionLogEntry[] = [];
   private readonly pending = new Set<Promise<void>>();
   private secrets: readonly string[] = [];
+  /** The demo video of the run, when one was asked for (ADR 0032). */
+  readonly video: VideoRecorder | undefined;
 
   /**
    * @param retention how many run directories {@link save} keeps under `runsDir`.
    * @param flowsPath the flows directory `runsDir` must stay inside.
+   * @param videoTitle record a demo video titled so (ADR 0032); none when left out.
    * @throws {ConfigError} when `runsDir` (or a part of it) is a symlink or leaves `flowsPath`.
    */
   constructor(
@@ -81,10 +73,15 @@ export class Evidence {
     private readonly retention: number,
     flowsPath: string,
     readonly trace: TraceMode = 'safe',
+    videoTitle?: string,
   ) {
     this.runsDir = ensureDirInside(runsDir, flowsPath, { gitignoreAll: true });
     this.dir = join(this.runsDir, runId);
     mkdirSync(this.dir);
+    this.video =
+      videoTitle === undefined
+        ? undefined
+        : new VideoRecorder(this.dir, videoTitle);
   }
 
   /**
@@ -97,6 +94,7 @@ export class Evidence {
   async attach(context: BrowserContext, profile: string): Promise<void> {
     const full = this.trace === 'full';
     await context.tracing.start({ screenshots: full, snapshots: full });
+    await this.video?.attach(context);
     const answered = new WeakSet<Request>();
     context.on('response', (r) => {
       answered.add(r.request());
@@ -127,6 +125,7 @@ export class Evidence {
    */
   useSecrets(secrets: readonly string[]): void {
     this.secrets = secrets.filter((s) => s !== '');
+    this.video?.useSecrets(this.secrets);
   }
 
   /** Records one console or page error, clipped to {@link MAX_LINE}; beyond {@link MAX_CONSOLE_ERRORS} it is only counted. */

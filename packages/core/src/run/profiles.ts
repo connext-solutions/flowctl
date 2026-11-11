@@ -5,6 +5,7 @@ import {
   type LoadedConfig,
   type ResolvedEnv,
 } from '../config.js';
+import type { Step } from '../flow/index.js';
 import { assertNotSymlink } from '../safe-fs.js';
 import type { Evidence } from './evidence.js';
 import { RunError, errorMessage } from './outcome.js';
@@ -79,6 +80,7 @@ export class Profiles {
   private readonly contexts = new Map<string, ProfileContext>();
   private active: string | undefined;
   private guard: ScopeGuard | undefined;
+  private narrated = 0;
 
   constructor(
     private readonly cfg: LoadedConfig,
@@ -152,6 +154,7 @@ export class Profiles {
       locale: this.cfg.profiles[profile]?.locale,
       viewport: VIEWPORT,
       serviceWorkers: 'block',
+      ...this.evidence.video?.contextOptions(),
     });
     await this.guard?.attach(context);
     await this.evidence.attach(context, profile);
@@ -210,6 +213,19 @@ export class Profiles {
     }
   }
 
+  /** Shows `step` in the demo video's overlay before it runs (ADR 0032); nothing without a video. */
+  async narrate(step: Step): Promise<void> {
+    const page = this.activePage;
+    if (this.evidence.video === undefined || page === undefined) return;
+    this.narrated++;
+    await this.evidence.video.step(
+      page,
+      step,
+      this.narrated,
+      this.cfg.testIdAttribute,
+    );
+  }
+
   /**
    * Closes the page of every context, so a pending browser call on it rejects at once; the contexts stay open for
    * evidence. The wall-clock budget calls it when it runs out.
@@ -229,6 +245,9 @@ export class Profiles {
     const errors: unknown[] = [];
     for (const c of this.contexts.values())
       await c.context.close().catch((e: unknown) => errors.push(e));
+    await this.evidence.video
+      ?.save([...this.contexts].map(([p, c]) => [p, c.page]))
+      .catch((e: unknown) => errors.push(e));
     if (errors.length > 0) throw errors[0];
   }
 }

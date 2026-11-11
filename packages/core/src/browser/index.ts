@@ -10,6 +10,13 @@ export {
 } from './executor.js';
 export { describeLoc, toPlaywright } from './locator.js';
 export {
+  OVERLAY_COLORS,
+  OVERLAY_TAG,
+  moveCursor,
+  narrate,
+  overlayScript,
+} from './overlay.js';
+export {
   MARK_ATTRIBUTE,
   describeControl,
   markControl,

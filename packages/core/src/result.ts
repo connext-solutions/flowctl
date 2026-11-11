@@ -29,6 +29,8 @@ export interface EvidenceSummary {
    * default) or `full` (DOM snapshots and screenshots, with cookies and bodies: do not share).
    */
   trace?: TraceMode;
+  /** Demo videos, one per profile (`video-<profile>.webm`), when the run was asked for one (ADR 0032). */
+  videos?: string[];
 }
 
 /** How much a run's Playwright trace records (ADR 0030). */
