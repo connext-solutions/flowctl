@@ -32,6 +32,7 @@ const map = (): AppMap => ({
       ],
       calls: [{ method: 'GET', path: '/api/requests', status: 200 }],
       consoleErrors: [],
+      refused: [],
     },
   ],
 });
@@ -67,6 +68,26 @@ describe('AppMap schema (T2.1)', () => {
         }),
       ).toThrow();
     }
+  });
+
+  it('lets a call name another origin, but only as an origin', () => {
+    const page = map().pages[0];
+    if (page === undefined) throw new Error('no page');
+    const withCall = (origin: string) => ({
+      ...map(),
+      pages: [
+        {
+          ...page,
+          calls: [{ method: 'GET', path: '/track', status: 0, origin }],
+        },
+      ],
+    });
+    expect(
+      AppMapSchema.parse(withCall('https://cdn.example.com')).pages[0]?.calls[0]
+        ?.origin,
+    ).toBe('https://cdn.example.com');
+    for (const bad of ['https://cdn.example.com/track', 'cdn.example.com'])
+      expect(() => AppMapSchema.parse(withCall(bad)), bad).toThrow();
   });
 
   it('allows a page that never answered (status 0) and an origin only, no path', () => {

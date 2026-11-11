@@ -44,7 +44,8 @@ Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/t
 | Demo videos of a replay with a step overlay (ADR 0032) | done |
 | Destructive-action guard for **replay** on shared envs, stored confirmations and the run ledger | open |
 | Read-only replay on production, computed System 1 cost | open |
-| Observe (crawler), Derive (test cases from specs), Reconcile (classify failures) | planned |
+| Observe: read-only crawler and `AppMap` (`flowctl observe`, ADR 0033) | early |
+| Free checks on the map, Derive (test cases from specs), Reconcile (classify failures) | planned |
 
 Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
 
@@ -165,6 +166,31 @@ On an env classed `shared`, System 1 never clicks a control named like delete, a
 run blocks any request that looks destructive (any `DELETE`, or a path such as `/items/12/delete`) unless the
 agent started it with `allowDestructive: true`. On `production`, and on any origin the trust store does not
 list, nobody may.
+
+## Observe (early)
+
+`flowctl observe` maps an app without a model: it opens the env's start page (or `--start <path>`) with a saved
+profile (`--profile`, the first one by default), then visits the same-origin links breadth-first, in sorted order.
+It never clicks, types or submits, and only reads leave the browser, on every env class: any other method, and any
+`GET` whose path looks destructive (`/items/purge`), is aborted, and every WebSocket is closed. A `GET` that
+changes data without a destructive word in its path, or with the action in its query (a GraphQL mutation in a `GET`),
+is not caught: add the app's words to `target.destructiveWords` or deny those paths. It does not follow links out of the `visit` scope,
+links that open a new window or a download, the login page, or links whose label or path looks destructive
+(ADR 0033). It never runs on an env the trust store classes `production`.
+
+```bash
+flowctl observe --start /home --env staging [--json] [--out .flows/maps/app.json]
+```
+
+The map (`appmap.json` in the run directory, and a copy at `--out`, which must be inside the flows directory) lists,
+per page: path, document status, title, the controls of the page snapshot, forms with their fields (label, type,
+required, submit), links, fetch/xhr calls (method, path, status) and console errors, with credential-looking text as
+`***`, and the requests refused while the page was open. A call to another origin keeps its origin. It stops at
+`target.budgets.pages` (at most 50) or the run's wall-clock budget, then says `truncated`. A request the guards only
+detect after it was sent, an expired session (including a page that routes itself to the login page) and a refused
+start page end the crawl with an error. Exit `0` when the crawl
+finished (a map is not a verdict), `2` on an error. Free checks on the map (broken links, 5xx, console errors) are not
+built yet.
 
 ## Flow format
 

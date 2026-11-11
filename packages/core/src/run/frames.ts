@@ -20,7 +20,12 @@ const notAVisit = (url: string): boolean =>
  *   browser may turn on) gets its own redirect hold ({@link holdRedirects}) once it has committed, so its later
  *   redirect hops and `download` links are refused before they are sent, as in the page's own process.
  *
- * @param visit judges a URL as a page visit, noting a violation when it is out of scope.
+ * @param visit judges a URL as a page visit, noting a violation when it is out of scope. `sent` tells whether the
+ *   change can have sent a request: an http(s) URL on another origin than the frame's last one, or a frame's first
+ *   http(s) URL, is a document load that got past the route and the hold (detected after the fact). A change on the
+ *   same origin is taken as one that sends nothing (`pushState`, a hash route): a same-origin load out of scope is
+ *   stopped by the route or the hold before it commits, and its later hops are judged by the guard's `request`
+ *   listener. A URL with no network (`data:`, `blob:`) sends nothing either.
  * @remarks A frame request out of scope never loads: Playwright's context route aborts it in any process, and the
  *   page's hold fails a redirect hop of a frame's first navigation. A frame that shares its parent's process has no
  *   target of its own; opening a session on it fails and is retried on its next navigation, since a frame can move
@@ -30,10 +35,18 @@ const notAVisit = (url: string): boolean =>
  */
 export function watchFrames(
   page: Page,
-  visit: (url: string) => void,
+  visit: (url: string, sent: boolean) => void,
   judge: Judge,
 ): void {
   const held = new WeakMap<Frame, Promise<void>>();
+  const origins = new WeakMap<Frame, string>();
+  const sent = (f: Frame, url: string): boolean => {
+    if (!/^https?:/i.test(url)) return false;
+    const origin = new URL(url).origin;
+    const last = origins.get(f);
+    origins.set(f, origin);
+    return last !== origin;
+  };
   const hold = (f: Frame): void => {
     if (held.has(f)) return;
     held.set(
@@ -45,7 +58,7 @@ export function watchFrames(
   };
   page.on('framenavigated', (f) => {
     const url = f.url();
-    if (!notAVisit(url)) visit(url);
+    if (!notAVisit(url)) visit(url, sent(f, url));
     if (f !== page.mainFrame() && !f.isDetached()) hold(f);
   });
 }
