@@ -82,6 +82,7 @@ describe('replay with heal', () => {
     expect(
       readFileSync(join(r.evidence.dir, 'decisions.jsonl'), 'utf8'),
     ).toMatch(/"source":"heal".*"outcome":"heal step 0 with /);
+    expect(r.system1).toMatchObject({ decisions: 1, costUsd: 'unknown' });
     expect(readFileSync(file, 'utf8')).toContain('# reviewed by QA');
     expect(loadFlow(file, PROFILES).parsedSteps[0]).toEqual({
       kind: 'click',
