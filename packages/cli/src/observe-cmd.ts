@@ -3,33 +3,12 @@ import {
   type LoadedConfig,
   observe,
   type Observation,
+  observeSummary,
   type TrustStore,
   writeAppMap,
 } from '@flowctl/core';
 import type { Values } from './argv.js';
 import { terminalSafe } from './summary.js';
-
-/** The `--json` answer of `flowctl observe`: small enough for an orchestrator; the map itself is in `file`. */
-interface ObserveSummary {
-  runId: string;
-  env: string;
-  status: Observation['run']['status'];
-  error?: Observation['run']['error'];
-  origin: string;
-  pages: number;
-  truncated: boolean;
-  /** Paths of pages that answered with no status or a 4xx/5xx, or had a request refused. */
-  attention: string[];
-  budget: Observation['budget'];
-  file: string;
-  out?: string;
-}
-
-/** The pages worth a look: no answer, a 4xx/5xx document, or a refused request while open. */
-const attention = (o: Observation): string[] =>
-  o.map.pages
-    .filter((p) => p.status === 0 || p.status >= 400 || p.refused.length > 0)
-    .map((p) => p.path);
 
 /** The human summary: one header line, one line per page, then where the map is. Page text is escaped. */
 function formatObservation(o: Observation, out: string | undefined): string {
@@ -59,8 +38,9 @@ function formatObservation(o: Observation, out: string | undefined): string {
 }
 
 /**
- * `flowctl observe`: crawls the env read-only (core `observe`), prints a short summary (or `--json`), and copies the
- * map to `--out` when given (core `writeAppMap`, contained in the flows root).
+ * `flowctl observe`: crawls the env read-only (core `observe`), prints a short summary (or `--json`, core
+ * `observeSummary`), and copies the map to `--out` when given (core `writeAppMap`, contained in the flows root, checked
+ * before the crawl).
  *
  * @returns the exit code: `0` when the crawl finished (a map is not a verdict), `2` when the run ended in an error.
  * @throws {ConfigError} for an unknown env or an `--out` path outside the flows root.
@@ -81,21 +61,10 @@ export async function observeCmd(
   });
   const out =
     values.out === undefined ? undefined : writeAppMap(cfg, o.map, values.out);
-  if (values.json) {
-    const summary: ObserveSummary = {
-      runId: o.run.runId,
-      env: o.run.env,
-      status: o.run.status,
-      ...(o.run.error === undefined ? {} : { error: o.run.error }),
-      origin: o.map.origin,
-      pages: o.map.pages.length,
-      truncated: o.map.truncated,
-      attention: attention(o),
-      budget: o.budget,
-      file: o.file,
-      ...(out === undefined ? {} : { out }),
-    };
-    write(`${JSON.stringify(summary, null, 2)}\n`);
-  } else write(formatObservation(o, out));
+  write(
+    values.json
+      ? `${JSON.stringify(observeSummary(o, out), null, 2)}\n`
+      : formatObservation(o, out),
+  );
   return o.run.status === 'error' ? 2 : 0;
 }

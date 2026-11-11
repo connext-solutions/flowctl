@@ -1,14 +1,12 @@
 import { RunError, type RequestGuard, type RunSession } from '../run/index.js';
 import type { PageBudget } from './budget.js';
 import type { Capture } from './capture.js';
-import type { LinkRules } from './links.js';
-import { readPage, type PageRead } from './read-page.js';
-import type { AppPage } from './schema.js';
+import { mayOpen, type LinkRules } from './links.js';
+import { readPage, redactor, type PageRead } from './read-page.js';
+import { PAGE_PATH, type AppPage } from './schema.js';
 
 /** Navigation failures that end one page, not the crawl: a page that did not answer, or one the scope refused. */
 const PAGE_ENDS = new Set(['app_unreachable', 'scope_violation']);
-
-const PATH = /^\/(?!\/)[^?#\s]*$/;
 
 /** What the loop works with: the run, the link rules, the crawl's request layer and the per-page capture. */
 export interface Crawl {
@@ -36,6 +34,8 @@ export async function walk(
 ): Promise<boolean> {
   const queue = [start];
   const seen = new Set(queue);
+  const recorded = new Set<string>();
+  const red = redactor(c.run.secrets);
   let cut = false;
   let first = true;
   for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
@@ -49,10 +49,11 @@ export async function walk(
       }
     const at = read?.path ?? path;
     seen.add(at);
-    if (pages.some((p) => p.path === at)) continue;
+    if (recorded.has(at)) continue;
+    recorded.add(at);
     cut ||= read?.cut === true || c.capture.cut;
     pages.push({
-      path: at,
+      path: red(at),
       title: read?.title ?? '',
       status: read?.status ?? 0,
       controls: read?.controls ?? [],
@@ -67,7 +68,9 @@ export async function walk(
 
 /**
  * Opens `path` (the start page is already open), waits for its network to go quiet (at most `stepTimeout`) and reads
- * it; `undefined` when the navigation did not answer or the scope refused it, which ends this page only.
+ * it under the path it ended on (after a redirect in scope), or under `path` when that one is not a path a crawl may
+ * open (a `pushState` to a denied path); `undefined` when the navigation did not answer or the scope refused it, which
+ * ends this page only.
  *
  * @throws {RunError} any other run error, such as `budget_exceeded` or `profile_expired`.
  */
@@ -92,5 +95,10 @@ async function visit(
     .waitForLoadState('networkidle', { timeout })
     .catch(() => undefined);
   const at = new URL(run.page.url()).pathname;
-  return readPage(run, PATH.test(at) ? at : path, c.rules);
+  const origin = new URL(run.env.baseUrl).origin;
+  return readPage(
+    run,
+    PAGE_PATH.test(at) && mayOpen(at, origin, c.rules) ? at : path,
+    c.rules,
+  );
 }

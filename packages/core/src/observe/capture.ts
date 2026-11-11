@@ -1,11 +1,11 @@
-import { MAX_LINE, redactText, type Evidence } from '../run/index.js';
-import type { AppCall, AppPage } from './schema.js';
+import { redactText, type Evidence } from '../run/index.js';
+import { redactor } from './read-page.js';
+import { PAGE_PATH, type AppCall, type AppPage } from './schema.js';
 
 /** At most this many calls and console errors one page keeps (the `AppMap` caps). */
 const MAX_CALLS = 500;
 const MAX_ERRORS = 100;
 
-const PATH = /^\/(?!\/)[^?#\s]*$/;
 const METHOD = /^[A-Z]{3,7}$/;
 
 /** One page's share of what the run's evidence captured. */
@@ -18,7 +18,8 @@ export type PageCapture = Pick<AppPage, 'calls' | 'consoleErrors'>;
  *
  * @remarks The redaction rules of run evidence apply (ADR 0030): a call keeps its method, path and status only (no
  *   origin, query or body), the path and each console line go through `redactText` with the run's secrets, so secret
- *   values and credential-looking pairs are `***`, and a line is cut to 300 characters. Both lists are sorted and
+ *   values and credential-looking pairs are `***`, and a line is cut to 300 characters. A call to another origin
+ *   keeps that origin (never its query). Both lists are sorted and
  *   deduplicated, so the order in which calls answer does not change the map. Entries are grouped by when they
  *   arrived: a call that answers while the next page loads is counted on the next page.
  */
@@ -26,9 +27,11 @@ export class Capture {
   private calls = 0;
   private errors = 0;
 
+  /** @param origin the map's origin: a call elsewhere keeps its origin, one here does not. */
   constructor(
     private readonly evidence: Evidence,
     private readonly secrets: readonly string[],
+    private readonly origin: string,
   ) {}
 
   /** Whether the evidence stopped keeping console errors (its run-wide cap), so a page may miss some. */
@@ -46,7 +49,10 @@ export class Capture {
     for (const e of net) {
       const call = this.call(e.method, e.url, e.status);
       if (e.note === undefined && call !== undefined)
-        calls.set(`${call.path} ${call.method} ${call.status}`, call);
+        calls.set(
+          `${call.origin ?? ''} ${call.path} ${call.method} ${call.status}`,
+          call,
+        );
     }
     return {
       calls: [...calls.entries()]
@@ -64,22 +70,28 @@ export class Capture {
     url: string,
     status: number,
   ): AppCall | undefined {
-    let path: string;
+    let u: URL;
     try {
-      path = redactText(new URL(url).pathname, this.secrets);
+      u = new URL(url);
     } catch {
       return undefined;
     }
+    const path = redactText(u.pathname, this.secrets);
     const m = method.toUpperCase();
-    return PATH.test(path) && path.length <= 2048 && METHOD.test(m)
+    if (
+      (u.protocol !== 'http:' && u.protocol !== 'https:') ||
+      !PAGE_PATH.test(path) ||
+      path.length > 2048 ||
+      !METHOD.test(m)
+    )
+      return undefined;
+    return u.origin === this.origin
       ? { method: m, path, status }
-      : undefined;
+      : { method: m, path, status, origin: u.origin };
   }
 
   /** A console line without the evidence's `[profile] ` prefix, redacted again and cut to the map's 300 characters. */
   private line(text: string): string {
-    const bare = text.replace(/^\[[a-z0-9-]+\] /, '');
-    const red = redactText(bare, this.secrets);
-    return red.length <= MAX_LINE ? red : `${red.slice(0, MAX_LINE - 1)}…`;
+    return redactor(this.secrets)(text.replace(/^\[[a-z0-9-]+\] /, ''));
   }
 }

@@ -4,6 +4,7 @@ import {
   inScope,
   type Scope,
 } from '../browser/index.js';
+import { PAGE_PATH } from './schema.js';
 
 /** A link as the page script reads it: the resolved `href`, its `target`, whether it downloads, and its label. */
 export interface RawLink {
@@ -26,14 +27,12 @@ export interface PageLinks {
   follow: string[];
 }
 
-/** A path the map may store: one leading `/`, no whitespace, at most 2,048 characters (the `AppMap` path rule). */
-const PATH = /^\/(?!\/)[^?#\s]*$/;
-
 /** Targets that navigate the page the link is on; any other opens a new window, which a crawl never does. */
 const SAME_WINDOW = new Set(['', '_self', '_top', '_parent']);
 
 /**
- * The path of `href` when it is an http(s) URL on `origin` (its query and fragment dropped), else `undefined`.
+ * The path of `href` when it is an http(s) URL on `origin` (its query and fragment dropped) and the map may store it
+ * (`PAGE_PATH`, at most 2,048 characters), else `undefined`.
  *
  * @remarks A page is identified by its path alone (ADR 0033): queries carry record ids and tokens, and a hash route
  *   is the same document, so `/map#/admin` is `/map` and is never opened as a hash route.
@@ -47,7 +46,7 @@ export function pagePath(href: string, origin: string): string | undefined {
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined;
   if (u.origin !== origin) return undefined;
-  return u.pathname.length <= 2048 && PATH.test(u.pathname)
+  return u.pathname.length <= 2048 && PAGE_PATH.test(u.pathname)
     ? u.pathname
     : undefined;
 }

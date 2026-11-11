@@ -32,7 +32,7 @@ beforeAll(async () => {
       return res.end('{"token":"s3cr3t-body"}');
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(`<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><title>Lộ</title></head><body><h1>Lộ</h1><script>
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><title>Lộ token=t-789</title></head><body><h1>Lộ</h1><button>apiKey: b-1</button><script>
 console.error('login failed: password=hunter2 {"apiKey":"k-123"}');
 fetch('/api/me?token=q-456').catch(() => {});
 </script></body></html>`);
@@ -93,6 +93,11 @@ describe('observe capture (T2.3)', () => {
     writeFileSync(state, JSON.stringify({ cookies: [], origins: [] }));
     const { map } = await observe(cfg, { browser });
     const home = page(map, '/');
+    expect(home.title).toBe('Lộ token=***');
+    expect(home.controls).toContainEqual({
+      role: 'button',
+      name: 'apiKey: ***',
+    });
     expect(home.calls).toEqual([
       { method: 'GET', path: '/api/me', status: 401 },
     ]);
@@ -101,7 +106,14 @@ describe('observe capture (T2.3)', () => {
       'login failed: password=*** {"apiKey":"***"}',
     ]);
     const text = JSON.stringify(map);
-    for (const secret of ['hunter2', 'k-123', 'q-456', 's3cr3t-body'])
+    for (const secret of [
+      'hunter2',
+      'k-123',
+      'q-456',
+      's3cr3t-body',
+      't-789',
+      'b-1',
+    ])
       expect(text).not.toContain(secret);
   });
 });

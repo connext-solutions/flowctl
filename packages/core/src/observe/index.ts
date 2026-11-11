@@ -4,6 +4,7 @@
 export { PageBudget, type CrawlBudget } from './budget.js';
 export { observe, type Observation, type ObserveOptions } from './crawl.js';
 export { appMapPath, writeAppMap } from './output.js';
+export { observeSummary, type ObserveSummary } from './summary.js';
 export {
   mayOpen,
   pageLinks,

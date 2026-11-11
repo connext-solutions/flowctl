@@ -102,11 +102,13 @@ export {
 export {
   appMapPath,
   observe,
+  observeSummary,
   writeAppMap,
   type AppMap,
   type CrawlBudget,
   type Observation,
   type ObserveOptions,
+  type ObserveSummary,
 } from './observe/index.js';
 export { saveExploration, type SaveOptions, type SaveResult } from './save.js';
 export { StepError, perform } from './browser/index.js';

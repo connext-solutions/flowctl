@@ -4,6 +4,7 @@ import {
   readFileSync,
   realpathSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -85,27 +86,28 @@ describe('flowctl observe', () => {
         configFile,
       ]),
     ).toBe(0);
-    const s: {
-      status: string;
-      pages: number;
-      attention: string[];
-      out: string;
-    } = JSON.parse(out.join(''));
+    const s: Record<string, unknown> = JSON.parse(out.join(''));
     expect(s).toMatchObject({
-      status: 'passed',
       pages: 5,
+      truncated: false,
       attention: ['/map/hop'],
     });
+    expect(s).not.toHaveProperty('status');
+    expect(s).not.toHaveProperty('error');
     expect(s.out).toBe(join(realpathSync(flows), 'maps', 'app.json'));
     expect(JSON.parse(readFileSync(target, 'utf8')).pages).toHaveLength(5);
   });
 
-  it('refuses --out outside the flows root, under .auth, through a symlink or without .json (exit 2)', async () => {
+  it('refuses --out outside the flows root, under .auth, .git or .runs, over a non-map file, through a symlink or without .json (exit 2)', async () => {
     const flows = loadConfig(configFile).flowsPath;
     const elsewhere = join(tmpdir(), `flowctl-out-${Date.now()}`);
     mkdirSync(elsewhere);
     symlinkSync(elsewhere, join(flows, 'linked'));
+    writeFileSync(join(flows, 'notes.json'), '{"keep": true}');
     for (const bad of [
+      join(flows, '.runs', 'r_x', 'run.json'),
+      join(flows, 'sub', '.git', 'map.json'),
+      join(flows, 'notes.json'),
       join(elsewhere, 'map.json'),
       join(flows, '..', 'map.json'),
       join(flows, '.auth', 'local', 'employee.json'),
@@ -127,6 +129,9 @@ describe('flowctl observe', () => {
       ).toBe(2);
       expect(err.join(''), bad).toMatch(/--out|not inside|symlink/);
     }
+    expect(readFileSync(join(flows, 'notes.json'), 'utf8')).toBe(
+      '{"keep": true}',
+    );
     expect(existsSync(join(elsewhere, 'map.json'))).toBe(false);
   });
 

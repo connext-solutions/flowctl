@@ -53,6 +53,13 @@ fetch('${outsideUrl}/track').catch(() => {});
 </script>`,
         ),
       );
+    if (req.url === '/spa')
+      return res.end(
+        html(
+          'Ứng dụng',
+          `<h1>Ứng dụng</h1><script>history.replaceState(null, '', '/admin/x');</script>`,
+        ),
+      );
     res.end(html('Trang chủ', '<h1>Trang chủ</h1><a href="/writes">Ghi</a>'));
   });
   appUrl = await listen(app);
@@ -81,9 +88,25 @@ describe('observe request layer', () => {
     ]);
     expect(map.pages[1]?.calls).toEqual([
       { method: 'POST', path: '/api/save', status: 0 },
-      { method: 'GET', path: '/track', status: 0 },
+      { method: 'GET', path: '/track', status: 0, origin: outsideUrl },
     ]);
     expect(seen.filter((s) => !s.startsWith('GET '))).toEqual([]);
     expect(outsideHits).toBe(0);
+  });
+
+  it('records a page that moves itself to a denied path (pushState) under the path it opened', async () => {
+    const cfg = fixtureConfig(appUrl, {
+      target: { scope: { deny: ['/admin/**'] } },
+    });
+    const state = storageStatePath(cfg, 'local', 'employee');
+    mkdirSync(dirname(state), { recursive: true });
+    writeFileSync(state, JSON.stringify({ cookies: [], origins: [] }));
+    const before = seen.length;
+    const { map, run } = await observe(cfg, { browser, start: '/spa' });
+    expect(run.status).toBe('passed');
+    expect(map.pages.map((p) => [p.path, p.title])).toEqual([
+      ['/spa', 'Ứng dụng'],
+    ]);
+    expect(seen.slice(before).some((s) => s.includes('/admin'))).toBe(false);
   });
 });

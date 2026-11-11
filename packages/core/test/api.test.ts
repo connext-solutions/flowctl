@@ -52,6 +52,7 @@ it('exposes exactly the documented runtime interface', () => {
     'loadOwnerKey',
     'login',
     'observe',
+    'observeSummary',
     'openTrustStore',
     'pageText',
     'parseConfig',

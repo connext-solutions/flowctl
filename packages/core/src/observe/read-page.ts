@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import type { PageSnapshot } from '../browser/index.js';
 import { ARIA_ROLES } from '../flow/index.js';
-import type { RunSession } from '../run/index.js';
+import { redactText, type RunSession } from '../run/index.js';
 import { pageLinks, type LinkRules, type PageLinks } from './links.js';
 import { PAGE_SCRIPT } from './page-script.js';
-import type { AppForm, AppPage } from './schema.js';
+import { PAGE_PATH, type AppForm, type AppPage } from './schema.js';
 
 const Text = z.string().max(300);
 
@@ -51,18 +51,29 @@ export type PageRead = Omit<AppPage, 'calls' | 'consoleErrors' | 'refused'> &
     cut: boolean;
   };
 
+/** Page text or a path as the map keeps it: secrets and credential-looking values `***`, at most 300 characters. */
+export const redactor =
+  (secrets: readonly string[]) =>
+  (text: string): string => {
+    const red = redactText(text, secrets);
+    return red.length <= 300 ? red : `${red.slice(0, 299)}…`;
+  };
+
 /**
  * The snapshot's controls as the map keeps them: role and name only (never a value), roles a locator can use,
  * the first of each identical pair, in page order, at most {@link MAX_CONTROLS}.
  */
-function controlsOf(snap: PageSnapshot): AppPage['controls'] {
+function controlsOf(
+  snap: PageSnapshot,
+  red: (t: string) => string,
+): AppPage['controls'] {
   const seen = new Set<string>();
   const out: AppPage['controls'] = [];
   for (const c of snap.controls) {
     const key = `${c.role}\u0000${c.name}`;
     if (!isRole(c.role) || seen.has(key)) continue;
     seen.add(key);
-    out.push({ role: c.role, name: c.name.slice(0, 300) });
+    out.push({ role: c.role, name: red(c.name) });
   }
   return out.slice(0, MAX_CONTROLS);
 }
@@ -71,8 +82,10 @@ function controlsOf(snap: PageSnapshot): AppPage['controls'] {
  * Reads the open page of `run` at `path`: its document status, title, snapshot controls, forms with their field
  * model and the same-origin links it offers, plus the links the crawl may follow ({@link pageLinks}).
  *
- * @remarks Field values are never read (the page script reads attributes and labels), and the snapshot never lists
- *   password fields, so the map carries no secret a page shows.
+ * @remarks Field values are never read (the page script reads attributes and labels), the snapshot never lists
+ *   password fields, and every text and path kept goes through the evidence redaction (`redactText` with the run's
+ *   secrets, ADR 0030), cut to 300 characters. `path` and `follow` stay as the browser reads them: the crawl
+ *   navigates with them; the map stores the redacted form.
  * @throws {RunError} from the run's snapshot (`budget_exceeded` once the deadline closed the page).
  */
 export async function readPage(
@@ -82,19 +95,26 @@ export async function readPage(
 ): Promise<PageRead> {
   const raw = ReadSchema.parse(await run.page.evaluate(PAGE_SCRIPT));
   const snap = await run.snapshot();
+  const red = redactor(run.secrets);
   const origin = new URL(run.env.baseUrl).origin;
   const { links, follow } = pageLinks(raw.links, origin, rules);
   const forms: AppForm[] = raw.forms.map((f) => ({
-    name: f.name,
-    submit: f.submit,
-    fields: f.fields.map((x) => ({ ...x, type: x.type?.slice(0, 40) ?? null })),
+    name: f.name === null ? null : red(f.name),
+    submit: f.submit === null ? null : red(f.submit),
+    fields: f.fields.map((x) => ({
+      ...x,
+      name: red(x.name),
+      type: x.type?.slice(0, 40) ?? null,
+    })),
   }));
   return {
     path,
-    title: raw.title,
+    title: red(raw.title),
     status: raw.status,
-    controls: controlsOf(snap),
-    links: links.slice(0, MAX_LINKS),
+    controls: controlsOf(snap, red),
+    links: [...new Set(links.slice(0, MAX_LINKS).map(red))]
+      .filter((p) => PAGE_PATH.test(p))
+      .sort(),
     forms,
     follow,
     cut: links.length > MAX_LINKS,
