@@ -79,6 +79,10 @@ describe('observe request layer', () => {
       'destructive_blocked',
       'scope_violation',
     ]);
+    expect(map.pages[1]?.calls).toEqual([
+      { method: 'POST', path: '/api/save', status: 0 },
+      { method: 'GET', path: '/track', status: 0 },
+    ]);
     expect(seen.filter((s) => !s.startsWith('GET '))).toEqual([]);
     expect(outsideHits).toBe(0);
   });

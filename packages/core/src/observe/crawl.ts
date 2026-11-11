@@ -7,16 +7,16 @@ import { FlowError, type Flow } from '../flow/index.js';
 import type { RunResult } from '../result.js';
 import {
   RequestGuard,
-  RunError,
   RunSession,
   scopeFor,
   toOutcome,
   type Outcome,
 } from '../run/index.js';
 import type { TrustStore } from '../trust/index.js';
+import { Capture } from './capture.js';
 import type { LinkRules } from './links.js';
-import { readPage, type PageRead } from './read-page.js';
 import { AppMapSchema, type AppMap, type AppPage } from './schema.js';
+import { walk } from './walk.js';
 
 /** What {@link observe} takes besides the config. */
 export interface ObserveOptions {
@@ -38,9 +38,6 @@ export interface Observation {
   run: RunResult;
   file: string;
 }
-
-/** Navigation failures that end one page, not the crawl: a page that did not answer, or one the scope refused. */
-const PAGE_ENDS = new Set(['app_unreachable', 'scope_violation']);
 
 /** The flow-less run of a crawl: the profile and start page, no steps, no assertions. */
 const crawlFlow = (profile: string, start: string): Flow => ({
@@ -68,8 +65,8 @@ export const pageBudget = (cfg: LoadedConfig): number =>
 /**
  * Crawls the env breadth-first from its start page and returns the {@link AppMap} (roadmap section 3.2, task T2.2):
  * no model, no click, no typing, no form submit. Each page is read once (document status, title, snapshot controls,
- * forms with their field model, same-origin links), and its links are queued in sorted order, so the same app gives
- * the same map.
+ * forms with their field model, same-origin links, and the fetch/xhr calls and console errors seen while it was
+ * open), and its links are queued in sorted order, so the same app gives the same map.
  *
  * @remarks The crawl is one `RunSession` with one context: the run's scope guard holds every request, and its request
  *   layer is {@link RequestGuard.forCrawl}, so nothing but reads leaves the browser on any env, and a refused request
@@ -115,7 +112,13 @@ export async function observe(
   let complete = false;
   try {
     await run.begin();
-    complete = await crawl(run, start, pageBudget(cfg), rules, writes, pages);
+    const capture = new Capture(run.evidence, run.secrets);
+    complete = await walk(
+      { run, rules, writes, capture },
+      start,
+      pageBudget(cfg),
+      pages,
+    );
   } catch (e) {
     outcome = toOutcome(e);
   }
@@ -131,80 +134,4 @@ export async function observe(
     `${JSON.stringify(map, null, 2)}\n`,
   );
   return { map, run: await run.finish(outcome, pages.length), file };
-}
-
-/**
- * The breadth-first loop: reads the start page `begin` opened, then opens each queued path in order, adding the links
- * it may follow to the queue once each.
- *
- * @returns whether the queue was emptied: false when the page budget (counted in navigations) stopped it, or a list
- *   was cut to its cap.
- * @throws {RunError} what ends the run (`budget_exceeded`, `profile_expired`, an `internal` scope problem).
- */
-async function crawl(
-  run: RunSession,
-  start: string,
-  budget: number,
-  rules: LinkRules,
-  writes: RequestGuard,
-  pages: AppPage[],
-): Promise<boolean> {
-  const queue = [start];
-  const seen = new Set(queue);
-  let cut = false;
-  let visits = 0;
-  for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
-    if (visits >= budget) return false;
-    const read = await visit(run, path, visits === 0, rules);
-    visits++;
-    for (const p of read?.follow ?? [])
-      if (!seen.has(p)) {
-        seen.add(p);
-        queue.push(p);
-      }
-    const at = read?.path ?? path;
-    seen.add(at);
-    if (pages.some((p) => p.path === at)) continue;
-    cut ||= read?.cut === true;
-    pages.push({
-      path: at,
-      title: read?.title ?? '',
-      status: read?.status ?? 0,
-      controls: read?.controls ?? [],
-      links: read?.links ?? [],
-      forms: read?.forms ?? [],
-      calls: [],
-      consoleErrors: [],
-      refused: writes.takeRefusals(),
-    });
-  }
-  return !cut;
-}
-
-/**
- * Opens `path` (the start page is already open) and reads it; `undefined` when the navigation did not answer or the
- * scope refused it, which ends this page only.
- *
- * @throws {RunError} any other run error, such as `budget_exceeded` or `profile_expired`.
- */
-async function visit(
-  run: RunSession,
-  path: string,
-  opened: boolean,
-  rules: LinkRules,
-): Promise<PageRead | undefined> {
-  if (!opened)
-    try {
-      await run.perform({ kind: 'goto', url: path });
-    } catch (e) {
-      if (!(e instanceof RunError) || !PAGE_ENDS.has(e.kind)) throw e;
-      await run.page
-        .waitForURL((u) => u.protocol === 'chrome-error:', {
-          timeout: run.ctx().exec.timeout,
-        })
-        .catch(() => undefined);
-      return undefined;
-    }
-  const at = new URL(run.page.url()).pathname;
-  return readPage(run, PATH.test(at) ? at : path, rules);
 }
