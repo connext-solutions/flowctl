@@ -96,14 +96,17 @@ export async function runLoop(d: LoopDeps): Promise<ExploreStop> {
         snap,
       );
     const asked = Date.now();
-    const decision = await system1.decide({
-      goal: d.goal,
-      page: snap,
-      history,
-      ops: opsFor(snap, Object.keys(inputs).length > 0),
-      inputs: inputChoices(inputs, run.values),
-      secrets: run.secrets,
-    });
+    const decision = await system1.decide(
+      {
+        goal: d.goal,
+        page: snap,
+        history,
+        ops: opsFor(snap, Object.keys(inputs).length > 0),
+        inputs: inputChoices(inputs, run.values),
+        secrets: run.secrets,
+      },
+      run.signal,
+    );
     state.model = decision.model;
     const log = (outcome: string): void =>
       view.decided(snap, decision, Date.now() - asked, outcome);

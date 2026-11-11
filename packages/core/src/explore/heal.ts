@@ -45,14 +45,17 @@ export async function healStep(
   o.system1.assertFor(run.env.name);
   const snap = await run.snapshot();
   const asked = Date.now();
-  const d = await o.system1.decide({
-    goal: `${o.goal}\nThe next recorded step is: ${step.kind} ${describeLoc(step.target)}. Choose the element it meant.`,
-    page: snap,
-    history: [],
-    ops: [op, 'BLOCKED'],
-    inputs: [],
-    secrets: run.secrets,
-  });
+  const d = await o.system1.decide(
+    {
+      goal: `${o.goal}\nThe next recorded step is: ${step.kind} ${describeLoc(step.target)}. Choose the element it meant.`,
+      page: snap,
+      history: [],
+      ops: [op, 'BLOCKED'],
+      inputs: [],
+      secrets: run.secrets,
+    },
+    run.signal,
+  );
   const top = d.ranked[0];
   const target = d.targets[op];
   const chosen =
