@@ -6,7 +6,8 @@ description: Use when a flowctl run failed, escalated, errored or looks wrong, o
 
 # Debug a run
 
-Evidence is in `<flowsDir>/.runs/<runId>/`.
+Evidence is in `<flowsDir>/.runs/<runId>/`. For an observe run, the verdict is `checks.json`, not `run.json`: a
+completed crawl's `run.json` says `passed` whatever the checks found (ADR 0033, amendment 2026-11-12).
 
 ## Read in this order
 
@@ -14,7 +15,11 @@ Evidence is in `<flowsDir>/.runs/<runId>/`.
 2. `decisions.jsonl` (explore/heal) — per step: ranked ops with probabilities, chosen control, `outcome`. Look for low `p`, `BLOCKED`, repeated identical actions, rejected `DONE`.
 3. `network.json` and `console.json` — 4xx/5xx with bodies, matched requests, JS errors.
 4. `final.png` (and failure screenshots). `report.html` once the report (T7.1) exists.
-5. Only then the trace: `bunx playwright show-trace <dir>/trace-<profile>.zip`.
+5. Only then the trace: `bunx playwright show-trace <dir>/trace-<profile>.zip`. By default it has actions, timings,
+   URLs and console only (`run.json` `evidence.trace: "safe"`, ADR 0030). For DOM snapshots ask the user to rerun with
+   `flowctl replay <name> --trace full`; that trace holds cookies and bodies, so never attach it to a bug.
+   Credential-looking values and secret inputs show as `***` in `network.json` and `got`; that is redaction, not
+   what the app sent.
 
 ## Classify
 

@@ -14,7 +14,10 @@ export interface RunSessionOptions {
    * injects one (ADR 0025 section 1). There is no option that skips consent.
    */
   store?: TrustStore;
-  /** The request layer of the destructive-action guard, put to every request of the run (exploration sets it). */
+  /**
+   * The request layer of the destructive-action guard, put to every request of the run (an exploration sets its
+   * own); left out, the run gets the stricter replay layer (`RequestGuard.forReplay`) for its env's class.
+   */
   writes?: RequestGuard;
   /** How much the Playwright trace records: `safe` (the default) or `full` (ADR 0030). */
   trace?: TraceMode;

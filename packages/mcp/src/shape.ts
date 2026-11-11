@@ -1,4 +1,5 @@
 import {
+  type CleanupResult,
   MAX_DETAIL_CHARS,
   pageText,
   type ReplaySummary,
@@ -22,8 +23,21 @@ const NEXT = {
   failed:
     'An assertion failed: this is the verdict. Read failed and the evidence directory; do not retry to make it pass.',
   error:
-    'Not a product verdict (see error.kind and error.hint): an infrastructure problem to fix, or a guard that stopped the run (scope_violation, destructive_blocked) to start again with other input, or budget_exceeded (the run passed its wall-clock budget).',
+    'Not a product verdict (see error.kind and error.hint): an infrastructure problem to fix, or a guard that stopped the run (scope_violation, destructive_blocked, or ledger_replay, ledger_mismatch, ledger_overflow, ledger_exists for a confirmed write on a shared env) to start again with other input, or budget_exceeded (the run passed its wall-clock budget).',
 } as const;
+
+/** The most leftover records one run's view lists; the rest are counted (`leftoverCount`). */
+export const MAX_LEFTOVER = 20;
+
+/** `c` with at most {@link MAX_LEFTOVER} leftover records, and their full count when some were cut. */
+const cleanupView = (c: CleanupResult) =>
+  c.leftover.length <= MAX_LEFTOVER
+    ? c
+    : {
+        ...c,
+        leftover: c.leftover.slice(0, MAX_LEFTOVER),
+        leftoverCount: c.leftover.length,
+      };
 
 const runView = (r: RunResult) => ({
   runId: r.runId,
@@ -45,6 +59,7 @@ const runView = (r: RunResult) => ({
               },
       }),
   ...(r.error === undefined ? {} : { error: r.error }),
+  ...(r.cleanup === undefined ? {} : { cleanup: cleanupView(r.cleanup) }),
   evidence: r.evidence.dir,
   ms: r.ms,
 });
@@ -61,7 +76,8 @@ export function progressView(p: Progress): Record<string, unknown> {
 }
 
 /**
- * The JSON `flow_replay` returns: counts, one entry per run that did not pass (it grows with flows × repeat), and,
+ * The JSON `flow_replay` returns: counts, one entry per run that did not pass or left records it created
+ * (`cleanup.leftover`, cleanup_incomplete; it grows with flows × repeat), and,
  * when videos were recorded, every run's video files with its verdict (ADR 0032).
  */
 export function replayView(s: ReplaySummary): Record<string, unknown> {
@@ -78,7 +94,11 @@ export function replayView(s: ReplaySummary): Record<string, unknown> {
     failed: s.failed,
     flaky: s.flaky,
     errors: s.errors,
-    notPassed: s.results.filter((r) => r.status !== 'passed').map(runView),
+    notPassed: s.results
+      .filter(
+        (r) => r.status !== 'passed' || (r.cleanup?.leftover.length ?? 0) > 0,
+      )
+      .map(runView),
     ...(videos.length === 0 ? {} : { videos }),
   };
 }

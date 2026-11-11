@@ -1,10 +1,10 @@
 import dayjs from 'dayjs';
 import { chromium, type Browser } from 'playwright';
 import { ConfigError, resolveEnv, type LoadedConfig } from '../config.js';
-import { envClassFor } from '../explore/index.js';
 import { FlowError, type Flow } from '../flow/index.js';
 import type { RunResult } from '../result.js';
 import {
+  envClassFor,
   RequestGuard,
   RunError,
   RunSession,
@@ -15,6 +15,11 @@ import {
 import type { TrustStore } from '../trust/index.js';
 import { PageBudget, type CrawlBudget } from './budget.js';
 import { Capture } from './capture.js';
+import {
+  FreeChecksSchema,
+  freeChecks,
+  type FreeChecks,
+} from './checks/index.js';
 import { loginPath, type LinkRules } from './links.js';
 import {
   AppMapSchema,
@@ -23,6 +28,9 @@ import {
   type AppPage,
 } from './schema.js';
 import { walk } from './walk.js';
+
+/** Pretty JSON with a final newline, as the run's artefacts are written. */
+const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
 /** What {@link observe} takes besides the config. */
 export interface ObserveOptions {
@@ -40,13 +48,16 @@ export interface ObserveOptions {
 
 /**
  * What one crawl produced: the map, the run that observed it (its `steps` is the number of pages), where
- * `appmap.json` was written, and what it spent.
+ * `appmap.json` was written, what it spent, and the free checks of the map with where `checks.json` was written. The
+ * checks are left out when the run ended in an error: no verdict stands on a run that ended there (ADR 0033
+ * decision 5).
  */
 export interface Observation {
   map: AppMap;
   run: RunResult;
   file: string;
   budget: CrawlBudget;
+  checks?: { result: FreeChecks; file: string };
 }
 
 /** The flow-less run of a crawl: the profile and start page, no steps, no assertions. */
@@ -125,7 +136,8 @@ function plan(cfg: LoadedConfig, opts: ObserveOptions): Plan {
  *   `visit` scope, is not the login page, opens in the same window, and neither its label nor its path looks
  *   destructive (ADR 0024 section 5). It stops at the page budget ({@link PageBudget}) or the run's wall-clock
  *   budget; either way `truncated` is true. `appmap.json` is written into the run directory, validated against
- *   {@link AppMapSchema}. Without `opts.browser` a headless Chromium is launched once the checks pass, and closed.
+ *   {@link AppMapSchema}, and beside it `checks.json`, the {@link freeChecks} of the map, unless the run ended in an
+ *   error. Without `opts.browser` a headless Chromium is launched once the crawl is planned, and closed.
  * @throws {ConfigError} for an unknown env or a `loginUrl` that is not a URL.
  * @throws {RunError} `env_not_trusted` for an env the trust store refused, `scope_violation` for a production env,
  *   `internal` when the map could not be written (the run is still finished).
@@ -186,7 +198,7 @@ async function crawlIn(
   } catch (e) {
     outcome = toOutcome(e);
   }
-  let written: { map: AppMap; file: string } | undefined;
+  let written: Omit<Observation, 'run' | 'budget'> | undefined;
   try {
     const map = AppMapSchema.parse({
       v: 1,
@@ -197,11 +209,15 @@ async function crawlIn(
     });
     written = {
       map,
-      file: run.evidence.artefact(
-        'appmap.json',
-        `${JSON.stringify(map, null, 2)}\n`,
-      ),
+      file: run.evidence.artefact('appmap.json', json(map)),
     };
+    if (outcome.status !== 'error') {
+      const result = FreeChecksSchema.parse(freeChecks(map));
+      written.checks = {
+        result,
+        file: run.evidence.artefact('checks.json', json(result)),
+      };
+    }
   } catch (e) {
     outcome = toOutcome(e);
   }

@@ -5,6 +5,7 @@ import { FlowError, joinSwitches, type By, type Step } from '../flow/index.js';
 import type { RunResult } from '../result.js';
 import {
   RequestGuard,
+  envClassFor,
   RunError,
   RunSession,
   outcomeOf,
@@ -14,7 +15,7 @@ import {
 import type { CheckedDriver, HistoryEntry } from '../system1/index.js';
 import type { TrustStore } from '../trust/index.js';
 import { StaleControl, actOp, directStep, type Acted } from './act.js';
-import { ActionGuard, DestructiveAction, envClassFor } from './guard.js';
+import { ActionGuard, DestructiveAction } from './guard.js';
 import { type Action } from './policy.js';
 import { draftFlow, driverOrRefusal } from './request.js';
 import {
@@ -99,9 +100,8 @@ export class Exploration {
     const req = parseExploreRequest(request);
     if (!Object.hasOwn(cfg.profiles, req.profile))
       throw new FlowError(`unknown profile "${req.profile}"`);
-    const resolved = resolveEnv(cfg, opts.env);
-    const env = resolved.name;
-    const envClass = envClassFor(new URL(resolved.baseUrl).origin, opts.store);
+    const { name: env, baseUrl } = resolveEnv(cfg, opts.env);
+    const envClass = envClassFor(new URL(baseUrl).origin, opts.store);
     const allow = req.allowDestructive === true;
     const words = cfg.target.destructiveWords;
     const guard = new ActionGuard(envClass, allow, words);

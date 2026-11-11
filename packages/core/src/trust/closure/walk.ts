@@ -19,6 +19,11 @@ export interface ClosureOptions {
   teardown?: string;
   /** Test seam for the `#!/bin/dash` check (section 8); defaults to `stat` of the real path. */
   interpreterOk?: (path: string) => boolean;
+  /**
+   * `confirm` judges for a destructive confirmation (ADR 0024 section 5): the narrower allowlist, where `curl`,
+   * `psql`, `rm`, `mv` and `cp` are `command_not_allowed`. Default `hook`.
+   */
+  purpose?: 'hook' | 'confirm';
 }
 
 const realInterpreter = (path: string): boolean => {
@@ -57,6 +62,7 @@ function pass(
     files,
     closurePaths,
     interpreterOk: o.interpreterOk ?? realInterpreter,
+    purpose: o.purpose ?? 'hook',
   };
   const uncovered: Uncovered[] = [];
   const keys = new Set<string>();

@@ -6,6 +6,8 @@ Test-only app for flowctl. Never imported by `src/` of another package, only by 
   port, optionally with one **seeded bug** switched on.
 - `startFakeSystem1(script)` — a scripted `/v1/systemone` server so exploration tests never call TypeSafe.
 - `FIXTURE_FLOWS_DIR` — sample flows (`leave-approve`, `leave-validation`, `leave-submit`, `leave-persist`) written for this app.
+- `/items` — a small items CRUD with uuid ids (`POST /api/items` answers 201 with the id, 409 for a name that
+  exists; `GET`, `PATCH` and `DELETE` on `/api/items/:id`) for the run ledger's tests in core; no seeded bug.
 - `/lab` — a page with the hard controls (debounced combobox, auto-formatted input, dialog) used by
   snapshot, recorder and exploration tests.
 
@@ -51,13 +53,19 @@ buttons without `aria-label`. No existing page links to `/map`, so flows and sna
 unchanged.
 
 Crawl-class bugs (`CRAWL_BUG_MODES`) are found by the free checks of T2.4, not by a flow assertion, so they are
-not in `BUG_MODES` or `CAUGHT_BY`:
+not in `BUG_MODES` or the flow `CAUGHT_BY`; core's `observe-checks.accuracy.test.ts` maps them:
 
 | Mode | Defect | Found by |
 |---|---|---|
 | `brokenLink` | the "Trợ giúp" link on `/map` points to a page that returns 404 | broken-link check |
 | `page500` | `/map/report` returns 500 | no-5xx check |
 | `pageConsoleError` | `/map/report` logs a console error | no-console-error check |
+| `pageNoAnswer` | the "Trợ giúp" link on `/map` points to `/map/down`, where the server closes the socket with no answer; `/map` also sends a beacon when left, which the crawl refuses and records on `/map/down` | no-unreachable-page check (and no-broken-link from `/map`) |
+| `call500` | the summary fetch of `/map/report` (`/map/api/summary`) answers 500 | no-5xx check |
+| `call404` | the summary fetch of `/map/report` answers 404 | nothing: a documented non-detection, a 4xx call is not judged (ADR 0033, amendment 2026-11-12) |
+
+`no-broken-link` re-reports the failure of a target page from each page that links to it, so it has no mode of its
+own; `brokenLink`, `page500` and `pageNoAnswer` require it next to the target's check.
 
 The T4.9 invariants map to bugs that already exist: create appears and reload keeps (`notPersisted`, `list500`),
 round-trip equality (`wrongValueAfterReload`), state change after an action (`approveNoop`), success toast

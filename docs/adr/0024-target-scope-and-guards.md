@@ -1239,3 +1239,159 @@ match. The request layer's non-GET rule and the stored confirmations are the lin
   `destructiveRequest('GET', 'https://app.test/items?action=delete')` gives nothing (the query is not read).
 - A docs test lists every line of ADRs 0020, 0021, 0023, 0024 and 0025 that contains `Owner decision` as a marker
   (outside this section) and fails unless each one maps to a row of the table above.
+
+## Amendment 2026-11-13: the replay request layer before stored confirmations exist
+
+Proposed with task T1.3; not yet accepted by the owner. The status stays `proposed`. Where section 5 leaves a choice
+open for the first part of the replay guard, the stricter option was taken:
+
+- **What a replay refuses.** On an env classed `shared`, `production` or `unknown` (a non-loopback origin the store
+  does not list), every request whose method is not `GET` is refused, of any resource type, `HEAD` included (section
+  5 says "non-GET"; `HEAD` is not singled out). A `GET` is refused when its path holds a destructive token, for the
+  request types that can carry a write (`document`, `fetch`, `xhr`, `ping`, `eventsource`, `other`), as in the
+  exploration layer, so a bundle chunk such as `DeleteDialog-3f2a.js` never stops a replay. Redirect hops are judged
+  the same way. On `local` nothing is refused.
+- **Without a matching stored confirmation** (see the last part of this amendment for when one matches) the run ends
+  `error: destructive_blocked` with a hint that names the method, the origin and path (never the query), the flow, and
+  the missing `destructiveConfirm` entry; on `unknown` the hint says to classify the env instead, since no entry can
+  exist for it.
+- **Production.** The scope guard judges a request first and already refuses every production host; the replay
+  layer judges production too, behind it, so a production replay never depends on the scope guard alone.
+- **The confirming replay of a save is a replay.** `flow_save` replays the recording before it writes the file;
+  on `shared` that replay is guarded like any other, so an exploration that wrote on `shared` (with
+  `allowDestructive`) cannot be saved until its flow has a stored confirmation. *Rejected:* exempting the
+  confirming replay, which would let a write reach `shared` without an entry the owner signed.
+- `allowDestructive` belongs to an exploration request and never reaches a replay.
+
+Rules of the `destructiveConfirm` entry that section 5 and the ledger amendment leave open, again the stricter
+option each time:
+
+- **Template shape.** A destructive template follows the grammar of the read-only amendment (literal segments,
+  whole-segment `{int}` and `{uuid}`, `/` as the only boundary, 2048 bytes, 32 segments), except that its **last
+  segment may be a placeholder** (`/api/items/{int}` is the shape of every `mutate`, `cleanup` and `verify`
+  template); its first segment is literal, and a trailing `/` is refused. A `create` template has **no
+  placeholder**, so a create never names an id the ledger did not mint; a child created under a parent path cannot
+  be confirmed yet.
+- **Cleanup** is a `DELETE` request on a template with exactly one placeholder; the `cleanup: step` form is not
+  offered. The `verify` template also has exactly one placeholder; both share the create template's literal prefix.
+- **Prefix** starts with `QA-`; `naturalKeys`, `nameField` and the `idFrom` pointer name one value (no `*`).
+- **Caps per entry:** 64 `bodyKeys`, 16 `queryKeys`, 8 `headers`.
+- **Expiry on read.** The entry stores no signing date, so a stored `expires` more than 90 days after the UTC date of
+  the read is `trust_entry_invalid`; an `expires` before today is absent.
+- **Unconfirmable.** Any `env:` input makes a flow unconfirmable, whether or not its value reaches a covered request,
+  because flowctl cannot tell which requests a value reaches before the run.
+- **Signatures** cover the value as stored, before the `queryKeys` and `prefix` defaults apply. A signature that does
+  not verify is `trust_tampered` (as for every signed entry); a signed entry that breaks a rule is ignored with
+  `trust_entry_invalid`, and a `mutate` whose `ledgerFrom` entry is ignored is ignored too.
+- **Writing** entries for a flow and env replaces every earlier entry of that flow and env, so a re-confirmed flow
+  keeps nothing of its previous version; an id already used by another flow's entry is refused. **Revoking** a
+  `create` entry also removes the `mutate` entries whose `ledgerFrom` names it.
+- A `session` template is judged against the built-in `deny` list and the repo's `target.scope.deny`.
+- Owner-key rotation keeps refusing a store whose `destructiveConfirm` section is not empty until it re-signs those
+  entries.
+
+### Stored confirmations, the run ledger and `trust add destructive` as implemented (T1.3 step 3)
+
+Added with the same amendment; the choices below were made under the owner's delegation (the first one by the
+orchestrator, the rest by taking the stricter option each time, with one exception: WebSockets stay open in a
+replay, see the WebSocket item below). Not yet accepted by the owner.
+
+- **`trust add destructive <flow> --env <env> --from-run <run id>`** (owner decision, made by the orchestrator under
+  the owner's delegation). Entry lines are derived from a recorded run of that flow: the run must have passed, on an
+  env the store classes `local`, and be a run of the same flow. Each write in its `network.json` gives the method,
+  the URL template (canonical ints become `{int}`, lowercase uuids `{uuid}`), the content type (a parsed body is
+  `json`, a form string `urlencoded`), the body key pointers (array indices as `*`) and the query names; writes to
+  another origin and requests the grammar cannot express are listed as "not offered". The fields no recording holds
+  (`kind`, `nameField`, `naturalKeys`, `conflictStatus`, `idFrom`, the `cleanup` and `verify` templates,
+  `ledgerFrom`, `idPositions`) are owner attestations answered at prompts on `/dev/tty`, each with a proposed
+  default the owner accepts with Enter or changes; nothing else is typed. Entry ids are proposed as `<flow>-create`
+  and `<flow>-<method>`; `expires` is `--days` ahead (default 30, at most 90). `network.json` keeps no 2xx body, so
+  `idFrom` is proposed as `body:/id`. The screen shows, paged and with invisible characters escaped, the env, origin
+  and class, the flow file and every closure file in full with its byte length and hash, the 64-character digest, the
+  effective `vars`, the recorded writes, then the entries in the fixed line format last, then the nonce and the
+  passphrase. The digest is computed again before the write and a change refuses it.
+- **No previous-version diff.** A stored entry keeps the confirmation digest, not the hash of each file, so no diff
+  base can be found "by hash" as section 5 asks; the screen always says "no previous version" and lists the entries
+  the new ones replace. Showing a diff needs per-file hashes in the entry (a schema change, left open).
+- **Renewal** follows section 9 of the ledger amendment: `--renew <id>...` and `--renew-env <env>`, both only for
+  entries whose flow's current digest equals their `hash`; one `renew_digest_changed` refusal names every changed
+  entry and nothing is written. Renewal rewrites only the named entries.
+- **Which requests an entry can authorise.** Only a `fetch` or `xhr` request that is not a `GET`, in a replay on an
+  env classed `shared`, and only by an entry for that env and flow whose `hash` is the flow's digest now. A form
+  post, a beacon or any other resource type stays refused; on `local` nothing is refused, so entries for a `local`
+  env authorise nothing. When entries exist for an older version of the flow, the hint says the flow changed.
+- **Matching.** The path is matched as sent, without decoding. The query may hold only `queryKeys`, each once; a bare
+  `?` is refused. `Content-Type` is the entry's type, optionally with `charset=utf-8`. Headers: the baseline of
+  section 2a rule 5, the `sec-fetch-*` and `sec-ch-ua*` families, `content-type` and `content-length` when there is a
+  body, and the entry's `headers`; `host` and `origin`, when present, must name the entry's origin; anything else,
+  pseudo-headers included, blocks the request.
+- **How a create is sent.** The request is sent from the route with Playwright's `route.fetch`, without following a
+  redirect, so the id line is fsynced before the answer is handed to the page; the request then leaves from Node with
+  the context's cookies and the browser's headers. A redirect answer is `ledger_mismatch`; a 4xx writes the `none`
+  line; a 5xx or another 2xx is handed on and leaves the intent unconfirmed. An id found in any request header, the
+  URL or the body is `ledger_replay`. When a natural key is echoed changed, the id is recorded first and the run then
+  ends `ledger_mismatch`, so cleanup removes the record. After a ledger problem the run sends no further write.
+- **Seen-set sources as built.** The URL and body of every request of the judged types; the bodies of document, fetch
+  and XHR answers, held at the CDP response stage of the page until read (a declared `Content-Length` over 8 MiB is
+  refused unread); the body of a popup's first document, which is fetched from the route before the popup's page
+  exists, scanned before it is handed on; WebSocket messages from the server; before a create, the `innerText` of
+  every frame of every open page of every context of the run (the scope guard reaches them through the contexts
+  `RunSession` attached it to, not only the page that sends the create). Stated gaps:
+  EventSource messages, and answers in a cross-site frame's own process, are not scanned (their requests are); a
+  body whose read fails counts as empty.
+- **Cleanup.** At the end of the run, before the contexts close, with the browser context of the flow's profile
+  (`context.request`, the run's own cookies); `flowctl cleanup` uses the saved session of the flow's profile, limited
+  to the env's origins, without a browser. Both build requests only from the signed entry's origin and templates and
+  do not pass the page route. An id whose create entry is no longer valid (revoked, expired, re-bound) is leftover
+  with detail `entry_missing`, since only a signed entry authorises a cleanup request. Leftover details are
+  `create_unconfirmed`, `cleanup_failed`, `verify_failed`, `timeout`, `entry_missing`, `id_invalid` and, for
+  `flowctl cleanup` only, `unrecorded`. The `abort`
+  line comes after the run's own `cleanup` lines, so it is the last line the run writes. A non-empty `leftover` makes
+  `replay` and `flowctl cleanup` exit 2.
+- **A cleanup URL never leaves its template.** A ledger file can be edited, so before a cleanup or verify request
+  the id must be canonical and of the placeholder's type; the URL is joined segment by segment and must match the
+  template again with the entries' exact matcher. An id that fails is leftover `id_invalid` and nothing is sent.
+- **The end of a run.** The ledger refuses every write from the moment its cleanup starts, waits up to 15 s for the
+  writes still in flight and for the response scans, and only then reads its ids. A write that reached the ledger
+  before that moment is judged again once its headers are read, and refused as "the run was ending" when the cleanup
+  started meanwhile, before it is matched or sent. From the end of that wait the
+  ledger takes no line from a request in flight: a create answered later, even while the cleanup runs, is never
+  recorded (its answer is aborted, not handed to the page) and stays `create_unconfirmed` with its name, so no id
+  enters after the ids were read and the `abort` line stays last. The guard judges the outcome again after the cleanup, so a ledger problem
+  that arrives during it ends the run `error`. Only an env the store classes `shared` by its own name gets a ledger,
+  whatever class its origin has.
+- **A torn last line.** A last ledger line without its newline that is not JSON is a cut append: `flowctl cleanup`
+  drops it, cleans every line before it, and reports `tornTail` (exit 2). Any other broken line is `ledgers_invalid`
+  `chain`.
+- **A ledger write that fails.** When writing or fsyncing a line fails (a full disk), the file is cut back to its
+  length before that line, so its chain stays whole, and it takes no more lines: every later append is
+  `ledgers_invalid` detail `write_failed`. The request whose line failed is aborted, the run sends no further write,
+  and the run ends `error: internal` with the cause and the `flowctl cleanup <run id>` to run once the disk is
+  fixed; the cleanup at the end of the run still runs. Any other failure while a write is judged is `internal` too,
+  never `failed`. `flowctl cleanup` whose `cleanup` line fails goes on with the other ids (a `DELETE` of a record the
+  run created is safe to send again): an id confirmed deleted whose line was not written is leftover `unrecorded`, the
+  first error is reported as `writeFailed`, and it exits 2; the ledger still lists those ids, so the next cleanup
+  sends their cleanup again and a 404 confirms them.
+- **One writer per ledger.** `ledgers/<run id>.lock` (created `O_EXCL`, mode 0600, holding the pid) is held by the
+  live run from the ledger's creation to its close and by `flowctl cleanup` while it reads and appends. While it
+  exists and its process is alive, `flowctl cleanup` is refused with `ledgers_invalid` detail `busy` (exit 3), so a
+  cleanup during a run or two cleanups at once never fork the chain or send a `DELETE` twice. A lock whose process
+  is gone is removed and taken over, and the cleanup reports `staleLock`. The takeover runs under a second `O_EXCL`
+  file, `ledgers/<run id>.lock.takeover` (removed when the takeover ends; one older than 30 s was left by a crash and
+  is removed): holding it, the process judges the lock again and removes it only if it is still stale and still the
+  same file it judged (device, inode and change time, read on the descriptor it judged and by `lstat` just before the
+  removal), so two takeovers at once never remove each other's fresh lock; the second is refused `busy`. The lock and
+  takeover files and the details `busy`, `write_failed` and `closed` extend the file list and the detail list of ADR
+  0025 amendment 2026-11-02 section 4.
+- **WebSocket messages are not guarded in a replay** (owner decision; the one place where the stricter option was not
+  taken). A WebSocket to an origin in scope is opened in a replay on `shared` and `unknown` too, and the frames the
+  page sends to the server over it are not judged. The stricter option, closing every socket in a replay on those
+  classes, was rejected because it would break every realtime app. So **on `shared` and `unknown` a write sent over a
+  WebSocket (page to server) is not guarded in a replay**; review flows that use one. Messages from the server enter
+  the seen-set. A crawl still closes every socket. A test documents the gap.
+- **Ledger file.** Every run that keeps a ledger writes `bundleId: null` (no `ci` bundle exists yet); a `ci` store's
+  writable `ledgers/` is not built. A `ledgers_invalid` refusal at the start of a run is reported as
+  `scope_violation` naming that kind, like every other store refusal of the run's guards.
+- **Not built yet:** ledger rule 5 (a body field that references an existing record must be a ledger id or a
+  declared literal) has no entry field, so such a field is admitted by `bodyKeys` alone; a `mutate` should list it in
+  `idPositions`. Child creates under a parent path stay unconfirmable (above).

@@ -2,6 +2,9 @@
 export const USAGE = `Usage:
   flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
   flowctl login <profile> [--env <env>] [--config <path>]
+  flowctl cleanup <run id> [--json] [--config <path>]
+                                         remove the records a replay on a shared env created and left (from its
+                                         ledger in the trust store); exits 2 while records are left; re-runnable
   flowctl observe [--env <env>] [--profile <profile>] [--start <path>] [--json] [--out <file.json>] [--config <path>]
                                          crawl the app read-only and write its map (appmap.json) into the run
                                          directory, and to --out inside the flows directory (early)
@@ -31,6 +34,17 @@ export const USAGE = `Usage:
                                          (interactive)
   flowctl trust add project [<name>] [--config <path>]
                                          register this checkout (or record its identity) in the trust store (interactive)
+  flowctl trust add destructive <flow> --env <env> --from-run <run id> [--days <n>] [--config <path>]
+                                         confirm the writes a flow may send on a shared env, derived from a
+                                         passing run of it on a local env; you attest what no recording shows
+                                         (interactive)
+  flowctl trust add destructive --renew <id>... [--days <n>] [--config <path>]
+  flowctl trust add destructive --renew-env <env> [--days <n>] [--config <path>]
+                                         give unchanged flows' confirmations a new expiry (and the env's new
+                                         origin) (interactive)
+  flowctl trust revoke destructive <id> [--config <path>]
+                                         remove a stored destructive confirmation and the mutate entries that
+                                         depend on it (interactive)
   flowctl trust key rotate-owner [--config <path>]
                                          replace the owner key and re-sign every entry; a rerun finishes or rolls
                                          back a rotation that was interrupted (interactive)

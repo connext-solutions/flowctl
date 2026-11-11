@@ -9,7 +9,6 @@ export type {
   ExploreStop,
   Recording,
 } from './types.js';
-export { envClassFor } from './guard.js';
 export { healStep, type HealOptions } from './heal.js';
 export { MAX_DETAIL_CHARS, pageText } from './page-text.js';
 export { parseExploreRequest } from './validate.js';
