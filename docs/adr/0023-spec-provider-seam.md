@@ -204,3 +204,97 @@ malformed document is `signature_malformed`, ADR 0020 section n).
 7. **Hostile fixtures (rule 8)** gain: an oversized `.sig`, a `.sig` with a duplicate key, a `.sig` whose entry
    was copied from another document (its `ref` differs, so it reads as unsigned), and a `signatureRef` that
    looks like `../../x`; each must give a typed refusal or `unsigned`, never a path read outside the root.
+
+## Amendment 2026-11-12: the expected item, number binding, and `context` normalisation
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+Task T0.33 lists vague rules to make testable. This amendment closes the items this ADR owns: 9 (number binding,
+unit and `polarity` in the `Operation` and `expected` schema) and 10 (`context` normalisation and the `leadIn`
+rule). The signed unit of ADR 0020 amendment 2026-11-02 section n is unchanged: its `expected` elements stay
+exactly `{ context, text, value }`.
+
+### 1. The `expected` item carries no judgement (item 9)
+
+- An `expected` item is exactly `{ text, value, ref, context }`, with `value` a string or `null` (ADR 0020
+  amendment 2026-11-02 section m, rule 8). The `Operation` schema is strict: a provider that returns another key
+  on an operation or an item (`polarity`, `unit`, `number`, `binding` included) fails the contract test (T3.5), and
+  at run time that operation is treated as absent, so a `sourceRef` into it does not resolve.
+- **Polarity and number binding are judgements.** A generator or a spec edit must not set them (ADR 0020 section
+  d). The reviewer sets them in `flowctl review`, and they are fields of the signed case-approval record (ADR 0020
+  section f), one per spec item the case cites: `{ ref, polarity, number }`.
+- `polarity` is `positive`, the only accepted value; any other value refuses the case (fail closed).
+- `number` is `null` or `{ label, unit }`, each `string | null`. It must be non-null exactly when `value` matches
+  the number grammar below.
+
+**Number grammar.** The locale is the store's per-project `numberLocale`, `en` or `vi`, default `en`, written with
+the project entry (ADR 0025 section 2, `projects`); this is the store value ADR 0020 section d names.
+
+| Locale | `value` must match |
+|---|---|
+| `en` | `^-?(0\|[1-9][0-9]{0,14})(\.[0-9]{1,6})?$` |
+| `vi` | `^-?(0\|[1-9][0-9]{0,14})(,[0-9]{1,6})?$` |
+
+No grouping separator, no exponent, no `+`, ASCII digits only. A value such as `1,500` in `en` is not a number and
+is compared as text. A **number token** in `text` is a maximal match of the grammar (without the anchors) at token
+boundaries (ADR 0020 amendment 2026-11-12, section 2).
+
+**Binding.**
+- `label` may be `null` only when `text` holds exactly one number token. Otherwise it is a non-empty string that
+  occurs exactly once in `text` at token boundaries and ends before the value's occurrence, with no other number
+  token between them. Else the item is refused with `number_unbound`.
+- `unit` is `null` or a string of 1 to 16 code points without whitespace. In `text` it follows the value after
+  exactly one U+0020 (`5 kg`), or directly when its first code point is not a letter, mark or number (`5%`), and
+  the code point after it is not a letter, mark or number. Else `number_unbound`.
+- **Comparison.** An assertion value bound to the item must contain exactly one number token, with the same unit
+  in the same position when `unit` is set. The two numbers are equal when their canonical forms are equal as
+  strings: trailing fractional zeros and a bare decimal mark removed, `-0` written `0`. Else
+  `number_unit_mismatch`.
+- `number_unbound` and `number_unit_mismatch` refuse the `sourceRef` at save (`FlowError`) and are reasons of
+  `stale_sourceRef` at `check`.
+
+Why the record and not the provider: the provider's output is untrusted data (rule 1 of "Provider input
+hardening"), and a binding chosen by the source could point the check at another number. *Rejected:* a `binding`
+field on the `expected` item, which would also change the ten keys and the digests of ADR 0020 section n.
+
+### 2. `context` normalisation and the `leadIn` rule (item 10)
+
+**Normalisation, every adapter.** Each string of `context` (`operationId`, `operationTitle`, each entry of
+`headings`, `leadIn`) is NFC, with ASCII whitespace runs collapsed to one space and trimmed, and passes the
+refusals of ADR 0020 section d. Each string is at most 500 code points; `headings` has at most 6 entries. A string
+that breaks a rule makes the item unresolvable: its `sourceRef` is refused at save with `spec_context_invalid`. A
+provider never truncates.
+
+**Markdown adapter.**
+- `headings` are the ATX and setext headings that enclose the item, by level, outermost first, **including the
+  operation's own heading**. A heading's text is its inline content as plain text: emphasis and code-span markers
+  removed, link text and image alt text kept, inline HTML tags removed, a closing run of `#` removed.
+- `leadIn`, for an item that is a top-level list entry: the plain text of the paragraph directly before the list
+  (only blank lines between), in the same section, **if that paragraph ends with `:`** after trimming; else
+  `null`.
+- `leadIn`, for a nested list entry: the plain text of the first paragraph of its parent entry; the `:` rule does
+  not apply.
+- `leadIn` for an item that is not a list entry: `null`.
+
+**Gherkin adapter.** `headings` are the `Feature` name, then the `Rule` name when there is one, then the
+`Scenario` name. `leadIn` is `null`.
+
+**Any other adapter** returns `leadIn: null` unless its source has an explicit lead-in construct that its own
+adapter section defines, and the contract test (T3.5) compares `context` across adapters as before.
+
+### Tests this implies
+
+- A provider that returns `polarity: "positive"` on an item fails the contract test; at run time a `sourceRef` into
+  that operation does not resolve.
+- A case-approval record with `polarity: "negative"` refuses the case.
+- `value` `12.5` with `numberLocale: en` needs a non-null `number`; `12,5` with `en` is text and needs `null`.
+- `value` `1,500` in `en` is compared as text.
+- `text` "Total 3 items, 2 shipped" with `label: null` is `number_unbound`; with `label: "Total"` it binds `3`.
+- `unit: "kg"` binds `5 kg` and refuses `5kg` (not a number token) and `5 kgs`; `unit: "%"` binds `5%`; two spaces
+  before the unit are collapsed by the normalisation first, so `5  kg` binds.
+- Assertion `5.50 kg` equals item `5.5 kg`; `-0` equals `0`; `5 g` against `5 kg` is `number_unit_mismatch`.
+- A heading `**Create**  order` gives `Create order` in `headings`.
+- A list after "The order:" gives that `leadIn`; after "The order." gives `null`; a nested entry takes its parent's
+  text.
+- A heading of 501 code points makes the item's `sourceRef` refused with `spec_context_invalid`.
+- A Gherkin scenario inside a `Rule` gives three headings and `leadIn: null`.

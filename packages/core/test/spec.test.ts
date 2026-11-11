@@ -113,4 +113,16 @@ describe('SpecRegistry: explicit registration, untrusted output', () => {
     expect(await r.signatures('markdown', 'a.md.sig')).toBeNull();
     expect(await r.signatures('gherkin', 'a.sig')).toBeNull();
   });
+
+  it('treats a provider that throws synchronously from signatures as unsigned', async () => {
+    const r = new SpecRegistry();
+    r.register(
+      provider('markdown', [], {
+        signatures: () => {
+          throw new Error('boom');
+        },
+      }),
+    );
+    expect(await r.signatures('markdown', 'a.md.sig')).toBeNull();
+  });
 });
