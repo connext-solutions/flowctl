@@ -65,6 +65,13 @@ implies 2xx (`toastOnFail`), the client blocks what the server rejects (`noValid
 console error (`consoleError`). The app has no edit or delete, so the "edit shows" and "delete is absent" round
 trips have no seeded bug yet.
 
+## Scope guard pages
+
+`/guard` holds pages for core's scope-guard browser tests (`GUARD_PAGES`), unlinked from every other page:
+`/guard/downloads` (an export in scope as an attachment and as a `download` link, a `download` link to another
+origin, a `data:` export) and `/guard/frames` (a frame in scope, buttons that add a frame on another origin and a
+`data:` frame, and one that moves the frame to a denied hash route).
+
 ## Contract artefacts (T2.9)
 
 `contracts/` holds what a contract reader (T4.10) parses statically, with values that agree with the app:

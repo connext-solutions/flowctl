@@ -9,6 +9,11 @@ export interface NetEntry {
   status: number;
   requestBody: unknown;
   responseBody?: string;
+  /**
+   * Set on an entry that is a note, not a fetch/xhr call: `download_cancelled` for a download the run's browser
+   * cancelled (`run/context-limits.ts`). Assertions never match a note (ADR 0010).
+   */
+  note?: 'download_cancelled';
 }
 
 /** Only API traffic counts; document/script/stylesheet loads (e.g. Vite serving .tsx) never do. */

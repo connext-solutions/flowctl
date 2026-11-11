@@ -14,6 +14,7 @@ import {
 } from './pages.js';
 import { validateLeaveRequest } from './validator.js';
 import { crawlRoute, type CrawlBugMode } from './crawl.js';
+import { guardRoute } from './guard-pages.js';
 
 /**
  * Seeded bugs: each mode is a defect a correct flowctl run must report as `failed`.
@@ -88,6 +89,13 @@ async function readJson(req: IncomingMessage): Promise<Map<string, unknown>> {
     value !== null && typeof value === 'object' ? Object.entries(value) : [],
   );
 }
+
+/** The content type of each kind of `/map` and `/guard` answer. */
+const CONTENT_TYPES = {
+  html: 'text/html; charset=utf-8',
+  js: 'text/javascript',
+  csv: 'text/csv; charset=utf-8',
+} as const;
 
 /**
  * Starts the fixture app on a random localhost port, with at most one seeded bug: a flow-class mode
@@ -199,7 +207,8 @@ export async function startFixture(
     }
     const html = PAGES[url.pathname];
     if (html === undefined) {
-      const crawl = crawlRoute(url.pathname, bug ?? '');
+      const crawl =
+        crawlRoute(url.pathname, bug ?? '') ?? guardRoute(url.pathname);
       if (crawl === undefined) return send(res, 404, { message: 'not found' });
       if ('purge' in crawl) {
         store = [];
@@ -211,8 +220,12 @@ export async function startFixture(
         return;
       }
       res.writeHead(crawl.status, {
-        'content-type':
-          crawl.type === 'js' ? 'text/javascript' : 'text/html; charset=utf-8',
+        'content-type': CONTENT_TYPES[crawl.type],
+        ...(crawl.filename === undefined
+          ? {}
+          : {
+              'content-disposition': `attachment; filename="${crawl.filename}"`,
+            }),
       });
       res.end(crawl.body);
       return;

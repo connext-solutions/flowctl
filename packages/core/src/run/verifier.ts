@@ -135,7 +135,9 @@ async function check(a: Assertion, ctx: VerifyContext): Promise<Check> {
   if ('network' in a) {
     const n = a.network;
     const re = globToRegExp(n.url);
-    const seen = ctx.evidence.network.filter((e) => onRun(e.url, ctx.origins));
+    const seen = ctx.evidence.network.filter(
+      (e) => e.note === undefined && onRun(e.url, ctx.origins),
+    );
     const hits = seen.filter(
       (e) => e.method === n.method.toUpperCase() && re.test(e.url),
     );
