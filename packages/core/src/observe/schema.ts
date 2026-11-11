@@ -7,13 +7,14 @@ import { ARIA_ROLES } from '../flow/index.js';
  */
 export const PAGE_PATH = /^\/(?!\/)[^?#\s]*$/;
 
-const Path = z
+/** A {@link PAGE_PATH} of at most 2,048 characters. */
+export const Path = z
   .string()
   .max(2048)
   .regex(PAGE_PATH, 'must be a path: /..., no query or fragment');
 
 /** Text read from the page (names, titles, console lines): untrusted, bounded, never a key or a command. */
-const PageText = z.string().max(300);
+export const PageText = z.string().max(300);
 
 /** A control as Playwright names it (role and accessible name), the same pair a flow locator uses. */
 export const ControlSchema = z
@@ -40,7 +41,7 @@ export const FormSchema = z
   .strict();
 
 /** An origin and nothing else: `https://host[:port]`. */
-const Origin = z
+export const Origin = z
   .string()
   .url()
   .refine((u) => new URL(u).origin === u, 'must be an origin, no path');

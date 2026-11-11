@@ -146,6 +146,47 @@ describe('flowctl observe', () => {
       ]),
     ).toBe(2);
     expect(out.join('')).toContain('error: scope_violation');
+    expect(out.join('')).not.toContain('Checks:');
     expect(await cli(['observe', 'extra', '--config', configFile])).toBe(2);
+  });
+
+  it('prints the free checks, writes checks.json beside the map, and exits 0 when they pass', async () => {
+    expect(
+      await cli(['observe', '--start', '/map', '--config', configFile]),
+    ).toBe(0);
+    const text = out.join('');
+    expect(text).toContain('Checks: passed');
+    const file = /^Checks file: (.+)$/m.exec(text)?.[1] ?? '';
+    expect(file).toMatch(/checks\.json$/);
+    expect(JSON.parse(readFileSync(file, 'utf8')).status).toBe('passed');
+  });
+});
+
+describe('flowctl observe on an app with a crawl-class bug', () => {
+  it('exits 1 when a free check fails, and names the check, the page and what was seen', async () => {
+    const buggy = await startFixture('brokenLink');
+    try {
+      const file = await fixtureProject(buggy.url, {
+        target: { scope: { deny: ['/admin/**'] } },
+      });
+      expect(await cli(['observe', '--start', '/map', '--config', file])).toBe(
+        1,
+      );
+      const text = out.join('');
+      expect(text).toMatch(/^Checks: failed \(.*no-broken-link.*\)$/m);
+      expect(text).toContain('  no-4xx /map/missing: document 404');
+      expect(text).toContain(
+        '  no-broken-link /map: link to /map/missing (404)',
+      );
+      out.length = 0;
+      expect(
+        await cli(['observe', '--start', '/map', '--json', '--config', file]),
+      ).toBe(1);
+      const s: Record<string, unknown> = JSON.parse(out.join(''));
+      expect(s.checks).toMatchObject({ status: 'failed' });
+      expect(s).not.toHaveProperty('status');
+    } finally {
+      await buggy.close();
+    }
   });
 });

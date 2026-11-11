@@ -45,6 +45,7 @@ it('exposes exactly the documented runtime interface', () => {
     'findConfig',
     'findFlows',
     'findFlowsWithErrors',
+    'freeChecks',
     'initTrust',
     'isCommand',
     'loadConfig',

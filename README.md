@@ -44,7 +44,7 @@ Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/t
 | Demo videos of a replay with a step overlay (ADR 0032) | done |
 | Destructive-action guard for **replay** on shared envs, stored confirmations and the run ledger | open |
 | Read-only replay on production, computed System 1 cost | open |
-| Observe: read-only crawler and `AppMap` (`flowctl observe`, ADR 0033) | early |
+| Observe: read-only crawler, `AppMap` and free checks (`flowctl observe`, ADR 0033) | early |
 | Free checks on the map, Derive (test cases from specs), Reconcile (classify failures) | planned |
 
 Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
@@ -188,9 +188,15 @@ required, submit), links, fetch/xhr calls (method, path, status) and console err
 `***`, and the requests refused while the page was open. A call to another origin keeps its origin. It stops at
 `target.budgets.pages` (at most 50) or the run's wall-clock budget, then says `truncated`. A request the guards only
 detect after it was sent, an expired session (including a page that routes itself to the login page) and a refused
-start page end the crawl with an error. Exit `0` when the crawl
-finished (a map is not a verdict), `2` on an error. Free checks on the map (broken links, 5xx, console errors) are not
-built yet.
+start page end the crawl with an error.
+
+Then the free checks run on the map and are written to `checks.json` beside it: `no-console-error`, `no-4xx` and
+`no-5xx` (document and fetch/xhr call statuses), `no-broken-link` (a link to a page that answered 4xx, 5xx or nothing)
+and `no-unreachable-page` (a page that gave no answer while nothing was refused; a redirect the scope refused is not
+one). Each finding names the page and what was seen there, and points at the `appmap.json` entry it stands on. The
+command prints the verdict and up to 20 findings (`--json`: `checks` with the status, failed ids, count and file).
+Exit `0` when the crawl finished and every check passed, `1` when a check failed, `2` on an error (no checks are run
+then). A pass on a truncated map covers only the pages it holds (ADR 0033, amendment).
 
 ## Flow format
 

@@ -32,6 +32,7 @@ import type { DecisionLogEntry } from './decision-log.js';
 
 /** Names of run directories; pruning never touches anything else in `.runs`. */
 export const RUN_ID = /^r_[0-9a-z]+$/;
+type Artefact = 'run.json' | 'appmap.json' | 'checks.json';
 
 export type { DecisionLogEntry } from './decision-log.js';
 
@@ -39,7 +40,7 @@ export type { DecisionLogEntry } from './decision-log.js';
  * Owns one run's directory `<runsDir>/<runId>/` and everything written into it.
  *
  * @remarks Layout (a contract users and tools read): `trace-<profile>.zip`, `final.png`,
- *   `network.json`, `console.json`, `decisions.jsonl` (explore and heal only), `appmap.json` (observe only), `run.json`.
+ *   `network.json`, `console.json`, `decisions.jsonl` (explore and heal only), `appmap.json` and `checks.json` (observe only), `run.json`.
  *   Lifecycle: {@link attach} every context before its first navigation → {@link decided} as
  *   System 1 answers → {@link collect} before the contexts close → {@link save} with the result.
  */
@@ -265,8 +266,8 @@ export class Evidence {
       .forEach((d) => rmSync(d.path, { recursive: true, force: true }));
   }
 
-  /** Writes one named file of the layout (`run.json`, or a crawl's `appmap.json`) and returns its path. */
-  artefact(name: 'run.json' | 'appmap.json', text: string): string {
+  /** Writes one named file of the layout (`run.json`, or a crawl's `appmap.json` and `checks.json`) and returns its path. */
+  artefact(name: Artefact, text: string): string {
     const path = join(this.dir, name);
     writeFileNoFollow(path, text);
     return path;

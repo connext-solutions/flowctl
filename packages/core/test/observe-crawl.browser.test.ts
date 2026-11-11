@@ -156,12 +156,19 @@ describe('observe (T2.2)', () => {
     });
   });
 
-  it('stops at the wall-clock budget: the run ends budget_exceeded and the map is truncated', async () => {
+  it('stops at the wall-clock budget: the run ends budget_exceeded, the map is truncated and no checks are run', async () => {
     const cfg = await config({ budgets: { wallClockMs: 1 } });
-    const { map, run, budget } = await observe(cfg, { browser, start: '/map' });
+    const { map, run, budget, checks, file } = await observe(cfg, {
+      browser,
+      start: '/map',
+    });
     expect(run.error?.kind).toBe('budget_exceeded');
     expect(map.truncated).toBe(true);
     expect(budget).toMatchObject({ wallClockMs: 1, stoppedBy: 'wallClock' });
+    expect(checks).toBeUndefined();
+    expect(existsSync(file.replace(/appmap\.json$/, 'checks.json'))).toBe(
+      false,
+    );
   });
 
   it('refuses a start that is not a path, an unknown profile, and a denied start page', async () => {
