@@ -31,6 +31,7 @@ it('exposes exactly the documented runtime interface', () => {
     'addProject',
     'addSystem1',
     'addTrustedEnv',
+    'appMapPath',
     'assertNoStore',
     'checkEnvOrigin',
     'checkProductionOrigin',
@@ -50,6 +51,7 @@ it('exposes exactly the documented runtime interface', () => {
     'loadFlow',
     'loadOwnerKey',
     'login',
+    'observe',
     'openTrustStore',
     'pageText',
     'parseConfig',
@@ -76,5 +78,6 @@ it('exposes exactly the documented runtime interface', () => {
     'summarize',
     'validateInit',
     'verify',
+    'writeAppMap',
   ]);
 });

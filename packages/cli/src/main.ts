@@ -32,6 +32,7 @@ import {
   type Values,
 } from './argv.js';
 import { waitForLogin } from './login-wait.js';
+import { observeCmd } from './observe-cmd.js';
 import { formatSummary, invalidFlowResult, terminalSafe } from './summary.js';
 import {
   trustAddEnv,
@@ -139,6 +140,8 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
     process.stderr.write(`Saved session to ${path}\n`);
     return 0;
   },
+  observe: ({ cfg, values, trusted }) =>
+    observeCmd(cfg, values, trusted?.store, write),
   'trust init': ({ cfg, values }) => {
     (values.replace ? trustReplace : trustInit)(
       cfg,

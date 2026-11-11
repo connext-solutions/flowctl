@@ -26,6 +26,9 @@ export const OPTIONS = {
   'anchor-dir': { type: 'string' },
   replace: { type: 'boolean', default: false },
   config: { type: 'string' },
+  profile: { type: 'string' },
+  start: { type: 'string' },
+  out: { type: 'string' },
 } as const;
 
 /** The parsed values of {@link OPTIONS}. */
@@ -82,6 +85,7 @@ export type Runnable = Exclude<CommandName, '--help' | McpCommand>;
 export const ARITY: Record<Runnable, (n: number) => boolean> = {
   replay: () => true,
   login: (n) => n === 1,
+  observe: (n) => n === 0,
   'trust init': (n) => n === 0,
   'trust hook': (n) => n > 0,
   'trust add env': (n) => n === 1,

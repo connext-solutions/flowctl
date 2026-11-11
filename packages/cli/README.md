@@ -6,6 +6,7 @@ core, print a summary, set the exit code.
 ```text
 flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
 flowctl login <profile> [--env <env>] [--config <path>]
+flowctl observe [--env <env>] [--profile <profile>] [--start <path>] [--json] [--out <file.json>] [--config <path>]
 flowctl trust init [--replace] [--anchor-dir <abs dir>] [--config <path>]
 flowctl trust hook <name...> [--hook-env NAME] [--pin NAME=VALUE] [--config <path>]
 flowctl trust add env <env> [--config <path>]
@@ -31,6 +32,12 @@ profile with each step shown on screen, slowed down to be read, and is refused f
 
 `--json` prints the `ReplaySummary` from core; its shape and the exit codes are a contract for CI and
 agents, so changing them is a breaking change.
+
+`flowctl observe` (early) crawls the env read-only and writes the map to `appmap.json` in the run directory; `--out`
+copies it to a `.json` path inside the flows directory (never under `.auth`), checked before the crawl starts. It
+prints one line per page, or with `--json` a compact summary (`runId`, `status`, `pages`, `truncated`, `attention`:
+pages with no answer, a 4xx/5xx or a refused request, `budget`, `file`). It exits `0` when the crawl finished and `2`
+when the run ended in an error; a map is not a verdict, so it never exits `1`.
 
 `flowctl login` opens a headed browser; finish with Enter in a terminal or by closing the window (the
 only way without a TTY). It refuses to save a session that never left the login page.

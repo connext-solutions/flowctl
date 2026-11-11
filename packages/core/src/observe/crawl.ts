@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import type { Browser } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import { resolveEnv, type LoadedConfig } from '../config.js';
 import { envClassFor } from '../explore/index.js';
 import { FlowError, type Flow } from '../flow/index.js';
@@ -22,8 +22,8 @@ import { walk } from './walk.js';
 export interface ObserveOptions {
   /** The env to crawl; the config's trusted default when left out. */
   env?: string;
-  /** The caller's browser; the crawl opens one context in it, through `RunSession`. */
-  browser: Browser;
+  /** The caller's browser; the crawl opens one context in it, through `RunSession`. A headless Chromium when left out. */
+  browser?: Browser;
   /** The profile whose saved session the crawl uses; the first profile of the config when left out. */
   profile?: string;
   /** The path the crawl starts at; the path of the env's `baseUrl` when left out. */
@@ -78,6 +78,21 @@ export async function observe(
   cfg: LoadedConfig,
   opts: ObserveOptions,
 ): Promise<Observation> {
+  if (opts.browser !== undefined) return crawlIn(cfg, opts, opts.browser);
+  const browser = await chromium.launch();
+  try {
+    return await crawlIn(cfg, opts, browser);
+  } finally {
+    await browser.close();
+  }
+}
+
+/** {@link observe} in `browser`. */
+async function crawlIn(
+  cfg: LoadedConfig,
+  opts: ObserveOptions,
+  browser: Browser,
+): Promise<Observation> {
   const env = resolveEnv(cfg, opts.env);
   const profile = opts.profile ?? Object.keys(cfg.profiles)[0] ?? '';
   if (!Object.hasOwn(cfg.profiles, profile))
@@ -92,7 +107,7 @@ export async function observe(
   const writes = RequestGuard.forCrawl(envClassFor(origin, opts.store), words);
   const run = RunSession.open(cfg, crawlFlow(profile, start), {
     env: env.name,
-    browser: opts.browser,
+    browser,
     store: opts.store,
     writes,
   });

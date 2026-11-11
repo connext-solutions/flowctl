@@ -99,6 +99,15 @@ export {
   parseExploreRequest,
   type Recording,
 } from './explore/index.js';
+export {
+  appMapPath,
+  observe,
+  writeAppMap,
+  type AppMap,
+  type CrawlBudget,
+  type Observation,
+  type ObserveOptions,
+} from './observe/index.js';
 export { saveExploration, type SaveOptions, type SaveResult } from './save.js';
 export { StepError, perform } from './browser/index.js';
 export { TRUST_SUBCOMMANDS } from './foundation/index.js';

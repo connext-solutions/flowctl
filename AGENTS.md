@@ -45,8 +45,8 @@ to code and issues; classify product bug, spec drift, stale test, environment; i
 
 | Package | Owns | Interface | May depend on |
 |---|---|---|---|
-| `packages/core` (`@flowctl/core`) | config, flow format, RunSession, evidence, verifier, executor, snapshot + recorder, System 1 client, exploration, save, heal, replay, login | `src/index.ts` | npm deps only |
-| `packages/cli` (`@flowctl/cli`, bin `flowctl`) | `flowctl replay`, `flowctl login` | `src/index.ts` (`main`, `formatSummary`), `src/bin.ts` | `core` |
+| `packages/core` (`@flowctl/core`) | config, flow format, RunSession, evidence, verifier, executor, snapshot + recorder, System 1 client, exploration, save, heal, replay, login, observe (read-only crawler, `AppMap`) | `src/index.ts` | npm deps only |
+| `packages/cli` (`@flowctl/cli`, bin `flowctl`) | `flowctl replay`, `flowctl login`, `flowctl observe`, `flowctl trust` | `src/index.ts` (`main`, `formatSummary`), `src/bin.ts` | `core` |
 | `packages/mcp` (`@flowctl/mcp`, bin `flowctl-mcp`) | MCP stdio server: `flow_run`, `flow_step`, `flow_wait`, `flow_save`, `flow_replay`, each guarded; agent playbook in `skill/` | `src/index.ts` (`createServer`), `src/bin.ts` | `core` |
 | `packages/fixture-app` | two-role test app, 12 seeded bugs, sample flows | `src/index.ts` | nothing (tests only) |
 
