@@ -11,10 +11,11 @@ Fast, deterministic verification of web flows for developers and testers who wor
   screenshot, network and console logs) that is safe to attach to a bug.
 
 > **Early preview.** The engine, the CLI and the MCP server work and are tested, but the interfaces may still
-> change between releases. One safety limit is not finished: on a shared env, replay now refuses every write and
-> every destructive-looking `GET`, but the **stored confirmations** that would let a reviewed CRUD flow write there
-> (and clean up after itself) are not built yet, so such a flow runs only on a `local` env. Production is refused
-> for both. Run flowctl only against apps and environments you are allowed to change.
+> change between releases. On a shared env a replay writes only what the machine's owner confirmed for that exact
+> flow version (`flowctl trust add destructive`), changes only records the run itself created, and removes them at
+> the end. Run ledgers in a CI store and read-only replay on production are not built yet. Production is refused
+> for every write. Run flowctl only against apps and environments you are allowed
+> to change.
 
 ## How it works
 
@@ -44,7 +45,7 @@ Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/t
 | Wall-clock budget per run (`budget_exceeded`) | done |
 | Demo videos of a replay with a step overlay (ADR 0032) | done |
 | Destructive-action guard for replay: every write refused on shared and unlisted envs | done |
-| Stored destructive confirmations and the run ledger (CRUD flows on shared envs) | open |
+| Stored destructive confirmations and the run ledger (CRUD flows on shared envs, `flowctl cleanup`) | done, first version |
 | Read-only replay on production, computed System 1 cost | open |
 | Observe (crawler), Derive (test cases from specs), Reconcile (classify failures) | planned |
 
@@ -166,10 +167,15 @@ server. Replay never needs it. Never put the key in a config file, a chat or a c
 On an env classed `shared`, System 1 never clicks a control named like delete, approve, reject or pay, and the
 run blocks any request that looks destructive (any `DELETE`, or a path such as `/items/12/delete`) unless the
 agent started it with `allowDestructive: true`. On `production`, and on any origin the trust store does not
-list, nobody may. A **replay** on such an env is stricter: every request that is not a `GET`, and every `GET`
-whose path looks destructive, is refused and the run ends `error: destructive_blocked`. That includes the
-confirming replay of `flow_save`, so an exploration that created data on a shared env cannot be saved yet: the
-stored confirmation that would let a reviewed flow write there is not built. On `local` replay is unchanged.
+list, nobody may. A **replay** on such an env is stricter: every `GET` whose path looks destructive is refused,
+and so is every other request, except on a `shared` env a `fetch` or `xhr` write that a **stored confirmation**
+authorises. The owner writes one in a terminal with `flowctl trust add destructive <flow> --env <env> --from-run
+<run id>`, from a passing replay of the flow on a `local` env: it binds the flow, the files it uses and its vars,
+so any edit needs a new confirmation. Then a create must carry a `QA-` name holding the run's `{{uid}}`, a change
+or delete may touch only ids that run created, each id goes to a ledger in the trust store before the page sees it,
+and the run deletes them at the end (`cleanup` in the result; `flowctl cleanup <run id>` after a crash). Without a
+confirmation the run ends `error: destructive_blocked`; that includes the confirming replay of `flow_save`. On
+`local` replay is unchanged.
 
 ## Flow format
 
