@@ -4,7 +4,8 @@
  * validate, the owner key with signed entries, the hook closure, consent and snapshot, `trust init` with the
  * owner's env classes, `trust add env`, the profile env-var allowlist with `trust add profile` (T1.14), the
  * command registry with its guard, `trust.log` with the anchor, the other `trust add` kinds, and owner-key
- * rotation, and `trust init --replace`. Still to come: the CI layouts.
+ * rotation, `trust init --replace`, and the shared containment helper for spec and contract readers (`contain/`,
+ * T3.0; roots are passed in by the caller until the store `roots` reader lands). Still to come: the CI layouts.
  *
  * `TrustStore.open(dir)` is a test-only seam; it is re-exported here for the trust folder's own tests
  * but must not be surfaced from `packages/core/src/index.ts` (ADR 0025 section 1).
@@ -115,6 +116,22 @@ export {
   type Trusted,
 } from './commands.js';
 export { TrustError, type TrustErrorKind } from './errors.js';
+export {
+  ByteBudget,
+  checkRoot,
+  type ContainedRoot,
+  ContainmentError,
+  type ContainmentErrorKind,
+  openRoot,
+  readContained,
+  requirePurpose,
+  type RootPurpose,
+  type SkippedEntry,
+  WALK_LIMITS,
+  type WalkedFile,
+  type WalkLimits,
+  walkContained,
+} from './contain/index.js';
 export { canonicalJson } from './canonical.js';
 export {
   type Closure,
