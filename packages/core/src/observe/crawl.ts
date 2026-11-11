@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { chromium, type Browser } from 'playwright';
-import { resolveEnv, type LoadedConfig } from '../config.js';
+import { ConfigError, resolveEnv, type LoadedConfig } from '../config.js';
 import { envClassFor } from '../explore/index.js';
 import { FlowError, type Flow } from '../flow/index.js';
 import type { RunResult } from '../result.js';
@@ -15,7 +15,7 @@ import {
 import type { TrustStore } from '../trust/index.js';
 import { PageBudget, type CrawlBudget } from './budget.js';
 import { Capture } from './capture.js';
-import type { LinkRules } from './links.js';
+import { loginPath, type LinkRules } from './links.js';
 import {
   AppMapSchema,
   PAGE_PATH,
@@ -63,18 +63,19 @@ const crawlFlow = (profile: string, start: string): Flow => ({
   parsedSteps: [],
 });
 
-/** A crawl checked and ready to open: the env, the profile, the start path and the request layer. */
+/** A crawl checked and ready to open: the env, the profile, the start path, the login path and the request layer. */
 interface Plan {
   env: ReturnType<typeof resolveEnv>;
   profile: string;
   start: string;
+  login: string | undefined;
   writes: RequestGuard;
 }
 
 /**
  * Checks what a crawl needs before any browser starts.
  *
- * @throws {ConfigError} for an unknown env.
+ * @throws {ConfigError} for an unknown env, or a `loginUrl` that does not resolve against its `baseUrl`.
  * @throws {RunError} `env_not_trusted` for an env the trust store refused; `scope_violation` for an env the store
  *   classes `production`: a crawl never runs there until the read-only production replay of ADR 0024 section 2a
  *   exists, whose rules (`GET` only, signed path templates) are stricter than the crawl's request layer.
@@ -98,8 +99,16 @@ function plan(cfg: LoadedConfig, opts: ObserveOptions): Plan {
       'scope_violation',
       `flowctl observe never crawls a production env (${env.name}): read-only production replay (ADR 0024 section 2a) is not built. Crawl a local or shared env.`,
     );
+  let login: string | undefined;
+  try {
+    login = loginPath(env.loginUrl, env.baseUrl);
+  } catch {
+    throw new ConfigError(
+      `The loginUrl of env "${env.name}" is not a URL on ${origin}; use a path such as /login.`,
+    );
+  }
   const writes = RequestGuard.forCrawl(envClass, cfg.target.destructiveWords);
-  return { env, profile, start, writes };
+  return { env, profile, start, login, writes };
 }
 
 /**
@@ -109,13 +118,15 @@ function plan(cfg: LoadedConfig, opts: ObserveOptions): Plan {
  * open), and its links are queued in sorted order, so the same app gives the same map.
  *
  * @remarks The crawl is one `RunSession` with one context: the run's scope guard holds every request, and its request
- *   layer is {@link RequestGuard.forCrawl}, so nothing but reads leaves the browser on any env, and a refused request
- *   is recorded on its page (`refused`) instead of ending the crawl. A link is followed only when it stays in the
+ *   layer is {@link RequestGuard.forCrawl}, so nothing but reads leaves the browser on any env and every WebSocket is
+ *   closed; a request stopped before it was sent is recorded on its page (`refused`) instead of ending the crawl, one
+ *   detected only after it was sent ends it. Not guarded: a side-effecting `GET` whose path holds no destructive word,
+ *   and an action in a query (a GraphQL mutation in a `GET`). A link is followed only when it stays in the
  *   `visit` scope, is not the login page, opens in the same window, and neither its label nor its path looks
  *   destructive (ADR 0024 section 5). It stops at the page budget ({@link PageBudget}) or the run's wall-clock
  *   budget; either way `truncated` is true. `appmap.json` is written into the run directory, validated against
  *   {@link AppMapSchema}. Without `opts.browser` a headless Chromium is launched once the checks pass, and closed.
- * @throws {ConfigError} for an unknown env.
+ * @throws {ConfigError} for an unknown env or a `loginUrl` that is not a URL.
  * @throws {RunError} `env_not_trusted` for an env the trust store refused, `scope_violation` for a production env,
  *   `internal` when the map could not be written (the run is still finished).
  * @throws {FlowError} for an unknown profile or a start that is not a path.
@@ -152,7 +163,7 @@ async function crawlIn(
   });
   const rules: LinkRules = {
     scope: scopeFor(cfg, p.env, opts.store ?? 'default'),
-    loginUrl: p.env.loginUrl,
+    loginUrl: p.login,
     words: cfg.target.destructiveWords,
   };
   const pages: AppPage[] = [];
@@ -167,7 +178,7 @@ async function crawlIn(
       rules.scope.envOrigin,
     );
     complete = await walk(
-      { run, rules, writes, capture },
+      { run, rules, writes, capture, profile: p.profile },
       start,
       budget,
       pages,

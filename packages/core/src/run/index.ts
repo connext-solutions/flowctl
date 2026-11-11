@@ -27,7 +27,7 @@ export {
   type Refusal,
   type RequestClass,
 } from './request-guard.js';
-export { scopeFor } from './scope-guard.js';
+export { scopeFor } from './scope-for.js';
 export { redactBody, redactResponse, redactText } from './redact.js';
 export {
   cookieMatches,

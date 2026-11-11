@@ -22,10 +22,10 @@
 - **Replay** — re-running a recorded flow with no model.
 - **Heal** — fixing a broken locator during replay by asking System 1 for that one step; never touches assertions; opt-in (`--heal`).
 - **Seeded bug** — a switchable defect in `fixture-app` that a correct run must report as `failed`; measures accuracy.
-- **Observe / crawl** — mapping an app without a model: breadth-first from one start path, following only same-window links in the `visit` scope whose label and path do not look destructive, never clicking, typing or submitting; only reads leave the browser, on every env class (ADR 0033). Early.
+- **Observe / crawl** — mapping an app without a model: breadth-first from one start path, following only same-window links in the `visit` scope whose label and path do not look destructive, never clicking, typing or submitting; only reads leave the browser, on every env class, and every WebSocket is closed (ADR 0033). Not guarded: a side-effecting `GET` whose path holds no destructive word, and an action carried in a query (a GraphQL mutation in a `GET`). Early.
 - **AppMap** — what a crawl saw, written as `appmap.json`: per page its path, document status, title, snapshot controls, forms with their field model, same-origin links, fetch/xhr calls, console errors and `refused`. Paths only, no query, values or bodies (`core/src/observe/schema.ts`).
 - **Page (of a crawl)** — a path on the env's origin; the query string and fragment are not part of it, so a hash route is the page it sits on (ADR 0033).
-- **Refused (on a page)** — a request the scope guard (`scope_violation`) or the crawl's read-only request layer (`destructive_blocked`) aborted while that page was open; in a crawl it is an observation, not the end of the run (ADR 0033).
+- **Refused (on a page)** — a request the scope guard (`scope_violation`) or the crawl's read-only request layer (`destructive_blocked`) stopped before it was sent while that page was open; in a crawl it is an observation, not the end of the run. A request the guards only detect after it was sent ends the crawl, as in any run (ADR 0033).
 - **Weak locator** — a recorded locator with neither test id nor accessible name; reported in `weakLocators`.
 
 ## Trust

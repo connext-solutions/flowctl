@@ -165,7 +165,7 @@ export class Profiles {
       context,
       profile,
       (e) => this.evidence.network.push(e),
-      guard === undefined ? undefined : (u) => void guard.allows(u, 'visit'),
+      guard === undefined ? undefined : (u) => void guard.detect(u, 'visit'),
     );
     const page = await context.newPage();
     page.setDefaultTimeout(this.cfg.stepTimeout);

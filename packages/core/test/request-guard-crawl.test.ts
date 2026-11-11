@@ -47,6 +47,32 @@ describe('RequestGuard.forCrawl', () => {
     expect(g.takeRefusals()).toEqual([]);
   });
 
+  it('checks the method first: a write of a type the guard does not judge (a CSP report, a script) is refused too', () => {
+    const g = RequestGuard.forCrawl('local', []);
+    expect(g.allows('POST', `${APP}/csp-report`, 'csp_report')).toBe(false);
+    expect(g.allows('POST', `${APP}/assets/app.js`, 'script')).toBe(false);
+    expect(g.allows('PUT', `${APP}/logo.png`, 'image')).toBe(false);
+    expect(g.allows('GET', `${APP}/assets/app.js`, 'script')).toBe(true);
+    expect(g.allows('GET', `${APP}/archive.svg`, 'image')).toBe(true);
+    expect(g.takeRefusals()).toEqual(['destructive_blocked']);
+    expect(() => g.assertClean()).not.toThrow();
+  });
+
+  it('ends the run on a refusal it only detected, after the request was sent', () => {
+    const g = RequestGuard.forCrawl('local', []);
+    expect(g.allows('POST', `${APP}/api/requests`, 'fetch', false)).toBe(false);
+    expect(g.takeRefusals()).toEqual([]);
+    expect(() => g.assertClean()).toThrow(
+      expect.objectContaining({ kind: 'destructive_blocked' }),
+    );
+    expect(g.overrule({ status: 'passed' }).status).toBe('error');
+  });
+
+  it('is a crawl guard only from forCrawl', () => {
+    expect(RequestGuard.forCrawl('shared', []).crawling).toBe(true);
+    expect(new RequestGuard('shared', false).crawling).toBe(false);
+  });
+
   it('is not a crawl guard otherwise: observes nothing', () => {
     const g = new RequestGuard('shared', false);
     expect(g.observes('scope_violation')).toBe(false);

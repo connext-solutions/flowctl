@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mayOpen, pageLinks, pagePath } from '../src/observe/index.js';
+import {
+  loginPath,
+  mayOpen,
+  pageLinks,
+  pagePath,
+} from '../src/observe/index.js';
 import type { LinkRules } from '../src/observe/index.js';
 
 const ORIGIN = 'http://127.0.0.1:5173';
@@ -75,5 +80,22 @@ describe('crawl links', () => {
       '/popup',
     ]);
     expect(got.follow).toEqual(['/a', '/b']);
+  });
+
+  it('normalises the login page to its path: an absolute same-origin loginUrl or one with a query still matches', () => {
+    expect(loginPath(undefined, ORIGIN)).toBeUndefined();
+    expect(loginPath('/login', ORIGIN)).toBe('/login');
+    expect(loginPath(`${ORIGIN}/auth/login`, `${ORIGIN}/app`)).toBe(
+      '/auth/login',
+    );
+    expect(loginPath('/login?next=%2F', ORIGIN)).toBe('/login');
+    for (const loginUrl of [`${ORIGIN}/login`, '/login?next=%2F'])
+      expect(
+        mayOpen('/login', ORIGIN, {
+          ...RULES,
+          loginUrl: loginPath(loginUrl, ORIGIN),
+        }),
+        loginUrl,
+      ).toBe(false);
   });
 });

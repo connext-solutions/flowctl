@@ -40,7 +40,8 @@ const JUDGED_TYPES = new Set([
  *   On `production` the ADR blocks every non-GET; this interim layer blocks only what it names, so it must not be
  *   reused for a production replay as it is. Not caught: a write whose path holds no destructive word (`PUT
  *   /items/12`), an action named in the body or query, a GraphQL mutation, a method override header or `_method`
- *   field, a WebSocket message, a destructive request from a script, style or image request type.
+ *   field, a WebSocket message (a crawl closes every WebSocket instead, see `ScopeGuard`), a destructive `GET` of a
+ *   script, style or image request type (a crawl refuses any other method of those types).
  * @see docs/adr/0024-target-scope-and-guards.md
  */
 export class RequestGuard {
@@ -54,7 +55,9 @@ export class RequestGuard {
    * every env class, `local` included, it refuses every write (any method but `GET`, `HEAD` and `OPTIONS`) and every
    * request {@link destructiveRequest} names. A refusal, and a scope refusal the run's scope guard reports through
    * {@link observes}, is kept for {@link takeRefusals} instead of ending the run: the request is still aborted, and
-   * the crawl records it on the page it came from.
+   * the crawl records it on the page it came from. Only a prevented refusal is kept that way: a request that was
+   * already sent when the guard saw it (a redirect hop no hold saw, a frame or download that got past the route)
+   * ends the crawl `scope_violation` or `destructive_blocked`, as in any run.
    */
   static forCrawl(
     envClass: RequestClass,
@@ -77,10 +80,14 @@ export class RequestGuard {
   /**
    * Whether a request may be sent, noting a refusal when not.
    *
-   * @param type the request's resource type (Playwright's, or CDP's in any case); one outside {@link JUDGED_TYPES}
-   *   is always allowed.
+   * @param type the request's resource type (Playwright's, or CDP's in any case); outside a crawl, one outside
+   *   {@link JUDGED_TYPES} is always allowed. A crawl checks the method first, for every type: a `POST` of a type
+   *   the guard does not otherwise judge (a CSP report) is refused, a `GET` script or image is not.
+   * @param prevented whether a refusal stops the request before it is sent (a route abort, a failed redirect hop);
+   *   false when the request was already sent and is only detected (a redirect hop the hold did not see). A crawl
+   *   keeps only prevented refusals as observations of the page; a detected one ends the run as in any run.
    */
-  allows(method: string, url: string, type: string): boolean {
+  allows(method: string, url: string, type: string, prevented = true): boolean {
     if (this.envClass === 'local' && !this.crawl) return true;
     if (
       this.envClass === 'shared' &&
@@ -88,16 +95,19 @@ export class RequestGuard {
       this.orchestrating
     )
       return true;
-    if (!JUDGED_TYPES.has(type.toLowerCase())) return true;
     const m = method.toUpperCase();
-    const word =
-      this.crawl && !READS.has(m)
-        ? m
-        : destructiveRequest(method, url, this.extraWords);
+    const write = this.crawl && !READS.has(m);
+    if (!write && !JUDGED_TYPES.has(type.toLowerCase())) return true;
+    const word = write ? m : destructiveRequest(method, url, this.extraWords);
     if (word === undefined) return true;
-    if (this.observes('destructive_blocked')) return false;
-    this.first ??= `flowctl stopped ${method.toUpperCase()} ${pathOf(url)}, which looks destructive ("${word}") on a ${this.envClass} env. ${this.remedy()}`;
+    if (prevented && this.observes('destructive_blocked')) return false;
+    this.first ??= `flowctl ${prevented ? 'stopped' : 'saw'} ${m} ${pathOf(url)}, which looks destructive ("${word}") on a ${this.envClass} env. ${this.remedy()}`;
     return false;
+  }
+
+  /** Whether this is a crawl's request layer ({@link forCrawl}): the scope guard then closes every WebSocket. */
+  get crawling(): boolean {
+    return this.crawl;
   }
 
   /**

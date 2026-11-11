@@ -82,8 +82,10 @@ export const PageSchema = z
  * What Observe saw of one app, without a model (roadmap section 3.2): the input Derive joins with spec
  * operations, and the evidence an `invariant` or `baseline` assertion can cite (ADR 0020).
  *
- * @remarks Only paths are stored, never full URLs, query strings, bodies or field values, and page text goes through
- *   the evidence redaction, so a map is safe to attach to a bug. A path segment can still carry a record id.
+ * @remarks Pages, links and calls are stored as paths, never full URLs or query strings; no bodies or field values
+ *   are stored, and page text goes through the evidence redaction, so a map is safe to attach to a bug. A path
+ *   segment can still carry a record id, and a console line is page text: it may hold a URL with its query, redacted
+ *   like any other text (credential-looking values `***`) but not cut to a path.
  *   `truncated` is true when a page, time or size cap stopped the crawl (T2.5).
  */
 export const AppMapSchema = z

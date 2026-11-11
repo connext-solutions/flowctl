@@ -19,6 +19,7 @@ let appUrl = '';
 let outsideUrl = '';
 const seen: string[] = [];
 let outsideHits = 0;
+let upgrades = 0;
 
 const listen = (s: Server): Promise<string> =>
   new Promise((r) =>
@@ -41,6 +42,14 @@ beforeAll(async () => {
   outsideUrl = await listen(outside);
   app = createServer((req, res) => {
     seen.push(`${req.method ?? ''} ${req.url ?? ''}`);
+    if (req.url === '/twice') {
+      res.writeHead(302, { location: '/hop' });
+      return res.end();
+    }
+    if (req.url === '/hop') {
+      res.writeHead(302, { location: `${outsideUrl}/landing` });
+      return res.end();
+    }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     if (req.url === '/writes')
       return res.end(
@@ -53,6 +62,27 @@ fetch('${outsideUrl}/track').catch(() => {});
 </script>`,
         ),
       );
+    if (req.url === '/popup-chain')
+      return res.end(
+        html(
+          'Cửa sổ',
+          `<h1>Cửa sổ</h1><a href="/">Về</a><script>window.open('/twice')</script>`,
+        ),
+      );
+    if (req.url === '/ws')
+      return res.end(
+        html(
+          'Trực tiếp',
+          `<h1>Trực tiếp</h1><script>new WebSocket('${appUrl.replace('http', 'ws')}/socket');</script>`,
+        ),
+      );
+    if (req.url === '/busy' || req.url === '/busy2')
+      return res.end(
+        html(
+          'Bận',
+          `<h1>Bận</h1><a href="/busy2">Tiếp</a><script>setInterval(() => fetch('/ping').catch(() => {}), 100);</script>`,
+        ),
+      );
     if (req.url === '/spa')
       return res.end(
         html(
@@ -62,6 +92,10 @@ fetch('${outsideUrl}/track').catch(() => {});
       );
     res.end(html('Trang chủ', '<h1>Trang chủ</h1><a href="/writes">Ghi</a>'));
   });
+  app.on('upgrade', (_req, socket) => {
+    upgrades++;
+    socket.destroy();
+  });
   appUrl = await listen(app);
 });
 afterAll(async () => {
@@ -69,6 +103,14 @@ afterAll(async () => {
   await new Promise((r) => app.close(r));
   await new Promise((r) => outside.close(r));
 });
+
+const crawlConfig = (extra: Record<string, unknown> = {}) => {
+  const cfg = fixtureConfig(appUrl, extra);
+  const state = storageStatePath(cfg, 'local', 'employee');
+  mkdirSync(dirname(state), { recursive: true });
+  writeFileSync(state, JSON.stringify({ cookies: [], origins: [] }));
+  return cfg;
+};
 
 describe('observe request layer', () => {
   it('maps a page that writes on load without sending the write or the call out of scope', async () => {
@@ -108,5 +150,39 @@ describe('observe request layer', () => {
       ['/spa', 'Ứng dụng'],
     ]);
     expect(seen.slice(before).some((s) => s.includes('/admin'))).toBe(false);
+  });
+
+  it('ends the crawl scope_violation on a hop it only detected after it was sent (the second hop of a popup chain)', async () => {
+    const { run, map } = await observe(crawlConfig(), {
+      browser,
+      start: '/popup-chain',
+    });
+    expect(outsideHits).toBeGreaterThan(0);
+    expect(run.status).toBe('error');
+    expect(run.error?.kind).toBe('scope_violation');
+    expect(run.error?.hint).toContain('/landing');
+    expect(map.pages.map((p) => p.path)).toEqual(['/popup-chain']);
+    expect(map.truncated).toBe(true);
+  });
+
+  it('closes every WebSocket in a crawl, even one in scope: a frame could carry a write', async () => {
+    const before = upgrades;
+    const { map, run } = await observe(crawlConfig(), {
+      browser,
+      start: '/ws',
+    });
+    expect(run.status).toBe('passed');
+    expect(map.pages.map((p) => p.path)).toEqual(['/ws']);
+    expect(upgrades - before).toBe(0);
+  });
+
+  it('caps the settle wait of a page whose network never goes quiet, well under stepTimeout', async () => {
+    const { map, run } = await observe(crawlConfig({ stepTimeout: 10_000 }), {
+      browser,
+      start: '/busy',
+    });
+    expect(run.status).toBe('passed');
+    expect(map.pages.map((p) => p.path)).toEqual(['/busy', '/busy2']);
+    expect(run.ms).toBeLessThan(8_000);
   });
 });

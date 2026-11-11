@@ -35,17 +35,30 @@ link answers with a redirect to another origin: ending there would leave most ap
    only opens a list. Skipped links stay in the page's `links`.
 4. **A read-only request layer on every env class.** The crawl's request layer (`RequestGuard.forCrawl`) refuses
    every method but `GET`, `HEAD` and `OPTIONS`, and every request the destructive matcher names, for the request
-   types the guard judges (documents, fetch, XHR, beacons, event streams, `other`), on `local` too. A page that
-   writes on load is still mapped; its write never leaves the browser. A crawl never runs on an env the store classes
+   types the guard judges (documents, fetch, XHR, beacons, event streams, `other`), on `local` too. The method is
+   checked first and for every request type, so a `POST` of a type the guard does not otherwise judge (a CSP report)
+   is refused too, while a `GET` script or image is not. Every WebSocket is closed before it connects, in scope or
+   not: a frame sent on it could carry a write that no route sees. A page that writes on load is still mapped; its
+   write never leaves the browser. A crawl never runs on an env the store classes
    `production` (`scope_violation` before any browser starts): ADR 0024 section 2a allows only `GET` there, on
    owner-signed path templates, which this layer does not check.
-5. **A refusal is an observation of its page.** During a crawl, a request the scope guard or the request layer
-   refuses is aborted as in any run, but it does not end the run: its kind is recorded on the page that was open
-   (`refused: ["scope_violation" | "destructive_blocked"]`), and the crawl goes on. A navigation that is refused or
-   does not answer gives a page with status 0. Every other problem ends the crawl as it ends any run: an expired
-   profile, a page the guard could not hold (`internal`), the wall-clock budget.
+5. **A prevented refusal is an observation of its page.** During a crawl, a request the scope guard or the request
+   layer stops before it is sent (the route aborts it, the redirect hold fails its hop, a popup's first hop is
+   refused, a page check refuses a navigation before it starts) is aborted as in any run, but it does not end the
+   run: its kind is recorded on the page that was open (`refused: ["scope_violation" | "destructive_blocked"]`), and
+   the crawl goes on. A URL change that sends nothing (`pushState`, a hash route, a `data:` frame) counts the same way.
+   A request the guards only detect after it was sent (a redirect hop no hold saw, a frame that moved to another
+   origin, a download that got past the route) ends the crawl `scope_violation` or `destructive_blocked`, as in any
+   run: what was sent cannot be taken back, so the map must not read as clean. A navigation refused before it is
+   sent, or that does not answer, gives a page with status 0; a refused start page ends the run, since there is
+   nothing to map from. Every other problem ends the crawl as it ends any run: an expired profile (the env's login
+   page reached by a server redirect or by the page's own routing after it loaded), a page the guard could not hold
+   (`internal`), the wall-clock budget.
 6. **Budgets.** The page budget counts navigations: `target.budgets.pages`, at most the built-in ceiling (50). The
-   wall-clock budget is the run's (`run/deadline.ts`); when it fires the run ends `budget_exceeded`. A crawl stopped
+   wall-clock budget is the run's (`run/deadline.ts`); when it fires the run ends `budget_exceeded`. A page is given
+   at most 2 s (`SETTLE_MS`, never more than `stepTimeout`) for its network to go quiet, so a page that polls costs
+   2 s, not `stepTimeout`; a call it makes later is counted on the next page. Measured on the test app: the 5 pages of
+   `/map` take 2.2 s; two pages that poll every 100 ms take about 4 s with `stepTimeout` 10 s (20 s before the cap). A crawl stopped
    by a budget, a list cut to its `AppMap` cap or an error has `truncated: true`. Cost is `unknown`: a crawl calls no
    driver.
 7. **The result.** The map is validated against `AppMapSchema` and written to `appmap.json` in the run directory,
@@ -78,6 +91,11 @@ link answers with a redirect to another origin: ending there would leave most ap
   visible.
 - **Harder:** pages behind a destructive-looking label, a query string or a popup are not visited; controls come
   from the snapshot, so only those in the first viewport are listed. A refusal or call that arrives while the next
-  page loads is counted on the next page.
+  page loads is counted on the next page. An app that leaks one request past the hold (a later hop of a popup's
+  redirect chain) cannot be mapped until that page is denied.
+- **Not guarded:** the request layer reads the method and the path. A `GET` that changes data and whose path holds
+  no destructive word (`GET /api/items/12/archive-now` with an unlisted word, `GET /sync`) is sent, and so is an
+  action carried in the query (`?action=delete`, a GraphQL mutation in a `GET` query). Add the app's words to
+  `target.destructiveWords`, or deny those paths in the scope, before crawling an env whose data matters.
 - **Revisit when:** the drive stage (T2.8) needs form states, a stored confirmation (ADR 0024 section 5) should let
   a crawl open a reviewed destructive-looking link, or an app needs query keys to tell its pages apart.

@@ -1,5 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { DECOYS, startFixture, type Fixture } from '@flowctl/fixture-app';
+import {
+  DECOYS,
+  GUARD_PAGES,
+  startFixture,
+  type Fixture,
+} from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type LoadedConfig } from '../src/config.js';
@@ -170,5 +175,17 @@ describe('observe (T2.2)', () => {
     const denied = await observe(cfg, { browser, start: '/admin/settings' });
     expect(denied.run.error?.kind).toBe('scope_violation');
     expect(denied.map.pages).toEqual([]);
+  });
+
+  it('ends profile_expired when a page routes itself to the login page after it loaded (an SPA on 401)', async () => {
+    const cfg = await config();
+    const { map, run } = await observe(cfg, {
+      browser,
+      start: GUARD_PAGES.spaLogin,
+    });
+    expect(run.error?.kind).toBe('profile_expired');
+    expect(run.error?.hint).toContain('flowctl login employee --env local');
+    expect(map.pages).toEqual([]);
+    expect(map.truncated).toBe(true);
   });
 });

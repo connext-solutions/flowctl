@@ -14,7 +14,10 @@ export interface RawLink {
   name: string;
 }
 
-/** What a crawl may follow: the env's scope, the login path it must never open, and the repo's destructive words. */
+/**
+ * What a crawl may follow: the env's scope, the path of the login page it must never open ({@link loginPath}), and
+ * the repo's destructive words.
+ */
 export interface LinkRules {
   scope: Scope;
   loginUrl: string | undefined;
@@ -49,6 +52,20 @@ export function pagePath(href: string, origin: string): string | undefined {
   return u.pathname.length <= 2048 && PAGE_PATH.test(u.pathname)
     ? u.pathname
     : undefined;
+}
+
+/**
+ * The path of the env's login page: `loginUrl` resolved against `baseUrl`, its query and fragment dropped, so an
+ * absolute same-origin `loginUrl` (which the effective configuration allows) or one with a query is compared as the
+ * path a page shows. `undefined` when the env has none.
+ */
+export function loginPath(
+  loginUrl: string | undefined,
+  baseUrl: string,
+): string | undefined {
+  return loginUrl === undefined
+    ? undefined
+    : new URL(loginUrl, baseUrl).pathname;
 }
 
 /**

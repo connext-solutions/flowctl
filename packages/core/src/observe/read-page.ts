@@ -8,34 +8,47 @@ import { PAGE_PATH, type AppForm, type AppPage } from './schema.js';
 
 const Text = z.string().max(300);
 
+/** The caps `PAGE_SCRIPT` applies in the page: links, forms, and fields per form. A list at its cap may have been cut. */
+const PAGE_CAPS = { links: 2000, forms: 50, fields: 200 } as const;
+
 const ReadSchema = z.object({
   status: z.number().int().min(0).max(599),
   title: Text,
-  links: z.array(
-    z.object({
-      href: z.string(),
-      target: z.string(),
-      download: z.boolean(),
-      name: Text,
-    }),
-  ),
+  links: z
+    .array(
+      z.object({
+        href: z.string(),
+        target: z.string(),
+        download: z.boolean(),
+        name: Text,
+      }),
+    )
+    .max(PAGE_CAPS.links),
   forms: z
     .array(
       z.object({
         name: Text.nullable(),
         submit: Text.nullable(),
-        fields: z.array(
-          z.object({
-            role: z.enum(ARIA_ROLES),
-            name: Text,
-            type: z.string().nullable(),
-            required: z.boolean(),
-          }),
-        ),
+        fields: z
+          .array(
+            z.object({
+              role: z.enum(ARIA_ROLES),
+              name: Text,
+              type: z.string().nullable(),
+              required: z.boolean(),
+            }),
+          )
+          .max(PAGE_CAPS.fields),
       }),
     )
-    .max(50),
+    .max(PAGE_CAPS.forms),
 });
+
+/** Whether the page script stopped a list at its cap ({@link PAGE_CAPS}), so the page offers more than was read. */
+const atPageCap = (raw: z.infer<typeof ReadSchema>): boolean =>
+  raw.links.length >= PAGE_CAPS.links ||
+  raw.forms.length >= PAGE_CAPS.forms ||
+  raw.forms.some((f) => f.fields.length >= PAGE_CAPS.fields);
 
 /** At most this many controls and links a page keeps (the `AppMap` caps). */
 const MAX_CONTROLS = 500;
@@ -47,7 +60,7 @@ const isRole = (r: string): r is (typeof ARIA_ROLES)[number] => ROLES.has(r);
 /** The part of an {@link AppPage} read from the open page; calls, console errors and refusals come from elsewhere. */
 export type PageRead = Omit<AppPage, 'calls' | 'consoleErrors' | 'refused'> &
   Pick<PageLinks, 'follow'> & {
-    /** A list was cut to its `AppMap` cap. */
+    /** A list was cut to its `AppMap` cap, or the page script stopped one at its own cap. */
     cut: boolean;
   };
 
@@ -117,6 +130,6 @@ export async function readPage(
       .sort(),
     forms,
     follow,
-    cut: links.length > MAX_LINKS,
+    cut: links.length > MAX_LINKS || atPageCap(raw),
   };
 }
