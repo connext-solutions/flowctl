@@ -204,8 +204,9 @@ export function createServer(deps: ServerDeps): {
       tag: z.string().optional(),
       envName: z.string().optional(),
       repeat: z.number().int().min(1).max(5).optional(),
+      video: z.boolean().optional(),
     }),
-    async ({ names, tag, envName, repeat }, { store, cfg }) => {
+    async ({ names, tag, envName, repeat, video }, { store, cfg }) => {
       const { flows, errors } = findFlowsWithErrors(
         cfg.flowsPath,
         Object.keys(cfg.profiles),
@@ -216,7 +217,12 @@ export function createServer(deps: ServerDeps): {
       const summary =
         flows.length === 0
           ? undefined
-          : await replayMany(cfg, flows, { env: envName, repeat, store });
+          : await replayMany(cfg, flows, {
+              env: envName,
+              repeat,
+              store,
+              video,
+            });
       return {
         ...(summary === undefined ? {} : replayView(summary)),
         invalidFiles: errors.map((e) => e.message),

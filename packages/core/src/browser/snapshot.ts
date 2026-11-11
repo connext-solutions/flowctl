@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { Page } from 'playwright';
 import { z } from 'zod';
+import { OVERLAY_TAG } from './overlay.js';
 import { snapshotScript } from './snapshot-script.js';
 
 /**
- * Dev-only overlays left out of every snapshot, on top of `snapshotIgnore`: React Query Devtools
- * (its toggle button sits outside `.tsqd-parent-container`), the Vite and webpack error overlays.
+ * Overlays left out of every snapshot, on top of `snapshotIgnore`: React Query Devtools (its toggle button sits
+ * outside `.tsqd-parent-container`), the Vite and webpack error overlays, and flowctl's own video overlay.
  */
 export const DEV_OVERLAYS = [
+  OVERLAY_TAG,
   '.tsqd-parent-container',
   'button[aria-label="Open React Query Devtools"]',
   'vite-error-overlay',

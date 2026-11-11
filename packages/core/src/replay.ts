@@ -38,6 +38,7 @@ export async function replayFlow(
     store?: TrustStore;
     trace?: TraceMode;
     acceptHeals?: boolean;
+    video?: boolean;
   },
 ): Promise<RunResult> {
   const run = RunSession.open(cfg, flow, opts);
@@ -145,6 +146,7 @@ export const exitCodeFor = (s: ReplaySummary): 0 | 1 | 2 =>
  * @param opts.heal hand broken locators to System 1 (`--heal`).
  * @param opts.acceptHeals write healed locators back into a flow whose run passed (`--accept-heals`).
  * @param opts.trace `full` records DOM snapshots and screenshots in the traces, with cookies and bodies (ADR 0030).
+ * @param opts.video record a demo video per profile with a step overlay (ADR 0032).
  * @throws {RunError} `system1_not_allowed` / {ConfigError} when heal is asked for but System 1 is
  *   not allowed on the env or not configured.
  */
@@ -159,6 +161,7 @@ export async function replayMany(
     store?: TrustStore;
     trace?: TraceMode;
     acceptHeals?: boolean;
+    video?: boolean;
   },
 ): Promise<ReplaySummary> {
   const system1 =
@@ -178,6 +181,7 @@ export async function replayMany(
             store: opts.store,
             trace: opts.trace,
             acceptHeals: opts.acceptHeals,
+            video: opts.video,
           }),
         );
       }

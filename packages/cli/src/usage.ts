@@ -1,6 +1,6 @@
 /** The CLI usage text, printed by `--help` and after a usage error. */
 export const USAGE = `Usage:
-  flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--config <path>]
+  flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
   flowctl login <profile> [--env <env>] [--config <path>]
   flowctl trust init [--anchor-dir <abs dir>] [--config <path>]
                                          create this machine's trust store and owner key (interactive); the

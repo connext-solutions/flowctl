@@ -19,6 +19,7 @@ export const OPTIONS = {
   heal: { type: 'boolean', default: false },
   'accept-heals': { type: 'boolean', default: false },
   trace: { type: 'string' },
+  video: { type: 'boolean', default: false },
   'trust-hooks': { type: 'boolean', default: false },
   'hook-env': { type: 'string', multiple: true },
   pin: { type: 'string', multiple: true },
@@ -98,6 +99,18 @@ export const ARITY: Record<Runnable, (n: number) => boolean> = {
 /** True when `name` is a registered command the CLI runs (not `--help`, not an MCP tool). */
 export const isRunnable = (name: string): name is Runnable =>
   Object.hasOwn(ARITY, name);
+
+/**
+ * Whether `--video` asks for a demo video (ADR 0032). A video shows everything the pages showed and cannot be
+ * masked, so the CLI says so on stderr.
+ */
+export function videoMode(value: boolean | undefined): boolean {
+  if (value === true)
+    process.stderr.write(
+      'flowctl: --video records everything the pages show in video-*.webm, slowed down so each step can be read; review a video before you share it.\n',
+    );
+  return value === true;
+}
 
 /**
  * The trace mode `--trace` names (ADR 0030): `safe` (the default when left out) or `full`. A full trace holds

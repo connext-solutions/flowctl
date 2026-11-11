@@ -51,3 +51,22 @@ Change assertions only if the user confirms the spec was wrong, and then say so 
 Lead with the verdict: passed, failed (which assertion, what was seen) or not run (why). Then the flow name if
 saved, the evidence directory, and anything that needs a person: a spec question, a step you took by hand, a
 flaky result (`flow_replay` with `repeat: 3` shows it).
+
+## 4. Videos and screenshots on request
+
+When the user asks for a video, a screen recording or a demo of a flow (for a pull request, a ticket, or to show a
+fix), record a **saved** flow; do not drive the browser by hand for it.
+
+1. If the flow is not saved yet, explore it and `flow_save` it first (sections 1 and 2).
+2. `flow_replay` with `names: ["<flow>"]` and `video: true`. Each profile gets `video-<profile>.webm` in the run's
+   evidence directory (`evidence.videos`). A box in the bottom-right corner shows each step before it runs, a
+   cursor points at its target, and the last frames show the run's real result.
+3. Report the absolute paths and the result. If the result is not what the user expected, say so; a video of a
+   failure is a repro, not a demo.
+
+A flow with a secret input (`{ env }`) cannot be recorded: what is typed would be visible. For a before/after
+pair, replay the same flow on both envs (`envName`) with `video: true`. For a still image, `final.png` in the
+same directory is the last screen (text fields are masked when the run has a secret). Tell the user the box is a
+flowctl overlay, not part of the app, and ask before attaching a video anywhere: it shows everything the pages
+showed.
+

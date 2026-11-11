@@ -4,7 +4,7 @@ The `flowctl` command. A thin layer over `@flowctl/core`: parse arguments, call 
 core, print a summary, set the exit code.
 
 ```text
-flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--config <path>]
+flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
 flowctl login <profile> [--env <env>] [--config <path>]
 flowctl trust init [--replace] [--anchor-dir <abs dir>] [--config <path>]
 flowctl trust hook <name...> [--hook-env NAME] [--pin NAME=VALUE] [--config <path>]

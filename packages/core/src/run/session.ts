@@ -75,6 +75,7 @@ export class RunSession {
       cfg.runsRetention,
       cfg.flowsPath,
       opts.trace,
+      opts.video === true ? flow.name : undefined,
     );
     this.profiles = new Profiles(cfg, env, opts.browser, this.evidence);
     this.deadline = new Deadline(cfg.target.budgets.wallClockMs);
@@ -184,13 +185,11 @@ export class RunSession {
    *   error.
    */
   async perform(step: Step): Promise<void> {
+    await this.profiles.narrate(step);
     try {
+      const start = this.ready().start;
       if (step.kind === 'as')
-        await this.profiles.switchTo(
-          step.profile,
-          step.goto,
-          this.ready().start,
-        );
+        await this.profiles.switchTo(step.profile, step.goto, start);
       else if (step.kind === 'goto') await this.profiles.goto(step.url);
       else {
         const c = this.ctx();

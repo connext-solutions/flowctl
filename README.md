@@ -170,6 +170,11 @@ ask System 1, `decisions.jsonl`. By default the trace records actions, timings, 
 DOM, headers, cookies or bodies, and secret values show as `***` (ADR 0030). `flowctl replay --trace full` adds
 DOM snapshots for debugging; never share that trace.
 
+**Demo videos.** `flowctl replay <flow> --video` records `video-<profile>.webm` per profile, with a box that shows
+each step before it runs, a cursor on its target, and the result at the end (ADR 0032). The box is invisible to
+assertions and locators. Steps are slowed down so they can be read, and a flow with a secret input is refused:
+a video cannot hide what is typed. Review a video before you share it.
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) (commands, invariants, where to change what) and

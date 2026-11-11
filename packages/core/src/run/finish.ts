@@ -51,6 +51,10 @@ export async function finishRun(
       return undefined;
     }
   };
+  await run.evidence.video?.result(
+    run.profiles.all.map(([, c]) => c.page),
+    outcome,
+  );
   const summary = (await stage('evidence', () =>
     run.evidence.collect(run.profiles.all, run.profiles.activePage),
   )) ?? {
@@ -61,6 +65,8 @@ export async function finishRun(
     trace: run.evidence.trace,
   };
   await stage('close', () => run.profiles.closeAll());
+  if (run.evidence.video !== undefined)
+    summary.videos = run.evidence.video.files;
   let teardownFailed = false;
   let refused: RunError | undefined;
   const started =

@@ -71,3 +71,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0029](0029-public-upstream-private-overlay.md) | flowctl is an Apache-2.0 public repo; company-specific tools live in a private overlay | proposed |
 | [0030](0030-evidence-safe-to-share.md) | Evidence is safe to share by default; a full trace is an explicit opt-in | proposed |
 | [0031](0031-github-release-tarballs.md) | Releases are GitHub Releases with npm tarballs; no npm registry | accepted |
+| [0032](0032-demo-video.md) | Demo videos: an opt-in replay recording with a step overlay that assertions cannot see | accepted |

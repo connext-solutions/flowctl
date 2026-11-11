@@ -27,6 +27,7 @@ import {
   resolve,
   type Runnable,
   traceMode,
+  videoMode,
   usageError,
   type Values,
 } from './argv.js';
@@ -114,6 +115,7 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
             heal: values.heal,
             store: trusted?.store,
             trace: traceMode(values.trace),
+            video: videoMode(values.video),
             acceptHeals: values['accept-heals'],
           });
     const summary = summarize([

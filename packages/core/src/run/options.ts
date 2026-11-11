@@ -18,4 +18,6 @@ export interface RunSessionOptions {
   writes?: RequestGuard;
   /** How much the Playwright trace records: `safe` (the default) or `full` (ADR 0030). */
   trace?: TraceMode;
+  /** Record a demo video per profile with a step overlay (ADR 0032); refused for a flow with secret inputs. */
+  video?: boolean;
 }
