@@ -267,7 +267,7 @@ describe('walkContained', () => {
     );
   });
 
-  it('does not enter a pruned directory name, at any depth, but lists a file of that name', () => {
+  it('does not enter a pruned directory name, at any depth, reports it, and lists a file of that name', () => {
     const dir = tmp();
     put(dir, 'node_modules/x/a.md');
     put(dir, 'src/node_modules/b.md');
@@ -278,7 +278,7 @@ describe('walkContained', () => {
       prune: new Set(['node_modules', 'dist']),
     });
     expect(walked.files.map((f) => f.path)).toEqual(['src/dist']);
-    expect(walked.skipped).toEqual([]);
+    expect(walked.skipped).toHaveLength(3);
   });
 });
 

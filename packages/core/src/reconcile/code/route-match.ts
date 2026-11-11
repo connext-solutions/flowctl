@@ -11,6 +11,9 @@ export type RouteSegment =
 /** Most segments of a pattern the index keeps; a longer pattern is not indexed. */
 export const MAX_ROUTE_SEGMENTS = 32;
 
+/** Most characters of a pattern the index keeps, declared or joined; a longer one is not indexed. */
+export const MAX_ROUTE_CHARS = 1024;
+
 /** The segments of a route pattern; empty segments are dropped, so `/a//b/` is `a`, `b`. */
 export function parseRoutePattern(pattern: string): RouteSegment[] {
   return pattern

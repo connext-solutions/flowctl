@@ -1,5 +1,9 @@
 import type { Token } from './lexer.js';
-import { joinRoute } from './route-match.js';
+import {
+  joinRoute,
+  MAX_ROUTE_CHARS,
+  MAX_ROUTE_SEGMENTS,
+} from './route-match.js';
 
 /** A route found in one file: its full path, the pattern as declared, the line of the pattern. */
 export interface FoundRoute {
@@ -8,6 +12,21 @@ export interface FoundRoute {
   line: number;
 }
 
+/** A route declaration left out of one file, with its line and why. */
+export interface RouteSkip {
+  line: number;
+  rule: 'route too deep' | 'route too long';
+}
+
+/** What one source extractor found in one file. */
+export interface SourceRoutes {
+  routes: FoundRoute[];
+  skipped: RouteSkip[];
+}
+
+/** Most route declarations nested in one another that are read; deeper ones could only give an over-long path. */
+export const MAX_ROUTE_NESTING = MAX_ROUTE_SEGMENTS;
+
 /** A route declaration and the declaration it is nested in (`null` at the top). */
 interface RouteNode {
   parent: number | null;
@@ -15,23 +34,53 @@ interface RouteNode {
   line: number;
 }
 
-/** Full paths of every node with a pattern, in declaration order; a node's prefix comes from its ancestors. */
-function resolve(nodes: readonly RouteNode[]): FoundRoute[] {
-  const full = (id: number | null): string | null => {
-    let path: string | null = null;
-    const chain: string[] = [];
-    for (let at = id; at !== null; at = nodes[at]?.parent ?? null) {
-      const p = nodes[at]?.pattern;
-      if (p !== null && p !== undefined) chain.push(p);
-      if (p?.startsWith('/') === true) break;
-    }
-    for (const p of chain.reverse()) path = joinRoute(path, p);
-    return path;
-  };
-  const out: FoundRoute[] = [];
+/** Marks a node that is left out; its relative descendants are left out with it. */
+const DROPPED = false;
+
+/**
+ * Full paths of every node with a pattern, in declaration order. Parents come before their children, so each full
+ * path is joined once from the parent's (linear in the number of nodes, each join bounded by
+ * {@link MAX_ROUTE_CHARS}).
+ *
+ * @remarks A node nested deeper than {@link MAX_ROUTE_NESTING} is `route too deep`, and a path over
+ *   {@link MAX_ROUTE_SEGMENTS} segments or {@link MAX_ROUTE_CHARS} characters is `route too long`. Only the first
+ *   such node of a branch is reported; what is nested below it is left out silently, except an absolute path below
+ *   an over-long one, which does not depend on it.
+ */
+function resolve(nodes: readonly RouteNode[]): SourceRoutes {
+  const full: (string | null | typeof DROPPED)[] = [];
+  const depth: number[] = [];
+  const out: SourceRoutes = { routes: [], skipped: [] };
   nodes.forEach((n, id) => {
-    if (n.pattern === null) return;
-    out.push({ path: full(id) ?? '/', pattern: n.pattern, line: n.line });
+    const above = n.parent === null ? 0 : (depth[n.parent] ?? 0);
+    depth[id] = above + 1;
+    full[id] = DROPPED;
+    if (above >= MAX_ROUTE_NESTING) {
+      if (above === MAX_ROUTE_NESTING)
+        out.skipped.push({ line: n.line, rule: 'route too deep' });
+      return;
+    }
+    const up = n.parent === null ? null : (full[n.parent] ?? null);
+    const absolute = n.pattern?.startsWith('/') === true;
+    if (up === DROPPED && !absolute) return;
+    if (n.pattern === null) {
+      full[id] = up;
+      return;
+    }
+    const path =
+      n.pattern.length > MAX_ROUTE_CHARS
+        ? undefined
+        : joinRoute(up === DROPPED ? null : up, n.pattern);
+    if (
+      path === undefined ||
+      path.length > MAX_ROUTE_CHARS ||
+      path.split('/').length - 1 > MAX_ROUTE_SEGMENTS
+    ) {
+      out.skipped.push({ line: n.line, rule: 'route too long' });
+      return;
+    }
+    full[id] = path;
+    out.routes.push({ path, pattern: n.pattern, line: n.line });
   });
   return out;
 }
@@ -43,7 +92,7 @@ const ROUTE_TAG = /^(?:Route|[A-Z][\w$]*Route)$/;
  * `<PrivateRoute>`): a `path` attribute given as a string or `{"…"}` (every literal inside braces counts, so
  * `path={["/a", "/b"]}` gives both); nested elements join their parent's path. A computed path is left out.
  */
-export function jsxRoutes(toks: readonly Token[]): FoundRoute[] {
+export function jsxRoutes(toks: readonly Token[]): SourceRoutes {
   const nodes: RouteNode[] = [];
   const open: number[] = [];
   for (let i = 0; i < toks.length; i++) {
@@ -119,7 +168,7 @@ type Frame =
  * `Routes`): an object inside the `children` array of another route object joins its parent's path, whichever
  * order the keys come in. Only a literal `path` value counts.
  */
-export function objectRoutes(toks: readonly Token[]): FoundRoute[] {
+export function objectRoutes(toks: readonly Token[]): SourceRoutes {
   const nodes: RouteNode[] = [];
   const stack: Frame[] = [];
   let key: string | null = null;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   fileRoute,
+  MAX_ROUTE_SEGMENTS,
   matchRoute,
   parseRoutePattern,
   ROUTE_EXTRACTORS,
@@ -8,7 +9,7 @@ import {
 } from '../../src/reconcile/index.js';
 
 const paths = (rel: string, text: string): [string, number][] =>
-  routesInSource(rel, text).map((r) => [r.path, r.line]);
+  routesInSource(rel, text).routes.map((r) => [r.path, r.line]);
 
 describe('React Router JSX', () => {
   it('joins nested <Route> paths and keeps absolute ones', () => {
@@ -35,6 +36,26 @@ describe('React Router JSX', () => {
     ]);
   });
 
+  it('stops at the nesting cap and at an over-long path, and says where', () => {
+    const deep = '<Route path="a">'.repeat(MAX_ROUTE_SEGMENTS + 5);
+    const found = routesInSource('a.tsx', deep);
+    expect(found.routes).toHaveLength(MAX_ROUTE_SEGMENTS);
+    expect(found.skipped).toEqual([
+      { line: 1, rule: 'route too deep', source: 'react-router-jsx' },
+    ]);
+    const long = [
+      `<Route path="${'x/'.repeat(MAX_ROUTE_SEGMENTS + 1)}">`,
+      '  <Route path="child" />',
+      '  <Route path="/alone" />',
+      '</Route>',
+    ].join('\n');
+    const kept = routesInSource('a.tsx', long);
+    expect(kept.routes.map((r) => r.path)).toEqual(['/alone']);
+    expect(kept.skipped).toEqual([
+      { line: 1, rule: 'route too long', source: 'react-router-jsx' },
+    ]);
+  });
+
   it('ignores a computed path', () => {
     expect(paths('a.jsx', '<Route path={ROUTES.home} />')).toEqual([]);
   });
@@ -47,16 +68,16 @@ describe('route objects (createBrowserRouter, Vue Router, Angular)', () => {
       'export const router = createBrowserRouter([',
       '  {',
       '    children: [',
-      "      { path: 'leave/:id', element: <Leave /> },",
+      "      { path: 'orders/:id', element: <Order /> },",
       '    ],',
-      "    path: '/hrm',",
+      "    path: '/shop',",
       '  },',
       "  { path: '*', element: <NotFound /> },",
       ']);',
     ].join('\n');
     expect(paths('src/router.tsx', src)).toEqual([
-      ['/hrm', 7],
-      ['/hrm/leave/:id', 5],
+      ['/shop', 7],
+      ['/shop/orders/:id', 5],
       ['/*', 9],
     ]);
   });
@@ -75,15 +96,15 @@ describe('route objects (createBrowserRouter, Vue Router, Angular)', () => {
     const ng = [
       'const routes: Routes = [',
       "  { path: '', component: HomeComponent },",
-      "  { path: 'leave', children: [{ path: ':id', component: X }] },",
+      "  { path: 'orders', children: [{ path: ':id', component: X }] },",
       "  { path: '**', component: NotFound },",
       '];',
       '@NgModule({ imports: [RouterModule.forRoot(routes)] })',
     ].join('\n');
     expect(paths('src/app/app-routing.module.ts', ng)).toEqual([
       ['/', 2],
-      ['/leave', 3],
-      ['/leave/:id', 3],
+      ['/orders', 3],
+      ['/orders/:id', 3],
       ['/**', 4],
     ]);
   });

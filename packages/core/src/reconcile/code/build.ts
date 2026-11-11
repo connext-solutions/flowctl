@@ -1,11 +1,10 @@
 import {
   ByteBudget,
+  checkRoot,
   type ContainedRoot,
-  ContainmentError,
-  readContained,
   requirePurpose,
-  walkContained,
 } from '../../trust/index.js';
+import { readText, walkAll } from './files.js';
 import { labelsInJson, localeFileOf } from './labels.js';
 import { lex, type Token } from './lexer.js';
 import { createCodeIndex, type CodeIndex } from './lookup.js';
@@ -16,7 +15,7 @@ import {
   ROUTE_EXTRACTORS,
   type RouteExtractor,
 } from './routes.js';
-import { decodeSource, normaliseText } from './text.js';
+import { normaliseText } from './text.js';
 import {
   CODE_INDEX_LIMITS,
   type CodeIndexLimits,
@@ -29,7 +28,10 @@ import {
 
 /** How to build a {@link CodeIndex}. */
 export interface CodeIndexOptions {
-  /** Folders below the root to walk (relative, checked like any contained path); default: the whole root. */
+  /**
+   * Folders below the root to walk (relative, checked like any contained path); default: the whole root. Each
+   * entry is its own walk, so a build reads at most `dirs.length × maxEntries` directory entries.
+   */
   dirs?: readonly string[];
   /** Bounds; unset ones take {@link CODE_INDEX_LIMITS}. */
   limits?: Partial<CodeIndexLimits>;
@@ -50,56 +52,20 @@ const byPlace =
   (a: T, b: T): number =>
     cmp(a.file, b.file) || a.line - b.line || cmp(tie(a), tie(b));
 
-/** Every file of the walks over `dirs`, by path, with the walks' skipped entries; overlapping folders count once. */
-function walkAll(
-  root: ContainedRoot,
-  opts: CodeIndexOptions,
-  lim: CodeIndexLimits,
-): { files: Map<string, number>; skipped: IndexSkip[] } {
-  const files = new Map<string, number>();
-  const skipped = new Map<string, IndexSkip>();
-  const subs: (string | undefined)[] =
-    opts.dirs === undefined ? [undefined] : [...opts.dirs];
-  for (const sub of subs) {
-    const walked = walkContained(
-      root,
-      {
-        maxEntries: lim.maxEntries,
-        maxBytes: lim.maxBytes,
-        maxFileBytes: lim.maxFileBytes,
-      },
-      sub,
-      { prune: opts.prune ?? PRUNED_DIRS },
-    );
-    for (const f of walked.files) files.set(f.path, f.size);
-    for (const s of walked.skipped) skipped.set(`${s.path}\0${s.rule}`, s);
-  }
-  return { files, skipped: [...skipped.values()] };
-}
-
-/** The bytes of `path` decoded, or the rule that left it out. */
-function readText(
-  root: ContainedRoot,
-  path: string,
-  maxBytes: number,
-): { text: string } | { rule: string } {
-  let bytes: Buffer;
-  try {
-    bytes = readContained(root, path, { maxBytes });
-  } catch (e) {
-    if (e instanceof ContainmentError && e.kind !== 'too_large')
-      return { rule: e.rule };
-    if (e instanceof ContainmentError) return { rule: 'file size' };
-    throw e;
-  }
-  const decoded = decodeSource(bytes);
-  return decoded.ok ? { text: decoded.text } : { rule: decoded.rule };
-}
+/** Whether the build reads `rel` (a script or a locale file) or an extractor routes it by its path. */
+const wanted =
+  (extractors: readonly RouteExtractor[]) =>
+  (rel: string): boolean =>
+    SCRIPT.test(rel) ||
+    localeFileOf(rel) !== undefined ||
+    extractors.some((e) => e.fromPath?.(rel) !== undefined);
 
 /**
  * Builds the read-only {@link CodeIndex} of the web app below `root`, a root of purpose `repos` (ADR 0025
- * section 2). Files are listed with `walkContained` (dot folders and `prune` folders are not entered; links, hard
- * links, special files, non-NFC names and files over `maxFileBytes` are skipped) and read with `readContained`;
+ * section 2). Files are listed with `walkContained` (dot folders are not entered; `prune` folders are not entered
+ * and are listed in `skipped` as `pruned`; links, hard links, special files, non-NFC names and files over
+ * `maxFileBytes` are skipped; any other file that is neither read nor routed by its path, an image or a font, is
+ * neither listed nor charged) and read with `readContained` (a file the system refuses to read is `unreadable`);
  * nothing else touches the file system and no process is started (ADR 0035). JavaScript, TypeScript and Vue files
  * are read for routes and validator messages, locale JSON files for labels; a file that is binary, not UTF-8 or
  * not strict JSON is skipped. Texts are normalised as ADR 0020 section d says; a refused text is skipped with its
@@ -109,9 +75,10 @@ function readText(
  *   const idx = buildCodeIndex(openRoot('/abs/web-app', 'repos'), { dirs: ['src'] });
  *   idx.findLabel('Đã gửi đơn').matches; // [{ file: 'src/i18n/vi.json', line: 11, key: 'request.submitted', … }]
  * @throws {ContainmentError} `path_not_contained` for a root of another purpose, a `dirs` entry that is not a
- *   plain relative path to a real folder inside the root, or a root that changed; `not_found` for a missing
- *   `dirs` entry; `too_large` past `maxEntries`, `maxBytes`, `maxFiles` or `maxRecords` (the build is refused,
- *   never returned in part).
+ *   plain relative path to a real folder inside the root, or a root that changed at any point of the build (rule
+ *   `root changed`, checked again after the last read); `not_found` for a missing `dirs` entry; `too_large` past
+ *   `maxEntries`, `maxBytes` (walked or read), `maxFiles` or `maxRecords` (records and skipped entries together;
+ *   the build is refused, never returned in part).
  * @see docs/adr/0035-code-index.md
  */
 export function buildCodeIndex(
@@ -121,11 +88,24 @@ export function buildCodeIndex(
   requirePurpose(root, 'repos');
   const lim = { ...CODE_INDEX_LIMITS, ...opts.limits };
   const extractors = opts.routes ?? ROUTE_EXTRACTORS;
-  const walked = walkAll(root, opts, lim);
-  const skipped = walked.skipped;
+  const walked = walkAll(
+    root,
+    {
+      dirs: opts.dirs,
+      prune: opts.prune ?? PRUNED_DIRS,
+      include: wanted(extractors),
+    },
+    lim,
+  );
   const fileBudget = new ByteBudget(lim.maxFiles, 'source files');
   const byteBudget = new ByteBudget(lim.maxBytes, 'bytes read');
   const recordBudget = new ByteBudget(lim.maxRecords, 'index records');
+  const skipped: IndexSkip[] = [];
+  const skip = (s: IndexSkip): void => {
+    recordBudget.take(1);
+    skipped.push(s);
+  };
+  walked.skipped.forEach(skip);
   const routes: IndexedRoute[] = [];
   const labels: LabelRecord[] = [];
   const messages: MessageRecord[] = [];
@@ -137,25 +117,24 @@ export function buildCodeIndex(
       recordBudget.take(1);
       return { ...r, text: n.text };
     }
-    skipped.push({ path: r.file, line: r.line, rule: n.reason });
+    skip({ path: r.file, line: r.line, rule: n.reason });
     return undefined;
   };
 
   for (const path of [...walked.files.keys()].sort(cmp)) {
-    const size = walked.files.get(path) ?? 0;
     const script = SCRIPT.test(path);
     const locale = !script && localeFileOf(path) !== undefined;
     let text: string | undefined;
     if (script || locale) {
       fileBudget.take(1);
-      byteBudget.take(size);
       const read = readText(root, path, lim.maxFileBytes);
-      if ('rule' in read) skipped.push({ path, rule: read.rule });
+      byteBudget.take(read.bytes);
+      if ('rule' in read) skip({ path, rule: read.rule });
       else text = read.text;
     }
     if (locale && text !== undefined) {
       const found = labelsInJson(path, text);
-      if (found === undefined) skipped.push({ path, rule: 'invalid json' });
+      if (found === undefined) skip({ path, rule: 'invalid json' });
       for (const l of found ?? []) {
         const r = normalised(l);
         if (r !== undefined) labels.push(r);
@@ -165,11 +144,13 @@ export function buildCodeIndex(
     const src = script ? text : undefined;
     let toks: Token[] | undefined;
     const tokens = (): Token[] => (toks ??= lex(src ?? ''));
-    for (const r of extractRoutes(path, src, extractors, tokens)) {
+    const found = extractRoutes(path, src, extractors, tokens);
+    for (const s of found.skipped) skip({ path, line: s.line, rule: s.rule });
+    for (const r of found.routes) {
       const pattern = r.path.normalize('NFC');
       const segments = parseRoutePattern(pattern);
       if (segments.length > MAX_ROUTE_SEGMENTS) {
-        skipped.push({ path, line: r.line, rule: 'route too long' });
+        skip({ path, line: r.line, rule: 'route too long' });
         continue;
       }
       recordBudget.take(1);
@@ -190,6 +171,7 @@ export function buildCodeIndex(
         if (r !== undefined) messages.push(r);
       }
   }
+  checkRoot(root);
 
   routes.sort((a, b) =>
     byPlace<IndexedRoute['record']>((r) => `${r.path}\0${r.source}`)(

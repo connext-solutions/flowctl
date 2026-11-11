@@ -1,7 +1,16 @@
-import { linkSync, mkdirSync, symlinkSync } from 'node:fs';
+import {
+  chmodSync,
+  linkSync,
+  mkdirSync,
+  renameSync,
+  symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildCodeIndex } from '../../src/reconcile/index.js';
+import {
+  buildCodeIndex,
+  type RouteExtractor,
+} from '../../src/reconcile/index.js';
 import { ContainmentError, openRoot } from '../../src/trust/index.js';
 import { put, tmp } from './repo.js';
 
@@ -23,6 +32,16 @@ const refusal = (fn: () => unknown): ContainmentError => {
 };
 
 const LABEL = '{"a": "Gửi đơn"}';
+
+/** An extractor that finds nothing and runs `fn` when the build reaches `target`, after reading it. */
+const onRead = (target: string, fn: () => void): RouteExtractor => ({
+  name: 'on-read',
+  reads: (rel) => {
+    if (rel === target) fn();
+    return false;
+  },
+  fromSource: () => ({ routes: [], skipped: [] }),
+});
 
 describe('hostile repositories', () => {
   it('does not follow a symbolic link out of the root, to a file or a folder', () => {
@@ -121,6 +140,85 @@ describe('hostile repositories', () => {
     expect(idx.labels).toEqual([]);
     expect(idx.skipped).toEqual([
       { path: 'locales/vi\u0301.json', rule: 'not_nfc' },
+    ]);
+  });
+
+  it('refuses a root swapped while it is read, between reads and after the last one', () => {
+    let dir = tmp();
+    const swapOn = (target: string): RouteExtractor =>
+      onRead(target, () => {
+        renameSync(dir, `${dir}-old`);
+        mkdirSync(dir);
+      });
+    put(dir, 'src/a.ts', '');
+    put(dir, 'src/b.ts', '');
+    const root = openRoot(dir, 'repos');
+    expect(
+      refusal(() => buildCodeIndex(root, { routes: [swapOn('src/a.ts')] })),
+    ).toMatchObject({ kind: 'path_not_contained', rule: 'root changed' });
+    dir = tmp();
+    put(dir, 'src/a.ts', '');
+    const last = openRoot(dir, 'repos');
+    expect(
+      refusal(() => buildCodeIndex(last, { routes: [swapOn('src/a.ts')] })),
+    ).toMatchObject({ kind: 'path_not_contained', rule: 'root changed' });
+  });
+
+  it.skipIf(process.getuid?.() === 0)(
+    'skips a file it may not read as unreadable',
+    () => {
+      const dir = tmp();
+      const file = put(dir, 'locales/vi.json', LABEL);
+      chmodSync(file, 0o000);
+      try {
+        expect(index(dir).skipped).toEqual([
+          { path: 'locales/vi.json', rule: 'unreadable' },
+        ]);
+      } finally {
+        chmodSync(file, 0o644);
+      }
+    },
+  );
+
+  it('counts skipped entries against the record budget', () => {
+    const dir = tmp();
+    const rows = Array.from({ length: 5 }, (_, i) => `"k${i}": "a\u200bb"`);
+    put(dir, 'locales/vi.json', `{${rows.join(',')}}`);
+    expect(index(dir, { limits: { maxRecords: 5 } }).skipped).toHaveLength(5);
+    expect(refusal(() => index(dir, { limits: { maxRecords: 4 } })).rule).toBe(
+      'index records',
+    );
+  });
+
+  it('neither lists nor charges files it never reads', () => {
+    const dir = tmp();
+    put(dir, 'public/logo.png', Buffer.alloc(4096));
+    put(dir, 'docs/guide.md', 'x'.repeat(4096));
+    put(dir, 'locales/vi.json', LABEL);
+    const idx = index(dir, { limits: { maxBytes: 1024 } });
+    expect(idx.labels).toHaveLength(1);
+    expect(idx.skipped).toEqual([]);
+  });
+
+  it('charges the bytes it actually read, not the size the walk saw', () => {
+    const dir = tmp();
+    put(dir, 'src/a.ts', '');
+    put(dir, 'src/b.ts', 'x');
+    const grow = onRead('src/a.ts', () =>
+      put(dir, 'src/b.ts', 'x'.repeat(150)),
+    );
+    expect(
+      refusal(() => index(dir, { limits: { maxBytes: 100 }, routes: [grow] })),
+    ).toMatchObject({ kind: 'too_large', rule: 'bytes read' });
+  });
+
+  it('reports pruned folders, so a route folder left out is visible', () => {
+    const dir = tmp();
+    put(dir, 'build/routes/page.tsx', '');
+    put(dir, 'src/vendor/i18n/vi.json', LABEL);
+    expect(index(dir).skipped).toEqual([
+      { path: 'build', rule: 'pruned' },
+      { path: 'src/vendor', rule: 'pruned' },
     ]);
   });
 

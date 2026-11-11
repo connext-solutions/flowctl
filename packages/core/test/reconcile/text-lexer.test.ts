@@ -27,6 +27,8 @@ describe('normaliseText (ADR 0020 section d)', () => {
       '\u0661\u0662',
       'a\u0007b',
       '\ue000',
+      'a\ud800b',
+      '\udc00',
       '   ',
     ])
       expect(normaliseText(s).ok).toBe(false);
@@ -47,6 +49,14 @@ describe('decodeSource', () => {
       ok: false,
       rule: 'not utf-8',
     });
+    for (const bom of [
+      [0x00, 0x00, 0xfe, 0xff],
+      [0xff, 0xfe, 0x00, 0x00],
+    ])
+      expect(decodeSource(Buffer.from([...bom, 0, 0, 0, 0x61]))).toEqual({
+        ok: false,
+        rule: 'not utf-8',
+      });
     expect(decodeSource(Buffer.from([0x61, 0xc3, 0x28]))).toEqual({
       ok: false,
       rule: 'not utf-8',
@@ -79,6 +89,23 @@ describe('lex', () => {
     expect(toks.filter((t) => t.type === 'str').map((t) => t.value)).toEqual([
       'ok',
       'after',
+    ]);
+  });
+
+  it('keeps the rest of a line after an unclosed quote or regular expression', () => {
+    const strs = (src: string): string[] =>
+      lex(src)
+        .filter((t) => t.type === 'str')
+        .map((t) => t.value);
+    expect(strs('<p>Don\'t</p> <Route path="/x" /> {"y"}')).toEqual([
+      '/x',
+      'y',
+    ]);
+    expect(strs("x = /[a; f('ok')")).toEqual(['ok']);
+    expect(strs('"\\u{41}" "\\u{110000}" "\\u{000000041}"')).toEqual([
+      'A',
+      '{110000}',
+      '{000000041}',
     ]);
   });
 

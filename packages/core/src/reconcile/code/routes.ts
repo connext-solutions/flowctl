@@ -1,6 +1,12 @@
 import { nextAppRoute, nextPagesRoute, remixRoute } from './file-routes.js';
 import { lex, type Token } from './lexer.js';
-import { type FoundRoute, jsxRoutes, objectRoutes } from './source-routes.js';
+import {
+  type FoundRoute,
+  jsxRoutes,
+  objectRoutes,
+  type RouteSkip,
+  type SourceRoutes,
+} from './source-routes.js';
 
 /**
  * One way an app declares routes. An extractor reads the file's path (`fromPath`, file-system routing), its
@@ -13,8 +19,8 @@ export interface RouteExtractor {
   fromPath?(rel: string): string | undefined;
   /** Whether {@link fromSource} should read this file (cheap: a file name or a marker in the text). */
   reads?(rel: string, text: string): boolean;
-  /** The routes declared in the tokens of one file. */
-  fromSource?(toks: readonly Token[]): FoundRoute[];
+  /** The routes declared in the tokens of one file, and the declarations left out (too deep, too long). */
+  fromSource?(toks: readonly Token[]): SourceRoutes;
 }
 
 const JSX_FILE = /\.(?:[cm]?jsx?|tsx)$/;
@@ -53,6 +59,12 @@ export interface ExtractedRoute extends FoundRoute {
   source: string;
 }
 
+/** The routes of one file, and the declarations left out, each with the extractor's name. */
+export interface ExtractedRoutes {
+  routes: ExtractedRoute[];
+  skipped: (RouteSkip & { source: string })[];
+}
+
 /**
  * The routes declared in one file by `extractors`: file-system routes (line 1, the pattern is the path) and
  * router declarations in the source, in extractor order. `toks` is lexed once, on first use.
@@ -62,27 +74,33 @@ export function extractRoutes(
   text: string | undefined,
   extractors: readonly RouteExtractor[] = ROUTE_EXTRACTORS,
   toks: () => readonly Token[] = () => lex(text ?? ''),
-): ExtractedRoute[] {
-  const out: ExtractedRoute[] = [];
+): ExtractedRoutes {
+  const out: ExtractedRoutes = { routes: [], skipped: [] };
   let cached: readonly Token[] | undefined;
   const tokens = (): readonly Token[] => (cached ??= toks());
   for (const ex of extractors) {
     const path = ex.fromPath?.(rel);
     if (path !== undefined)
-      out.push({ path, pattern: path, line: 1, source: ex.name });
+      out.routes.push({ path, pattern: path, line: 1, source: ex.name });
     if (
-      text !== undefined &&
-      ex.fromSource !== undefined &&
-      (ex.reads?.(rel, text) ?? true)
+      text === undefined ||
+      ex.fromSource === undefined ||
+      !(ex.reads?.(rel, text) ?? true)
     )
-      for (const r of ex.fromSource(tokens()))
-        out.push({ ...r, source: ex.name });
+      continue;
+    const found = ex.fromSource(tokens());
+    for (const r of found.routes) out.routes.push({ ...r, source: ex.name });
+    for (const s of found.skipped) out.skipped.push({ ...s, source: ex.name });
   }
   return out;
 }
 
-/** The routes the source `text` of `rel` declares with the built-in extractors (router declarations only). */
-export const routesInSource = (rel: string, text: string): ExtractedRoute[] =>
+/**
+ * The routes the source `text` of `rel` declares with the built-in extractors (router declarations only).
+ *
+ * @internal for the package's tests; `buildCodeIndex` calls {@link extractRoutes}.
+ */
+export const routesInSource = (rel: string, text: string): ExtractedRoutes =>
   extractRoutes(
     rel,
     text,

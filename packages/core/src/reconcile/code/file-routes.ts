@@ -74,8 +74,10 @@ export function remixRoute(rel: string): string | undefined {
 
 /**
  * The route the file path `rel` declares by a file-system routing convention (Remix, Next.js App Router,
- * Next.js Pages Router), or `undefined`.
+ * Next.js Pages Router), or `undefined`. The conventions exclude one another, so the order here (Remix, then the
+ * App Router, then the Pages Router) only matters for a custom extractor list.
  *
+ * @internal for the package's tests; `buildCodeIndex` runs every extractor of its list on each path.
  * @example fileRoute('src/app/orders/[id]/page.tsx') // { path: '/orders/:id', source: 'next-app' }
  */
 export function fileRoute(rel: string): PathRoute | undefined {

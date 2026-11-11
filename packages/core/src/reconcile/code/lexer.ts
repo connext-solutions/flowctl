@@ -1,3 +1,5 @@
+import { quoted, regexEnd, template } from './literals.js';
+
 /**
  * A token of JavaScript-like source: an identifier, a string literal with its escapes decoded (a template
  * without substitutions counts), a number, or one punctuation character. `line` is 1-based.
@@ -47,133 +49,29 @@ const REGEX_AFTER = new Set([
   'await',
 ]);
 
-const ESCAPES: Readonly<Record<string, string>> = {
-  n: '\n',
-  t: '\t',
-  r: '\r',
-  b: '\b',
-  f: '\f',
-  v: '\v',
-  '0': '\0',
-};
-
-/** One escape after a backslash at `i`: its text and the index after it. */
-function escapeAt(src: string, i: number): [string, number] {
-  const c = src[i + 1] ?? '';
-  if (c === 'u' && src[i + 2] === '{') {
-    const end = src.indexOf('}', i + 3);
-    const cp = end < 0 ? NaN : Number.parseInt(src.slice(i + 3, end), 16);
-    return Number.isInteger(cp) && cp <= 0x10ffff
-      ? [String.fromCodePoint(cp), end + 1]
-      : ['', i + 2];
-  }
-  if (c === 'u' || c === 'x') {
-    const len = c === 'u' ? 4 : 2;
-    const hex = src.slice(i + 2, i + 2 + len);
-    return /^[\da-fA-F]+$/.test(hex) && hex.length === len
-      ? [String.fromCharCode(Number.parseInt(hex, 16)), i + 2 + len]
-      : ['', i + 2];
-  }
-  if (c === '\r' && src[i + 2] === '\n') return ['', i + 3];
-  if (c === '\n' || c === '\r' || c === '\u2028' || c === '\u2029')
-    return ['', i + 2];
-  return [ESCAPES[c] ?? c, i + 2];
-}
-
-/** A quoted string from `i`; `undefined` when a line ends first (a stray quote in JSX text, say). */
-function quoted(
-  src: string,
-  i: number,
-): { value: string; end: number; lines: number } | undefined {
-  const q = src[i];
-  let out = '';
-  let lines = 0;
-  for (let j = i + 1; j < src.length;) {
-    const c = src[j];
-    if (c === q) return { value: out, end: j + 1, lines };
-    if (c === '\n') return undefined;
-    if (c === '\\') {
-      if (src[j + 1] === '\n') lines++;
-      const [text, next] = escapeAt(src, j);
-      out += text;
-      j = next;
-    } else {
-      out += c;
-      j++;
-    }
-  }
-  return undefined;
-}
-
-/**
- * A template literal from `i`: its text when it has no substitution, `null` when it has one. Substitutions are
- * skipped by brace depth only, which is linear and good enough for an index.
- */
-function template(
-  src: string,
-  i: number,
-): { value: string | null; end: number; lines: number } {
-  let out: string | null = '';
-  let lines = 0;
-  let j = i + 1;
-  while (j < src.length) {
-    const c = src[j];
-    if (c === '`') return { value: out, end: j + 1, lines };
-    if (c === '\n') lines++;
-    if (c === '\\') {
-      const [text, next] = escapeAt(src, j);
-      if (src[j + 1] === '\n') lines++;
-      if (out !== null) out += text;
-      j = next;
-    } else if (c === '$' && src[j + 1] === '{') {
-      out = null;
-      let depth = 1;
-      for (j += 2; j < src.length && depth > 0; j++) {
-        if (src[j] === '{') depth++;
-        else if (src[j] === '}') depth--;
-        else if (src[j] === '\n') lines++;
-      }
-    } else {
-      if (out !== null) out += c;
-      j++;
-    }
-  }
-  return { value: out, end: j, lines };
-}
-
-/** The end of a regular expression literal from `i`, or `undefined` when the line ends first. */
-function regexEnd(src: string, i: number): number | undefined {
-  let inClass = false;
-  for (let j = i + 1; j < src.length; j++) {
-    const c = src[j];
-    if (c === '\n') return undefined;
-    if (c === '\\') j++;
-    else if (c === '[') inClass = true;
-    else if (c === ']') inClass = false;
-    else if (c === '/' && !inClass) {
-      let k = j + 1;
-      while (k < src.length && /[a-z]/i.test(src[k] ?? '')) k++;
-      return k;
-    }
-  }
-  return undefined;
-}
-
 /**
  * Splits JavaScript, TypeScript or JSX source into {@link Token}s, skipping comments, whitespace and regular
  * expressions, in one linear pass.
  *
  * @remarks Not a parser: JSX text is read as code. A stray quote in JSX text (`Don't`) whose line ends before a
  *   closing quote becomes a punctuation token and the lexer goes on after it, so the damage stays on that line.
- *   A `/` after `<`, `>`, `)`, `]` or `}` is a division, so `</Route>` and `{x} />` lex as punctuation.
+ *   Each unclosed scan is remembered by its opening character (`'`, `"`, `/`) up to where it stopped: a later
+ *   opening of the same kind before that point is punctuation without a new scan, so a line is scanned a fixed
+ *   number of times whatever it holds. What this loses is a literal opened inside that stretch by a character the
+ *   failed scan read as escaped (`'\'…'` after an unclosed `'`), or a regular expression opened there (its body
+ *   is then read as code); the other quote kind and the following lines are read as usual.
+ *   A `/` after `<`, `>`, `)`, `]` or `}` is a division, so `</Route>` and `{x} />` lex as punctuation. A
+ *   `\u{…}` escape has at most 8 hex digits.
  */
 export function lex(src: string): Token[] {
   const out: Token[] = [];
+  const unclosed = new Map<string, number>();
   let line = 1;
   let i = 0;
   const push = (type: Token['type'], value: string, at = line): void => {
     out.push({ type, value, line: at });
   };
+  const known = (c: string): boolean => (unclosed.get(c) ?? -1) > i;
   while (i < src.length) {
     const c = src[i] ?? '';
     SPACE.lastIndex = i;
@@ -193,8 +91,9 @@ export function lex(src: string): Token[] {
       for (let j = i; j < stop; j++) if (src[j] === '\n') line++;
       i = stop;
     } else if (c === '"' || c === "'") {
-      const s = quoted(src, i);
-      if (s === undefined) {
+      const s = known(c) ? undefined : quoted(src, i);
+      if (s === undefined || 'stop' in s) {
+        if (s !== undefined) unclosed.set(c, s.stop);
         push('punct', c);
         i++;
       } else {
@@ -208,8 +107,9 @@ export function lex(src: string): Token[] {
       line += t.lines;
       i = t.end;
     } else if (c === '/' && regexMayStart(out.at(-1))) {
-      const end = regexEnd(src, i);
-      if (end === undefined) {
+      const end = known(c) ? undefined : regexEnd(src, i);
+      if (end === undefined || typeof end !== 'number') {
+        if (end !== undefined) unclosed.set(c, end.stop);
         push('punct', c);
         i++;
       } else i = end;

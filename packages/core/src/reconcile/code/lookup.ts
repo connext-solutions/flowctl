@@ -50,17 +50,19 @@ export interface IndexParts {
   maxMatches: number;
 }
 
-const capped = <T>(all: readonly T[], max: number): LookupResult<T> => ({
-  matches: all.slice(0, max),
-  truncated: all.length > max,
-  refused: null,
-});
+const capped = <T>(all: readonly T[], max: number): LookupResult<T> =>
+  Object.freeze({
+    matches: Object.freeze(all.slice(0, max)),
+    truncated: all.length > max,
+    refused: null,
+  });
 
-const refused = <T>(reason: string): LookupResult<T> => ({
-  matches: [],
-  truncated: false,
-  refused: reason,
-});
+const refused = <T>(reason: string): LookupResult<T> =>
+  Object.freeze({
+    matches: Object.freeze([]),
+    truncated: false,
+    refused: reason,
+  });
 
 /** Records grouped by their (already normalised) text. */
 function byText<T extends { text: string }>(
@@ -98,12 +100,18 @@ const bySpecificity = (a: number[], b: number[]): number => {
   return 0;
 };
 
-/** Builds the lookups over sorted index parts. */
+/**
+ * Builds the lookups over sorted index parts. The index, its lists, every record and skipped entry, and every lookup
+ * answer are frozen; records are flat, so this freezes them all the way down.
+ */
 export function createCodeIndex(parts: IndexParts): CodeIndex {
-  const labels = byText(parts.labels);
-  const messages = byText(parts.messages);
+  const labelList = parts.labels.map((r) => Object.freeze(r));
+  const messageList = parts.messages.map((r) => Object.freeze(r));
+  const labels = byText(labelList);
+  const messages = byText(messageList);
   const routes = parts.routes.map((r) => ({
-    ...r,
+    record: Object.freeze(r.record),
+    segments: r.segments,
     rank: specificity(r.segments),
   }));
   const textLookup =
@@ -114,10 +122,10 @@ export function createCodeIndex(parts: IndexParts): CodeIndex {
       return capped(map.get(n.text) ?? [], parts.maxMatches);
     };
   return Object.freeze({
-    routes: Object.freeze(parts.routes.map((r) => r.record)),
-    labels: Object.freeze(parts.labels),
-    messages: Object.freeze(parts.messages),
-    skipped: Object.freeze(parts.skipped),
+    routes: Object.freeze(routes.map((r) => r.record)),
+    labels: Object.freeze(labelList),
+    messages: Object.freeze(messageList),
+    skipped: Object.freeze(parts.skipped.map((s) => Object.freeze(s))),
     files: parts.files,
     findLabel: textLookup(labels),
     findMessage: textLookup(messages),

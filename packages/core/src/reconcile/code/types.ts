@@ -7,7 +7,7 @@ export interface SourceLocation {
 }
 
 /**
- * A route declaration: `path` is the full pattern after joining parent routes (`/hrm/leave/:id`), `pattern` the
+ * A route declaration: `path` is the full pattern after joining parent routes (`/orders/:id`), `pattern` the
  * text as declared (`:id`, or the file path's segment form for a file route), `source` the extractor that found it.
  */
 export interface RouteRecord extends SourceLocation {
@@ -38,22 +38,22 @@ export interface IndexSkip {
 
 /** The answer to one lookup: at most `maxMatches` records, and whether more matched; `refused` names a refused query. */
 export interface LookupResult<T> {
-  matches: T[];
-  truncated: boolean;
-  refused: string | null;
+  readonly matches: readonly T[];
+  readonly truncated: boolean;
+  readonly refused: string | null;
 }
 
 /** Bounds of one index build and its lookups. */
 export interface CodeIndexLimits {
   /** Source files read (JavaScript, TypeScript, Vue and locale JSON); more refuses the build. */
   maxFiles: number;
-  /** Directory entries of one walk; more refuses the build. */
+  /** Directory entries of one walk (each `dirs` entry is one walk); more refuses the build. */
   maxEntries: number;
   /** Bytes in a walked tree and bytes read in total; more refuses the build. */
   maxBytes: number;
   /** Size of one file; a larger file is skipped, not read. */
   maxFileBytes: number;
-  /** Routes, labels and messages together; more refuses the build. */
+  /** Routes, labels, messages and skipped entries together; more refuses the build. */
   maxRecords: number;
   /** Records one lookup returns. */
   maxMatches: number;
@@ -69,7 +69,10 @@ export const CODE_INDEX_LIMITS: CodeIndexLimits = {
   maxMatches: 20,
 };
 
-/** Folder names a build never enters: dependencies, build output and caches. Dot folders are never entered either. */
+/**
+ * Folder names a build never enters: dependencies, build output and caches; each one met is listed in `skipped`
+ * with rule `pruned`. Dot folders are never entered either, and not listed.
+ */
 export const PRUNED_DIRS: ReadonlySet<string> = new Set([
   'node_modules',
   'bower_components',

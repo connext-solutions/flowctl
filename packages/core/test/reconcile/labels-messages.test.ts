@@ -20,12 +20,12 @@ describe('locale files', () => {
   });
 
   it('turns string leaves into labels with key, text and line', () => {
-    const json = '{\n  "leave": {\n    "submit": "Gửi đơn"\n  },\n  "n": 2\n}';
+    const json = '{\n  "order": {\n    "submit": "Gửi đơn"\n  },\n  "n": 2\n}';
     expect(labelsInJson('src/i18n/vi.json', json)).toEqual([
       {
         file: 'src/i18n/vi.json',
         line: 3,
-        key: 'leave.submit',
+        key: 'order.submit',
         text: 'Gửi đơn',
         locale: 'vi',
       },
@@ -38,21 +38,21 @@ describe('validator messages', () => {
   it('reads zod messages from calls and message properties', () => {
     const src = [
       "import { z } from 'zod';",
-      'export const Leave = z.object({',
-      "  reason: z.string({ required_error: 'Vui lòng nhập lý do' })",
-      "    .min(1, 'Vui lòng nhập lý do')",
-      '    .max(200, { message: "Lý do tối đa 200 ký tự" }),',
+      'export const Order = z.object({',
+      "  address: z.string({ required_error: 'Vui lòng nhập địa chỉ' })",
+      "    .min(1, 'Vui lòng nhập địa chỉ')",
+      '    .max(200, { message: "Địa chỉ tối đa 200 ký tự" }),',
       '  email: z.string().email(`Email không hợp lệ`),',
       '  code: z.string().regex(/^[A-Z]+$/, "Mã không hợp lệ"),',
       '  n: z.number().min(0),',
       '});',
     ].join('\n');
     expect(
-      messagesInSource('src/leave.ts', src).map((m) => [m.text, m.via, m.line]),
+      messagesInSource('src/order.ts', src).map((m) => [m.text, m.via, m.line]),
     ).toEqual([
-      ['Vui lòng nhập lý do', 'required_error:', 3],
-      ['Vui lòng nhập lý do', 'min()', 4],
-      ['Lý do tối đa 200 ký tự', 'message:', 5],
+      ['Vui lòng nhập địa chỉ', 'required_error:', 3],
+      ['Vui lòng nhập địa chỉ', 'min()', 4],
+      ['Địa chỉ tối đa 200 ký tự', 'message:', 5],
       ['Email không hợp lệ', 'email()', 6],
       ['Mã không hợp lệ', 'regex()', 7],
     ]);

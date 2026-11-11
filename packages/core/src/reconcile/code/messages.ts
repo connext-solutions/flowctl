@@ -52,35 +52,16 @@ const MESSAGE_KEYS = new Set([
   'errorMessage',
 ]);
 
-/** Most tokens one call's arguments are scanned for, so nested calls cannot make the scan quadratic. */
-const MAX_CALL_TOKENS = 2_000;
-
-/** The direct string arguments of the call whose `(` is at `open`, with their positions. */
-function callStrings(
-  toks: readonly Token[],
-  open: number,
-): { tok: Token; arg: number }[] {
-  const out: { tok: Token; arg: number }[] = [];
-  let depth = 0;
-  let arg = 0;
-  const stop = Math.min(toks.length, open + MAX_CALL_TOKENS);
-  for (let k = open; k < stop; k++) {
-    const t = toks[k];
-    if (t === undefined) break;
-    if (t.value === '(' || t.value === '[' || t.value === '{') depth++;
-    else if (t.value === ')' || t.value === ']' || t.value === '}') {
-      if (--depth === 0) break;
-    } else if (depth === 1 && t.value === ',') arg++;
-    else if (
-      depth === 1 &&
-      t.type === 'str' &&
-      [',', '('].includes(toks[k - 1]?.value ?? '') &&
-      [',', ')'].includes(toks[k + 1]?.value ?? '')
-    )
-      out.push({ tok: t, arg });
-  }
-  return out;
+/** A validator call whose `(` is open: its method, the argument positions that count, the bracket depth inside it. */
+interface OpenCall {
+  method: string;
+  args: readonly number[] | null;
+  depth: number;
+  arg: number;
 }
+
+const OPEN = new Set(['(', '[', '{']);
+const CLOSE = new Set([')', ']', '}']);
 
 /**
  * The validator message literals in the source of `rel`, in source order: string arguments of validator method
@@ -88,7 +69,9 @@ function callStrings(
  * (`{ message: 'msg' }`, `required_error`, react-hook-form `required: 'msg'`). Only a file that imports a
  * validation or form library is read, so `toast({ message })` elsewhere is not a validator message.
  *
- * @remarks A call's arguments are scanned for at most 2,000 tokens, so a chain of nested calls stays linear.
+ * @remarks One pass over the tokens with a stack of the validator calls that are open, so a chain of nested calls
+ *   stays linear: a string counts when it is a whole argument directly inside the innermost open bracket and that
+ *   bracket is a validator call's.
  */
 export function messagesInSource(
   rel: string,
@@ -98,22 +81,47 @@ export function messagesInSource(
   if (!VALIDATION_IMPORT.test(text)) return [];
   const all = toks();
   const out: MessageRecord[] = [];
+  const calls: OpenCall[] = [];
+  let depth = 0;
   for (let i = 0; i < all.length; i++) {
     const t = all[i];
-    if (t?.type !== 'id' && t?.type !== 'str') continue;
+    if (t === undefined) break;
+    const prev = all[i - 1];
     const next = all[i + 1];
-    if (t.type === 'id' && all[i - 1]?.value === '.' && next?.value === '(') {
-      const args = METHODS.get(t.value);
-      if (args === undefined) continue;
-      for (const { tok, arg } of callStrings(all, i + 1))
-        if (args === null || args.includes(arg))
-          out.push({
-            file: rel,
-            line: tok.line,
-            text: tok.value,
-            via: `${t.value}()`,
-          });
-    } else if (next?.value === ':' && MESSAGE_KEYS.has(t.value)) {
+    const call = calls.at(-1);
+    const inCall = call !== undefined && call.depth === depth;
+    if (OPEN.has(t.value) && t.type === 'punct') {
+      depth++;
+      const args = prev === undefined ? undefined : METHODS.get(prev.value);
+      if (
+        t.value === '(' &&
+        args !== undefined &&
+        prev?.type === 'id' &&
+        all[i - 2]?.value === '.'
+      )
+        calls.push({ method: prev.value, args, depth, arg: 0 });
+    } else if (CLOSE.has(t.value) && t.type === 'punct') {
+      if (inCall) calls.pop();
+      depth--;
+    } else if (inCall && t.value === ',' && t.type === 'punct') call.arg++;
+    else if (
+      inCall &&
+      t.type === 'str' &&
+      [',', '('].includes(prev?.value ?? '') &&
+      [',', ')'].includes(next?.value ?? '') &&
+      (call.args === null || call.args.includes(call.arg))
+    )
+      out.push({
+        file: rel,
+        line: t.line,
+        text: t.value,
+        via: `${call.method}()`,
+      });
+    else if (
+      (t.type === 'id' || t.type === 'str') &&
+      next?.value === ':' &&
+      MESSAGE_KEYS.has(t.value)
+    ) {
       const v = all[i + 2];
       const after = all[i + 3]?.value ?? '';
       if (v?.type === 'str' && [',', '}'].includes(after))

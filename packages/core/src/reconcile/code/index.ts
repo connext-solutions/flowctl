@@ -19,6 +19,7 @@ export { type CodeIndex } from './lookup.js';
 export { messagesInSource } from './messages.js';
 export {
   joinRoute,
+  MAX_ROUTE_CHARS,
   MAX_ROUTE_SEGMENTS,
   matchRoute,
   parseRoutePattern,
@@ -26,12 +27,20 @@ export {
 } from './route-match.js';
 export {
   type ExtractedRoute,
+  type ExtractedRoutes,
   extractRoutes,
   ROUTE_EXTRACTORS,
   type RouteExtractor,
   routesInSource,
 } from './routes.js';
-export { type FoundRoute, jsxRoutes, objectRoutes } from './source-routes.js';
+export {
+  type FoundRoute,
+  jsxRoutes,
+  MAX_ROUTE_NESTING,
+  objectRoutes,
+  type RouteSkip,
+  type SourceRoutes,
+} from './source-routes.js';
 export {
   type DecodedSource,
   decodeSource,

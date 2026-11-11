@@ -4,13 +4,14 @@ export type NormalisedText =
   | { ok: false; reason: string };
 
 const HIDDEN =
-  /[\p{Default_Ignorable_Code_Point}\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}]/u;
+  /[\p{Default_Ignorable_Code_Point}\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}]/u;
 const NON_ASCII_DIGIT = /(?![0-9])\p{Nd}/u;
 
 /**
  * Normalises a label, message or query text as ADR 0020 section d does for quotes: Unicode NFC, then runs of
  * ASCII whitespace collapsed to one space and trimmed. Refused (never matched): a hidden or unassigned character
- * (Default_Ignorable_Code_Point, `Cc` left after the collapse, `Cf`, `Zl`, `Zp`, `Co`, `Cn`), a text whose NFKC
+ * (Default_Ignorable_Code_Point, `Cc` left after the collapse, `Cf`, `Zl`, `Zp`, `Co`, `Cn`, and a lone
+ * surrogate `Cs`, which a `\u` escape can produce), a text whose NFKC
  * form differs from its NFC form, a non-ASCII decimal digit, and an empty text.
  *
  * @example normaliseText(' Đã\tgửi ') // { ok: true, text: 'Đã gửi' }
@@ -38,14 +39,19 @@ export type DecodedSource =
 
 const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false });
 
+/** Byte order marks of UTF-16 and UTF-32 (UTF-32LE starts with the UTF-16LE one). */
+const WIDE_BOMS: readonly (readonly number[])[] = [
+  [0xff, 0xfe],
+  [0xfe, 0xff],
+  [0x00, 0x00, 0xfe, 0xff],
+];
+
 /**
- * Decodes file bytes as UTF-8 (a leading BOM is dropped). A UTF-16 or UTF-32 BOM or invalid UTF-8 is
- * `not utf-8`; a NUL byte anywhere is `binary`.
+ * Decodes file bytes as UTF-8 (a leading BOM is dropped). A UTF-16 or UTF-32 BOM (either byte order) or invalid
+ * UTF-8 is `not utf-8`; otherwise a NUL byte anywhere is `binary`.
  */
 export function decodeSource(bytes: Uint8Array): DecodedSource {
-  const b0 = bytes[0];
-  const b1 = bytes[1];
-  if ((b0 === 0xff && b1 === 0xfe) || (b0 === 0xfe && b1 === 0xff))
+  if (WIDE_BOMS.some((bom) => bom.every((b, k) => bytes[k] === b)))
     return { ok: false, rule: 'not utf-8' };
   if (bytes.includes(0)) return { ok: false, rule: 'binary' };
   try {
