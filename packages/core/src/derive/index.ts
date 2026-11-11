@@ -5,3 +5,12 @@
  * @see docs/adr/0034-spec-to-map-matching.md
  */
 export * from './match/index.js';
+export { hideInvisible, mdCode } from './escape.js';
+export {
+  type Conflict,
+  type ConflictKind,
+  conflictsJson,
+  conflictsMarkdown,
+  findConflicts,
+  writeConflicts,
+} from './conflicts.js';

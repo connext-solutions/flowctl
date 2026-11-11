@@ -64,6 +64,14 @@ enough.
 9. **Determinism.** Operations are sorted by id, provider and ref; candidates by score, then path; literals by text;
    evidence and elements by kind, spec path, offsets, page, element kind and index; strings by UTF-16 code units. The
    same operations and map give the same report in any input order.
+10. **Conflicts for a person, not a verdict.** `findConflicts(report)` turns a report into spec ≠ app disagreements
+    (`page_missing`, `page_ambiguous`, `label_not_on_screen`, `label_not_found`, `path_not_found`,
+    `expected_not_observed`, `text_refused`); `writeConflicts` writes them as `conflicts.md` and `conflicts.json`
+    inside a given root (`ensureDirInside`, no symlinks). In the markdown, every untrusted string (spec text, page
+    paths, ids) is one code span fenced longer than its longest backtick run, so no HTML, link, heading or emphasis
+    renders; invisible and control code points are shown as `⟨U+XXXX⟩`; a leading `=`, `+`, `-` or `@` gets a `'`
+    so a pasted cell is not a spreadsheet formula. In the JSON, every invisible or control code point is a `\u`
+    escape. A conflict never changes a verdict and never becomes a flow.
 
 ## Options considered
 

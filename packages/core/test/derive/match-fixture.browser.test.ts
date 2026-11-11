@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { matchOperations } from '../../src/derive/index.js';
+import { findConflicts, matchOperations } from '../../src/derive/index.js';
 import { observe, type AppMap } from '../../src/observe/index.js';
 import {
   markdownSpecProvider,
@@ -101,6 +101,26 @@ describe('matcher on fixture-app (T4.1)', () => {
       ).toEqual(truth?.paths);
       expect(m?.unmatchedSteps, doc).toEqual([]);
     }
+  });
+
+  it('finds no spec ≠ app conflict but the messages a read-only crawl cannot see (T4.4)', () => {
+    const got = findConflicts(matchOperations(ops, map)).map((c) => [
+      c.operation.id,
+      c.kind,
+      c.text,
+    ]);
+    expect(got).toEqual(
+      [
+        ['leave-approve', 'Đã duyệt'],
+        ['leave-approve', 'Đã duyệt đơn'],
+        ['leave-persist', 'Chờ duyệt'],
+        ['leave-persist', 'Không tải được danh sách'],
+        ['leave-submit', 'Gửi đơn thất bại'],
+        ['leave-submit', 'LEAVE'],
+        ['leave-submit', 'Đã gửi đơn'],
+        ['leave-validation', 'Vui lòng nhập lý do'],
+      ].map(([id, text]) => [id, 'expected_not_observed', text]),
+    );
   });
 
   it('gives the same report for the same crawl and spec twice', () => {
