@@ -1,7 +1,11 @@
 import { describeLoc, destructiveWord, StepError } from '../browser/index.js';
 import type { Loc, Step } from '../flow/index.js';
 import type { RunSession } from '../run/index.js';
-import type { System1Client, TargetOp } from '../system1/index.js';
+import {
+  assertDriverFor,
+  type CheckedDriver,
+  type TargetOp,
+} from '../system1/index.js';
 import { StaleControl, onControl } from './act.js';
 import { decisionEntry, describeAction } from './decisions.js';
 
@@ -15,7 +19,7 @@ const HEAL_OPS: Partial<Record<Step['kind'], TargetOp>> = {
 
 export interface HealOptions {
   goal: string;
-  system1: System1Client;
+  system1: CheckedDriver;
   threshold: number;
 }
 
@@ -29,8 +33,8 @@ export interface HealOptions {
  *   Xoá, Duyệt…) for a step whose own name does not (page text can steer the choice, issue #48), the element
  *   vanished, or its recorded locator does not match exactly one visible element (nothing is written back,
  *   issue #24); the step then fails as in strict replay.
- * @throws {RunError} `system1_unreachable` from the client; `system1_not_allowed` when the client was not made for
- *   the run's env (`System1Client.assertFor`).
+ * @throws {RunError} `system1_unreachable` from the driver; `system1_not_allowed` when the driver was not made by
+ *   `createDriver` for the run's env (`assertDriverFor`).
  * @see docs/adr/0008-strict-model-free-replay.md
  */
 export async function healStep(
@@ -42,7 +46,7 @@ export async function healStep(
   if (!('target' in step)) return undefined;
   const op = HEAL_OPS[step.kind];
   if (op === undefined) return undefined;
-  o.system1.assertFor(run.env.name);
+  assertDriverFor(o.system1, run.env.name);
   const snap = await run.snapshot();
   const asked = Date.now();
   const d = await o.system1.decide(

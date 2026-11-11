@@ -45,6 +45,20 @@ export interface HealProposal {
   written: boolean;
 }
 
+/**
+ * What System 1 cost one run (T5.5): decisions asked (explore and heal), their round trips, and tokens and cost.
+ *
+ * @remarks `tokens` and `costUsd` are `unknown` until a driver reports token counts and a price table exists; an
+ *   unknown cost is never written as 0 (ADR 0024 section 6).
+ */
+export interface System1Metrics {
+  decisions: number;
+  totalMs: number;
+  medianMs: number;
+  tokens: number | 'unknown';
+  costUsd: number | 'unknown';
+}
+
 export interface RunResult {
   runId: string;
   flow: string;
@@ -65,6 +79,8 @@ export interface RunResult {
   weakLocators: string[];
   evidence: EvidenceSummary;
   ms: number;
+  /** System 1 decisions of the run; absent when System 1 was not asked (replay without heal). */
+  system1?: System1Metrics;
 }
 
 export interface FlowSummary {

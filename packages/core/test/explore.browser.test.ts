@@ -107,6 +107,23 @@ describe('Exploration', () => {
     expect(lines[1]).toMatchObject({
       outcome: expect.stringMatching(/^act CLICK .*after DONE rejected 1\/3$/),
     });
+    const ms = lines.reduce<number>(
+      (sum, l) =>
+        sum +
+        (typeof l === 'object' && l !== null && 'ms' in l ? Number(l.ms) : 0),
+      0,
+    );
+    const runJson: unknown = JSON.parse(
+      readFileSync(join(stop.evidence.dir, 'run.json'), 'utf8'),
+    );
+    expect(runJson).toMatchObject({
+      system1: {
+        decisions: lines.length,
+        totalMs: ms,
+        tokens: 'unknown',
+        costUsd: 'unknown',
+      },
+    });
   });
 
   it('rejects DONE while the assertions fail and runs the runner-up', async () => {
