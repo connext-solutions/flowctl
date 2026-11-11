@@ -22,7 +22,7 @@ const NEXT = {
   failed:
     'An assertion failed: this is the verdict. Read failed and the evidence directory; do not retry to make it pass.',
   error:
-    'Not a product verdict (see error.kind and error.hint): an infrastructure problem to fix, or a guard that stopped the run (scope_violation, destructive_blocked) to start again with other input.',
+    'Not a product verdict (see error.kind and error.hint): an infrastructure problem to fix, or a guard that stopped the run (scope_violation, destructive_blocked) to start again with other input, or budget_exceeded (the run passed its wall-clock budget).',
 } as const;
 
 const runView = (r: RunResult) => ({

@@ -78,6 +78,7 @@ const SLEEP_ALLOWED = new Map([
   ['packages/core/src/explore/act.ts', 'the WAIT operation'],
   ['packages/core/src/browser/executor.ts', 'the `wait` step and the fill settle'],
   ['packages/core/src/browser/secret-fill.ts', 'the fill settle and the CDP insert timeout'],
+  ['packages/core/src/run/deadline.ts', 'the wall-clock budget timer (ADR 0024 section 6)'],
   ['packages/core/src/browser/snapshot.ts', 'bounded poll for an SPA first control'],
   ['packages/core/src/run/verifier.ts', 'bounded assertion polling'],
   ['packages/core/src/run/evidence.ts', 'bounded wait for response bodies before an escalation writes the logs'],

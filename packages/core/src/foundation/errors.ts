@@ -11,6 +11,7 @@ export type ErrorKind =
   | 'env_not_trusted'
   | 'scope_violation'
   | 'destructive_blocked'
+  | 'budget_exceeded'
   | 'internal';
 
 /** Thrown for a bad flow file, flow name or template. */

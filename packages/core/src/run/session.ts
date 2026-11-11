@@ -19,6 +19,7 @@ import {
   type TemplateContext,
 } from '../flow/index.js';
 import type { RunResult } from '../result.js';
+import { Deadline } from './deadline.js';
 import { Evidence } from './evidence.js';
 import { prepareHooks, runHookKind, type StoreChoice } from './hooks.js';
 import { checkEnvInputs } from './env-inputs.js';
@@ -57,8 +58,8 @@ export class RunSession {
   private setupStarted = false;
   private hooks: HookSession | undefined;
   private guard: ScopeGuard | undefined;
-
   private readonly store: StoreChoice;
+  private readonly deadline: Deadline;
 
   private constructor(
     private readonly cfg: LoadedConfig,
@@ -76,13 +77,18 @@ export class RunSession {
       opts.trace,
     );
     this.profiles = new Profiles(cfg, env, opts.browser, this.evidence);
+    this.deadline = new Deadline(cfg.target.budgets.wallClockMs);
   }
 
   /**
-   * Creates the run directory and evidence collector; touches neither the browser nor the app.
-   *
-   * @throws {ConfigError} when `opts.env` is not a configured env.
+   * Aborted when the wall-clock budget, started by {@link begin}, runs out (ADR 0024 section 6): the pages are then
+   * closed and the run ends `error: budget_exceeded` at its next step or check. Pass it to System 1 calls.
    */
+  get signal(): AbortSignal {
+    return this.deadline.signal;
+  }
+
+  /** Creates the run directory and evidence; touches neither browser nor app. @throws {ConfigError} unknown env. */
   static open(
     cfg: LoadedConfig,
     flow: Flow,
@@ -101,6 +107,7 @@ export class RunSession {
    * @see docs/adr/0021-hook-consent.md
    */
   async begin(): Promise<void> {
+    this.deadline.start(() => this.profiles.closePages());
     this.guard = guardFor(this.cfg, this.env, this.store, this.opts.writes);
     this.profiles.useGuard(this.guard);
     this.hooks = prepareHooks(this.cfg, this.flow, this.store);
@@ -110,8 +117,7 @@ export class RunSession {
     if (this.flow.setup !== undefined) {
       if (this.hooks === undefined)
         throw new RunError('internal', 'setup has no consented hook session');
-      const hooks = this.hooks;
-      const hook = await runHookKind(hooks, 'setup', this.cfg, () => {
+      const hook = await runHookKind(this.hooks, 'setup', this.cfg, () => {
         this.setupStarted = true;
       });
       if (!hook.ok) throw new RunError('setup_failed', hook.output);
@@ -148,11 +154,7 @@ export class RunSession {
     return this.ready().assertions;
   }
 
-  /**
-   * Page of the active profile.
-   *
-   * @throws {Error} before {@link begin} has opened a profile.
-   */
+  /** Page of the active profile. @throws {Error} before {@link begin} has opened a profile. */
   get page(): Page {
     return this.profiles.page;
   }
@@ -206,10 +208,12 @@ export class RunSession {
    * fault, not the app's, so it must never read as a `failed` verdict (ADR 0024 section 3).
    *
    * @throws {RunError} `scope_violation` naming the first request or page out of scope; `internal` when the scope
-   *   guard could not watch a page's redirects; `app_unreachable` when a popup's first answer could not be fetched.
+   *   guard could not watch a page's redirects; `app_unreachable` when a popup's first answer could not be fetched;
+   *   `budget_exceeded` once the wall-clock budget ran out.
    */
   assertInScope(): void {
     this.guard?.assertClean();
+    this.deadline.assertWithin();
   }
 
   /** Visible controls and text of the active page, without `snapshotIgnore` and dev overlays. */
@@ -263,7 +267,10 @@ export class RunSession {
     stepsDone: number,
     extra: Parameters<typeof finishRun>[3] = {},
   ): Promise<RunResult> {
-    const final = this.guard?.overrule(outcome) ?? outcome;
+    this.deadline.clear();
+    const final = this.deadline.overrule(
+      this.guard?.overrule(outcome) ?? outcome,
+    );
     return finishRun(
       {
         cfg: this.cfg,

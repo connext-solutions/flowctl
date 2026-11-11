@@ -210,9 +210,18 @@ export class Profiles {
     }
   }
 
-  /** Closes every context of the run; call once, from `RunSession.finish`. */
   /**
-   * Closes every context, even when one fails to close.
+   * Closes the page of every context, so a pending browser call on it rejects at once; the contexts stay open for
+   * evidence. The wall-clock budget calls it when it runs out.
+   */
+  async closePages(): Promise<void> {
+    await Promise.allSettled(
+      [...this.contexts.values()].map((c) => c.page.close()),
+    );
+  }
+
+  /**
+   * Closes every context of the run, even when one fails to close; call once, from `RunSession.finish`.
    *
    * @throws the first close error, after all contexts were tried.
    */

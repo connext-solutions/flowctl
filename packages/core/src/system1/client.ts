@@ -198,12 +198,13 @@ export class System1Client {
   /**
    * One decision: which operation, on which control, with which input.
    *
+   * @param signal stops the request and any retry wait early: the run's wall-clock budget (ADR 0024 section 6).
    * @throws {RunError} `system1_unreachable` when the service cannot be reached, keeps failing,
-   *   or answers something that does not fit the request.
+   *   or answers something that does not fit the request, or `signal` aborted it.
    */
-  async decide(input: DecideInput): Promise<Decision> {
+  async decide(input: DecideInput, signal?: AbortSignal): Promise<Decision> {
     const req = buildRequest(input, this.opts.model ?? 'jev-latest');
-    const raw = await this.post(req.body);
+    const raw = await this.post(req.body, signal);
     try {
       return parseDecision(raw, req);
     } catch {
@@ -214,7 +215,7 @@ export class System1Client {
     }
   }
 
-  private async post(body: unknown): Promise<unknown> {
+  private async post(body: unknown, stop?: AbortSignal): Promise<unknown> {
     const url = `${this.opts.baseUrl.replace(/\/$/, '')}/v1/systemone`;
     for (let attempt = 1; ; attempt++) {
       let res: Response;
@@ -226,7 +227,10 @@ export class System1Client {
             authorization: `Bearer ${this.opts.apiKey}`,
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(this.opts.timeoutMs ?? 25_000),
+          signal: AbortSignal.any([
+            AbortSignal.timeout(this.opts.timeoutMs ?? 25_000),
+            ...(stop === undefined ? [] : [stop]),
+          ]),
         });
       } catch (e) {
         throw new RunError(
@@ -235,7 +239,14 @@ export class System1Client {
         );
       }
       if (RETRY_STATUSES.has(res.status) && attempt < ATTEMPTS) {
-        await sleep(500 * 2 ** (attempt - 1));
+        await sleep(500 * 2 ** (attempt - 1), undefined, {
+          signal: stop,
+        }).catch((e: unknown) => {
+          throw new RunError(
+            'system1_unreachable',
+            `System 1 retry stopped: ${scrub(errorMessage(e))}`,
+          );
+        });
         continue;
       }
       let text: string | undefined;
