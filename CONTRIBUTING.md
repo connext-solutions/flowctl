@@ -26,3 +26,15 @@ Node is the runtime and Bun only the package manager; never run tests with `bun 
 - Pull requests use the template in `.github/`. CI (`Verify`) and the `Security` scan must pass before merge.
 
 By contributing you agree that your contribution is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)).
+
+## Releasing (maintainers)
+
+Releases are GitHub Releases with npm tarballs (ADR 0031). Bump `version` in `packages/core`, `packages/cli` and
+`packages/mcp` to the same value in a pull request; after it merges, tag that commit on `main` and push the tag:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The `Release` workflow packs the three packages, installs them into an empty project, runs both bins and publishes
+the release. To try the packing locally: `bun run build && node scripts/pack-release.mjs --version <version> --out /tmp/release`.

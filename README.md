@@ -10,8 +10,8 @@ Fast, deterministic verification of web flows for developers and testers who wor
 - **Reliable:** strict locators, assertions that wait, and evidence for every run (Playwright trace,
   screenshot, network and console logs) that is safe to attach to a bug.
 
-> **Early preview.** The engine, the CLI and the MCP server work and are tested, but nothing is published to
-> npm yet and the interfaces may still change. Two safety limits are not finished: a run has no overall time
+> **Early preview.** The engine, the CLI and the MCP server work and are tested, but the interfaces may still
+> change between releases. Two safety limits are not finished: a run has no overall time
 > limit yet, and **replaying a saved flow is not guarded against destructive requests** (exploration is). Run
 > flowctl only against apps and environments you are allowed to change.
 
@@ -29,9 +29,24 @@ Playwright and returns `passed`, `failed`, `flaky` or `error`.
 
 Design decisions are recorded in [docs/adr/](docs/adr/README.md); the vocabulary is in [CONTEXT.md](CONTEXT.md).
 
-## Install (from source)
+## Install
 
-Requires Node 22.12+ (`nvm use` reads `.nvmrc`) and [Bun](https://bun.sh) as the package manager.
+Requires Node 22.12+. Releases are published on
+[GitHub Releases](https://github.com/connext-solutions/flowctl/releases), not on npm (ADR 0031). Install a
+release by its URL (replace `0.1.0` with the release you want):
+
+```bash
+npm install --save-dev https://github.com/connext-solutions/flowctl/releases/download/v0.1.0/flowctl-cli-0.1.0.tgz
+npx playwright install chromium
+npx flowctl --help
+```
+
+The MCP server is `flowctl-mcp-<version>.tgz` and the engine `flowctl-core-<version>.tgz` from the same
+release; each tarball pulls the matching core release by itself.
+
+### From source
+
+Requires [Bun](https://bun.sh) as the package manager as well.
 
 ```bash
 git clone https://github.com/connext-solutions/flowctl.git && cd flowctl

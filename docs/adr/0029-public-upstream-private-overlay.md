@@ -24,11 +24,12 @@ The unscoped npm name `flowctl` is taken by an unrelated package; the `@flowctl`
 1. **This repository, `github.com/connext-solutions/flowctl` (Apache-2.0), is the upstream of the engine:** `packages/core`,
    `packages/cli`, `packages/mcp`, `packages/fixture-app`, the generic skills and the ADRs. Company-specific
    plugins, skills and notes live in a separate private repository (the *overlay*).
-2. **The overlay consumes released packages.** It depends on the public packages by version (npm), or by git tag
-   until the first npm release, and never copies engine source. An engine change is made here, reviewed here,
+2. **The overlay consumes released packages.** It depends on the public packages by release (GitHub Release
+   tarballs, ADR 0031), and never copies engine source. An engine change is made here, reviewed here,
    released, and picked up by the overlay with a version bump.
 3. **Package names:** `@flowctl/core`, `@flowctl/cli` (bin `flowctl`), `@flowctl/mcp`; fixture-app stays
-   unpublished (`private: true`).
+   unpublished (`private: true`). Amended 2026-11-11 by ADR 0031: they are released as GitHub Release tarballs,
+   not on npm.
 4. **The first public commit was a one-time export** of the private repo's engine files with no history, after a
    scrub of internal names and a scan (gitleaks plus an internal-name list). There is no second sync in that
    direction.
@@ -56,5 +57,5 @@ This supersedes ADR 0016 ("defer publishing").
   versioned; releases need a changelog and semver.
 - **Not finished at the first export:** an overall time limit for a run and a destructive-request guard for
   replay (exploration is guarded). The README marks the release as an early preview until they land.
-- **Revisit when:** the `@flowctl` scope cannot be had, the overlay needs engine changes faster than releases
+- **Revisit when:** the overlay needs engine changes faster than releases
   allow, or a second overlay appears.
