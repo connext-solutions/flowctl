@@ -174,7 +174,7 @@ profile (`--profile`, the first one by default), then visits the same-origin lin
 It never clicks, types or submits, and only reads leave the browser, on every env class: any other method, and any
 `GET` whose path looks destructive (`/items/purge`), is aborted. It does not follow links out of the `visit` scope,
 links that open a new window or a download, the login page, or links whose label or path looks destructive
-(ADR 0033).
+(ADR 0033). It never runs on an env the trust store classes `production`.
 
 ```bash
 flowctl observe --start /home --env staging [--json] [--out .flows/maps/app.json]
@@ -183,9 +183,10 @@ flowctl observe --start /home --env staging [--json] [--out .flows/maps/app.json
 The map (`appmap.json` in the run directory, and a copy at `--out`, which must be inside the flows directory) lists,
 per page: path, document status, title, the controls of the page snapshot, forms with their fields (label, type,
 required, submit), links, fetch/xhr calls (method, path, status) and console errors, with credential-looking text as
-`***`, and the requests refused while the page was open. It stops at `target.budgets.pages` (at most 50) or the
-run's wall-clock budget, then says `truncated`. Exit `0` when the crawl finished (a map is not a verdict), `2` on an
-error. Free checks on the map (broken links, 5xx, console errors) are not built yet.
+`***`, and the requests refused while the page was open. A call to another origin keeps its origin. It stops at
+`target.budgets.pages` (at most 50) or the run's wall-clock budget, then says `truncated`. Exit `0` when the crawl
+finished (a map is not a verdict), `2` on an error. Free checks on the map (broken links, 5xx, console errors) are not
+built yet.
 
 ## Flow format
 

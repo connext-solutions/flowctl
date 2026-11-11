@@ -34,10 +34,12 @@ profile with each step shown on screen, slowed down to be read, and is refused f
 agents, so changing them is a breaking change.
 
 `flowctl observe` (early) crawls the env read-only and writes the map to `appmap.json` in the run directory; `--out`
-copies it to a `.json` path inside the flows directory (never under `.auth`), checked before the crawl starts. It
-prints one line per page, or with `--json` a compact summary (`runId`, `status`, `pages`, `truncated`, `attention`:
-pages with no answer, a 4xx/5xx or a refused request, `budget`, `file`). It exits `0` when the crawl finished and `2`
-when the run ended in an error; a map is not a verdict, so it never exits `1`.
+copies it to a `.json` path inside the flows directory (never under `.auth`, `.git` or `.runs`, and never over a file
+that is not a map), checked before the crawl starts. It prints one line per page, or with `--json` the core
+`ObserveSummary` (`runId`, `env`, `origin`, `pages`, `truncated`, `error` when the run ended in one, `attention`: at
+most 20 pages with no answer, a 4xx/5xx or a refused request, `budget`, `file`, `out`). It has no `status` and the
+command never exits `1`, since a map is not a verdict: it exits `0` when the crawl finished and `2` when the run ended
+in an error.
 
 `flowctl login` opens a headed browser; finish with Enter in a terminal or by closing the window (the
 only way without a TTY). It refuses to save a session that never left the login page.

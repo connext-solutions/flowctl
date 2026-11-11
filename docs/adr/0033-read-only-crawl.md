@@ -20,8 +20,10 @@ link answers with a redirect to another origin: ending there would leave most ap
 ## Decision
 
 1. **A page is a path.** A page is identified by the path of its URL on the env's origin; the query string and the
-   fragment are dropped, so record ids and tokens never enter the map and a hash route (`/map#/admin`) is the same
-   page as `/map`, never opened as a route. A redirect inside the scope records the page under its final path, once.
+   fragment are dropped, so what a query carries (filters, ids, tokens) never enters the map, and a hash route
+   (`/map#/admin`) is the same page as `/map`, never opened as a route. A path segment can still carry a record id.
+   A redirect inside the scope records the page under its final path, once; a page that moves itself to a path the
+   crawl may not open (`pushState` to a denied path) is recorded under the path that was opened.
 2. **Breadth-first, sorted.** The crawl starts at one path (the path of the env's `baseUrl`, or a given one), reads
    each page once, and queues the same-origin links it may follow in sorted order (UTF-16 code units), each path
    once. Pages are listed in visit order. The same app gives the same map, except `observedAt`.
@@ -34,7 +36,9 @@ link answers with a redirect to another origin: ending there would leave most ap
 4. **A read-only request layer on every env class.** The crawl's request layer (`RequestGuard.forCrawl`) refuses
    every method but `GET`, `HEAD` and `OPTIONS`, and every request the destructive matcher names, for the request
    types the guard judges (documents, fetch, XHR, beacons, event streams, `other`), on `local` too. A page that
-   writes on load is still mapped; its write never leaves the browser.
+   writes on load is still mapped; its write never leaves the browser. A crawl never runs on an env the store classes
+   `production` (`scope_violation` before any browser starts): ADR 0024 section 2a allows only `GET` there, on
+   owner-signed path templates, which this layer does not check.
 5. **A refusal is an observation of its page.** During a crawl, a request the scope guard or the request layer
    refuses is aborted as in any run, but it does not end the run: its kind is recorded on the page that was open
    (`refused: ["scope_violation" | "destructive_blocked"]`), and the crawl goes on. A navigation that is refused or
@@ -45,8 +49,12 @@ link answers with a redirect to another origin: ending there would leave most ap
    by a budget, a list cut to its `AppMap` cap or an error has `truncated: true`. Cost is `unknown`: a crawl calls no
    driver.
 7. **The result.** The map is validated against `AppMapSchema` and written to `appmap.json` in the run directory,
-   beside `run.json`. A completed crawl's `run.json` says `passed`: the crawl finished. It is not a verdict on the
-   app; there are no assertions, and verdicts from observations are the free checks' (T2.4).
+   beside `run.json`. Page text (titles, control and field names) and paths go through the evidence redaction (ADR
+   0030); a call to another origin keeps that origin, so a refused third-party call never reads as a broken endpoint.
+   A completed crawl's `run.json` says `passed` only because a run result has no other non-error status; it is not a
+   verdict on the app (ADR 0004 still holds: there are no assertions, and verdicts from observations are the free
+   checks', T2.4). The summary a caller gets (`observeSummary`, `flowctl observe --json`) has no `status` at all:
+   `error` when the run ended in one, else nothing.
 
 ## Options considered
 
@@ -56,13 +64,18 @@ link answers with a redirect to another origin: ending there would leave most ap
   grow without bound on `?page=n`. Rejected; a later stage can add chosen query keys.
 - **Follow `target=_blank` links in the same window.** Reaches more pages; but ADR 0024 lists popups among what the
   crawl does not open, and the test app uses one as a decoy. Rejected.
+- **A new run status for a crawl (`observed`).** Clearest in `run.json`, but it changes the `RunResult` contract
+  every caller branches on. Rejected for now; the summary leaves the status out instead.
+- **Crawl production with the crawl's request layer.** It allows `HEAD`, `OPTIONS` and any query, where section 2a
+  allows `GET` on signed templates only. Rejected until section 2a is built.
 - **Skip the label rule on `local`.** Would map "Phê duyệt" on the test app; but a side-effecting GET wipes local
   data too, and ADR 0024 section 5 covers the crawler in every class. Rejected.
 
 ## Consequences
 
-- **Easier:** a map is reproducible and safe to attach (paths only, no values, no bodies); a run on a `shared` env
-  cannot write through a crawl; an app with one bad redirect is still mapped, with the refusal visible.
+- **Easier:** a map is reproducible and safe to attach (paths only, no query, values or bodies, redacted text); a
+  run on a `shared` env cannot write through a crawl; an app with one bad redirect is still mapped, with the refusal
+  visible.
 - **Harder:** pages behind a destructive-looking label, a query string or a popup are not visited; controls come
   from the snapshot, so only those in the first viewport are listed. A refusal or call that arrives while the next
   page loads is counted on the next page.
