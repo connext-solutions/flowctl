@@ -72,3 +72,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0030](0030-evidence-safe-to-share.md) | Evidence is safe to share by default; a full trace is an explicit opt-in | proposed |
 | [0031](0031-github-release-tarballs.md) | Releases are GitHub Releases with npm tarballs; no npm registry | accepted |
 | [0032](0032-demo-video.md) | Demo videos: an opt-in replay recording with a step overlay that assertions cannot see | accepted |
+| [0033](0033-code-index.md) | The code index walks contained files with a lexer; it never runs git | accepted |

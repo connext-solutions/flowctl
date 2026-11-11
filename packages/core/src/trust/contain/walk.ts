@@ -85,11 +85,14 @@ export interface SkippedEntry {
  * @throws {ContainmentError} `too_large` for too many entries, a tree deeper than `maxDepth` or more than
  *   `maxBytes` in total (a directory at `maxDepth` components could only hold paths that a read refuses); `path_not_contained` for a `sub` that fails the lexical rules, is a link or is not a
  *   directory, or a root that changed; `not_found` for a missing `sub`.
+ * @param opts `prune`: directory names that are not entered or reported, at any depth (a code reader leaves
+ *   `node_modules` and build output out this way); a file with such a name is still listed.
  */
 export function walkContained(
   root: ContainedRoot,
   limits: Partial<WalkLimits> = {},
   sub?: string,
+  opts: { prune?: ReadonlySet<string> } = {},
 ): { files: WalkedFile[]; skipped: SkippedEntry[] } {
   const lim = { ...WALK_LIMITS, ...limits };
   checkRoot(root);
@@ -123,6 +126,7 @@ export function walkContained(
       if (st.isSymbolicLink())
         skipped.push({ path: rel, rule: 'no symbolic link' });
       else if (st.isDirectory()) {
+        if (opts.prune?.has(name) === true) continue;
         if (parts.length >= Math.min(lim.maxDepth, MAX_DEPTH))
           throw new ContainmentError(
             'too_large',
