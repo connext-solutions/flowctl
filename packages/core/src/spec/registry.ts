@@ -107,7 +107,8 @@ export class SpecRegistry {
 
   /**
    * The signature set for `signatureRef`, or `null`. A provider without the method, a thrown error, a malformed
-   * answer or more than {@link MAX_SIGNATURE_BYTES} all mean "unsigned", never "signed"; nothing is retried.
+   * answer or more than {@link MAX_SIGNATURE_BYTES} all mean "unsigned", never "signed"; nothing is retried. A
+   * provider that throws synchronously instead of rejecting is read the same way.
    *
    * @throws {ConfigError} for an unregistered provider.
    */
@@ -117,7 +118,10 @@ export class SpecRegistry {
   ): Promise<{ bytes: Uint8Array; revision: string } | null> {
     const p = this.get(name);
     if (p.signatures === undefined) return null;
-    const got = await p.signatures(signatureRef).catch(() => null);
+    const read = p.signatures.bind(p);
+    const got = await Promise.resolve()
+      .then(() => read(signatureRef))
+      .catch(() => null);
     if (
       got === null ||
       !(got.bytes instanceof Uint8Array) ||
