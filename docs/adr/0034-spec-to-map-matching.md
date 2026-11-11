@@ -3,7 +3,7 @@ type: ADR
 id: "0034"
 title: "Derive matches spec operations to the AppMap by fixed text rules, with evidence, and never breaks a tie"
 status: accepted
-date: 2026-11-20
+date: 2026-11-12
 ---
 
 ## Context
