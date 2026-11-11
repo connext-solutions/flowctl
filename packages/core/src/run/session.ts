@@ -12,12 +12,7 @@ import {
   type LoadedConfig,
   type ResolvedEnv,
 } from '../config.js';
-import {
-  type Assertion,
-  type Flow,
-  type Step,
-  type TemplateContext,
-} from '../flow/index.js';
+import type { Assertion, Flow, Step, TemplateContext } from '../flow/index.js';
 import type { RunResult } from '../result.js';
 import { Deadline } from './deadline.js';
 import { Evidence } from './evidence.js';
@@ -26,7 +21,8 @@ import { checkEnvInputs } from './env-inputs.js';
 import { RunError, type Outcome } from './outcome.js';
 import { finishRun } from './finish.js';
 import { Profiles } from './profiles.js';
-import { guardFor, type ScopeGuard } from './scope-guard.js';
+import { guardFor } from './guards.js';
+import type { ScopeGuard } from './scope-guard.js';
 import { actContext, prepareRun, type Prepared } from './prepare.js';
 import type { HookSession } from '../trust/index.js';
 import { verify, type Verdict } from './verifier.js';
@@ -106,7 +102,7 @@ export class RunSession {
    * Resolves inputs and templates, runs the setup hook, then opens the flow's profile at its
    * start page.
    *
-   * @throws {RunError} `hooks_untrusted`, `env_not_allowed` or `scope_violation` (before anything runs),
+   * @throws {RunError} `hooks_untrusted`, `env_not_allowed`, `scope_violation` or `ledger_exists` (before anything runs),
    *   `flow_invalid` (a video asked for a flow with secret inputs), `setup_failed`, `budget_exceeded` (the budget
    *   ran out during setup: no profile is opened), `profile_expired` or `app_unreachable`.
    * @throws {FlowError} when an `{ env }` input is not set.
@@ -114,7 +110,10 @@ export class RunSession {
    */
   async begin(): Promise<void> {
     this.deadline.start(() => this.profiles.closePages());
-    this.guard = guardFor(this.cfg, this.env, this.store, this.opts.writes);
+    this.guard = guardFor(this.cfg, this.env, this.flow, this.opts, {
+      id: this.runId,
+      uid: () => this.prepared?.templates.uid,
+    });
     this.profiles.useGuard(this.guard);
     this.hooks = prepareHooks(this.cfg, this.flow, this.store);
     const inputs = checkEnvInputs(this.flow, this.store);
@@ -284,6 +283,7 @@ export class RunSession {
         prepared: this.prepared !== undefined,
         hooks: this.hooks,
         secrets: this.prepared?.secrets ?? [],
+        guard: this.guard,
       },
       final,
       stepsDone,

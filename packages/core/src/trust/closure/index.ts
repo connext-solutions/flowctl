@@ -6,7 +6,7 @@
  * @see docs/adr/0021-hook-consent.md
  */
 export { type HookDigestInput, hookConsentDigest } from './digest.js';
-export { readVerifiedFile } from './files.js';
+export { hashFlowFile, readVerifiedFile } from './files.js';
 export type {
   Closure,
   ClosureFile,

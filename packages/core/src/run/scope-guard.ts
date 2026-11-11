@@ -6,15 +6,12 @@ import type {
   WebSocketRoute,
 } from 'playwright';
 import { inScope, type Scope, type ScopeKind } from '../browser/index.js';
-import type { LoadedConfig, ResolvedEnv } from '../config.js';
 import { RunError, type ErrorKind } from '../foundation/index.js';
 import type { Outcome } from './outcome.js';
 import { errorMessage } from './outcome.js';
 import { watchFrames } from './frames.js';
 import { answerFirstHop, holdRedirects } from './redirect-hold.js';
 import type { RequestGuard } from './request-guard.js';
-import { TrustError, type TrustStore } from '../trust/index.js';
-import { scopeFor } from './scope-for.js';
 
 /** A WebSocket URL judged as the http(s) URL of its handshake: `wss:` as `https:`, `ws:` as `http:`. */
 const asHttp = (url: string): string => url.replace(/^ws(s?):/i, 'http$1:');
@@ -53,6 +50,7 @@ const DOCUMENT = 'document';
 export class ScopeGuard {
   private first: RunError | undefined;
   private readonly held = new WeakMap<Page, Promise<boolean>>();
+  private readonly contexts: BrowserContext[] = [];
 
   /**
    * @param writes the request layer of the destructive-action guard, when the caller set one (exploration does):
@@ -116,12 +114,29 @@ export class ScopeGuard {
    * Routes every request and WebSocket of `context` through the scope; call before its first page opens.
    *
    * @remarks A request continues only once its page is held ({@link hold}), so a popup's first answer cannot be a
-   *   redirect the hold has not seen yet. A service worker's request has no page; workers are blocked anyway.
+   *   redirect the hold has not seen yet. A service worker's request has no page; workers are blocked anyway. The
+   *   context is kept, so a create the run ledger sends scans the text of every open page of the run ({@link pages}).
    */
   async attach(context: BrowserContext): Promise<void> {
+    this.contexts.push(context);
     await context.route('**/*', async (route: Route) => {
       const r = route.request();
       const kind: ScopeKind = r.resourceType() === DOCUMENT ? 'visit' : 'call';
+      const ledger = this.writes?.ledgerFor(r.method(), r.resourceType());
+      this.writes?.ledger?.scanRequest(
+        r.url(),
+        r.postDataBuffer(),
+        r.resourceType(),
+      );
+      if (ledger !== undefined) {
+        const from = this.pageOf(r);
+        if (
+          !this.allows(r.url(), kind) ||
+          (from !== undefined && !(await this.hold(from)))
+        )
+          return route.abort('blockedbyclient');
+        return ledger.authorise(route, () => this.pages());
+      }
       if (!this.judge(r.url(), kind, r.method(), r.resourceType()))
         return route.abort('blockedbyclient');
       const page = this.pageOf(r);
@@ -135,17 +150,30 @@ export class ScopeGuard {
                   'app_unreachable',
                   `A popup could not load: ${why}. Check that the app is up and the link works in a browser.`,
                 ),
+              this.writes?.ledger?.scanResponse,
             )
           : route.continue();
       return (await this.hold(page))
         ? route.continue()
         : route.abort('blockedbyclient');
     });
-    await context.routeWebSocket(/.*/, (ws: WebSocketRoute) =>
-      this.allows(asHttp(ws.url()), 'call') && this.writes?.crawling !== true
-        ? ws.connectToServer()
-        : ws.close(),
-    );
+    await context.routeWebSocket(/.*/, (ws: WebSocketRoute) => {
+      if (
+        !this.allows(asHttp(ws.url()), 'call') ||
+        this.writes?.crawling === true
+      )
+        return ws.close();
+      const server = ws.connectToServer();
+      const ledger = this.writes?.ledger;
+      if (ledger?.seen !== undefined)
+        server.onMessage((m) => {
+          ledger.see(
+            typeof m === 'string' ? m : m.toString('utf8'),
+            'a WebSocket message',
+          );
+          ws.send(m);
+        });
+    });
     context.on('request', (r) => {
       if (r.redirectedFrom() !== null)
         this.judge(
@@ -171,8 +199,11 @@ export class ScopeGuard {
     const known = this.held.get(page);
     if (known !== undefined) return known;
     this.watch(page);
-    const held = holdRedirects(page, (url, kind, method, type) =>
-      this.judge(url, kind, method, type),
+    const held = holdRedirects(
+      page,
+      (url, kind, method, type) => this.judge(url, kind, method, type),
+      undefined,
+      this.writes?.ledger?.scanResponse,
     ).then(
       () => true,
       (e: unknown) => {
@@ -186,6 +217,14 @@ export class ScopeGuard {
     );
     this.held.set(page, held);
     return held;
+  }
+
+  /**
+   * Every open page of every context this guard was attached to: the run's contexts, which `RunSession` creates and
+   * attaches (`profiles.ts`), so the guard reaches them without opening any.
+   */
+  pages(): Page[] {
+    return this.contexts.flatMap((c) => c.pages());
   }
 
   /** Keeps the run's first problem; a crawl's request layer takes a prevented scope refusal as an observation instead. */
@@ -248,27 +287,5 @@ export class ScopeGuard {
   assertClean(): void {
     if (this.first !== undefined) throw this.first;
     this.writes?.assertClean();
-  }
-}
-
-/**
- * The scope guard of a run on `env` ({@link scopeFor}).
- *
- * @throws {RunError} `scope_violation` when the trust store cannot be read for the production hosts.
- */
-export function guardFor(
-  cfg: LoadedConfig,
-  env: ResolvedEnv,
-  store: TrustStore | 'default',
-  writes?: RequestGuard,
-): ScopeGuard {
-  try {
-    return new ScopeGuard(scopeFor(cfg, env, store), writes);
-  } catch (e) {
-    if (!(e instanceof TrustError)) throw e;
-    throw new RunError(
-      'scope_violation',
-      `The trust store refused the run's scope (${e.kind}${e.detail === undefined ? '' : `: ${e.detail}`}): ${e.message}`,
-    );
   }
 }

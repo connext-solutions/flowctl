@@ -1,10 +1,10 @@
 import dayjs from 'dayjs';
 import { chromium, type Browser } from 'playwright';
 import { ConfigError, resolveEnv, type LoadedConfig } from '../config.js';
-import { envClassFor } from '../explore/index.js';
 import { FlowError, type Flow } from '../flow/index.js';
 import type { RunResult } from '../result.js';
 import {
+  envClassFor,
   RequestGuard,
   RunError,
   RunSession,

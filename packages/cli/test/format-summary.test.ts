@@ -1,7 +1,7 @@
 import type { ReplaySummary, RunResult } from '@flowctl/core';
 import { describe, expect, it } from 'vitest';
 import { formatSummary } from '../src/index.js';
-import { MAX_SHOWN, terminalSafe } from '../src/summary.js';
+import { formatCleanup, MAX_SHOWN, terminalSafe } from '../src/summary.js';
 
 function result(over: Partial<RunResult>): RunResult {
   return {
@@ -186,5 +186,20 @@ describe('formatSummary with page-controlled text (issue #54)', () => {
 
   it('keeps ordinary Vietnamese text as it is', () => {
     expect(terminalSafe('Vui lòng nhập lý do')).toBe('Vui lòng nhập lý do');
+  });
+});
+
+describe('formatCleanup', () => {
+  it('warns when the ledger had a torn last line', () => {
+    const text = formatCleanup('r_torn01', {
+      confirmed: 1,
+      leftover: [],
+      tornTail: true,
+    });
+    expect(text).toContain('1 record(s) confirmed deleted, 0 left');
+    expect(text).toContain('the last line of the ledger was torn');
+    expect(
+      formatCleanup('r_ok01', { confirmed: 1, leftover: [] }),
+    ).not.toContain('torn');
   });
 });
