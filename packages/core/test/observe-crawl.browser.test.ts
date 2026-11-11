@@ -68,7 +68,12 @@ describe('observe (T2.2)', () => {
     expect(map.truncated).toBe(false);
     expect(map.origin).toBe(fixture.url);
     const start = page(map, '/map');
-    expect(start).toMatchObject({ title: 'Sơ đồ', status: 200, refused: [] });
+    expect(start).toMatchObject({
+      title: 'Sơ đồ',
+      status: 200,
+      refused: [],
+      navigationRefused: false,
+    });
     expect(start.links).toEqual([
       '/admin/settings',
       '/approvals',
@@ -110,7 +115,11 @@ describe('observe (T2.2)', () => {
     expect(page(map, '/map/hop')).toMatchObject({
       status: 0,
       refused: ['scope_violation'],
+      navigationRefused: true,
     });
+    expect(
+      map.pages.filter((p) => p.navigationRefused).map((p) => p.path),
+    ).toEqual(['/map/hop']);
     expect(existsSync(file)).toBe(true);
     expect(AppMapSchema.parse(JSON.parse(readFileSync(file, 'utf8')))).toEqual(
       map,

@@ -51,4 +51,8 @@ imported by anything; `config.ts`, `result.ts` and `safe-fs.ts` are leaves that 
   `{ value }` input holding a template such as `{{today+1:DD/MM}}`) back into their templates in recorded names,
   so a saved flow replays on another day or env. A date or env value that only appears on the page stays literal.
 - **Unknown `{{…}}` is an error** (older flows with a raw `{{…}}` now fail with `flow_invalid`; `findFlowsWithErrors` lets the CLI run the other flows and report that file): write `{{lbrace}}` for a literal `{{`. The recorder escapes names that way; env values are inserted literally and never re-scanned (ADR 0026).
+- **A failed navigation commits its error page late.** After a dead page (an empty answer), the crawl waited for a
+  `chrome-error:` URL; the URL was already that of the page before, so the wait ended at once and the late commit
+  interrupted the next navigation, and every later page read status 0. `observe/walk.ts` waits for this navigation's
+  own error-page commit (`framenavigated`) instead.
 - **Never deep-compare a Playwright object in a test** (`toEqual` / `toMatchObject` with a `Page`, `BrowserContext`…): the graph is huge and cyclic, the comparison spins synchronously and no vitest timeout can stop it. Compare it with `toBe` and the rest separately.

@@ -17,6 +17,7 @@ const pageAt = (path: string, extra: Partial<AppPage> = {}): AppPage => ({
   calls: [],
   consoleErrors: [],
   refused: [],
+  navigationRefused: false,
   ...extra,
 });
 

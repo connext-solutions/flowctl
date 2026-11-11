@@ -1,11 +1,4 @@
-import {
-  appendFileSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserContext, Page, Request, Response } from 'playwright';
 import type { EvidenceSummary, RunResult, TraceMode } from '../result.js';
@@ -26,12 +19,15 @@ import {
   type NetEntry,
 } from './net-entry.js';
 import { finalScreenshot } from './final-shot.js';
+import { pruneRuns } from './prune-runs.js';
 import { VideoRecorder } from './video.js';
 import { redactResponse, redactText } from './redact.js';
 import type { DecisionLogEntry } from './decision-log.js';
 
-/** Names of run directories; pruning never touches anything else in `.runs`. */
-export const RUN_ID = /^r_[0-9a-z]+$/;
+/**
+ * The named files of the run directory {@link Evidence.artefact} may write: `run.json` for every run, `appmap.json`
+ * and `checks.json` for a crawl (ADR 0033). A closed list, so no caller can turn a name into a path of its own.
+ */
 type Artefact = 'run.json' | 'appmap.json' | 'checks.json';
 
 export type { DecisionLogEntry } from './decision-log.js';
@@ -245,25 +241,10 @@ export class Evidence {
     );
   }
 
-  /**
-   * Writes `run.json` and removes the oldest run directories beyond `retention`.
-   *
-   * @remarks Only real directories named like a run id ({@link RUN_ID}) are pruned; links, files
-   *   and other folders a user keeps in `.runs` are left alone.
-   */
+  /** Writes `run.json` and removes the oldest run directories beyond `retention` ({@link pruneRuns}). */
   save(result: RunResult): void {
     this.artefact('run.json', JSON.stringify(result, null, 2));
-    readdirSync(this.runsDir)
-      .filter((name) => RUN_ID.test(name))
-      .map((name) => ({
-        path: join(this.runsDir, name),
-        st: lstatSync(join(this.runsDir, name)),
-      }))
-      .filter((d) => d.st.isDirectory())
-      .map((d) => ({ path: d.path, mtime: d.st.mtimeMs }))
-      .sort((a, b) => b.mtime - a.mtime)
-      .slice(this.retention)
-      .forEach((d) => rmSync(d.path, { recursive: true, force: true }));
+    pruneRuns(this.runsDir, this.retention);
   }
 
   /** Writes one named file of the layout (`run.json`, or a crawl's `appmap.json` and `checks.json`) and returns its path. */

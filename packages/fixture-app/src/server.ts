@@ -97,6 +97,7 @@ const CONTENT_TYPES = {
   html: 'text/html; charset=utf-8',
   js: 'text/javascript',
   csv: 'text/csv; charset=utf-8',
+  json: 'application/json',
 } as const;
 
 /**
@@ -212,6 +213,10 @@ export async function startFixture(
       const crawl =
         crawlRoute(url.pathname, bug ?? '') ?? guardRoute(url.pathname);
       if (crawl === undefined) return send(res, 404, { message: 'not found' });
+      if ('destroy' in crawl) {
+        req.socket.destroy();
+        return;
+      }
       if ('purge' in crawl) {
         store = [];
         return send(res, 200, { purged: true });

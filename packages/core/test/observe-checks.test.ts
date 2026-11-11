@@ -3,45 +3,8 @@ import {
   CHECK_IDS,
   FreeChecksSchema,
   freeChecks,
-  type AppMap,
-  type AppPage,
-  type CheckId,
-  type FreeChecks,
 } from '../src/observe/index.js';
-
-const pageAt = (path: string, extra: Partial<AppPage> = {}): AppPage => ({
-  path,
-  title: '',
-  status: 200,
-  controls: [],
-  links: [],
-  forms: [],
-  calls: [],
-  consoleErrors: [],
-  refused: [],
-  ...extra,
-});
-
-const mapOf = (pages: AppPage[], truncated = false): AppMap => ({
-  v: 1,
-  origin: 'http://127.0.0.1:5173',
-  observedAt: '2026-11-12T10:00:00.000Z',
-  truncated,
-  pages,
-});
-
-const check = (r: FreeChecks, id: CheckId) => {
-  const found = r.checks.find((c) => c.id === id);
-  if (found === undefined) throw new Error(`no check ${id}`);
-  return found;
-};
-
-const ref = (id: CheckId) => ({ kind: 'invariant', ref: id });
-const at = (pointer: string) => ({
-  kind: 'observation',
-  file: 'appmap.json',
-  pointer,
-});
+import { at, check, mapOf, pageAt, ref } from './free-checks-maps.js';
 
 /** Free checks (T2.4): verdicts from an `AppMap` alone, each finding pointing at the map entry it stands on. */
 describe('freeChecks', () => {
@@ -93,7 +56,7 @@ describe('freeChecks', () => {
     });
   });
 
-  it('reports 4xx and 5xx document and call statuses under their own check', () => {
+  it('reports 4xx document statuses, and 5xx document and call statuses, under their own check', () => {
     const r = freeChecks(
       mapOf([
         pageAt('/gone', { status: 404 }),
@@ -121,14 +84,6 @@ describe('freeChecks', () => {
         sourceRef: ref('no-4xx'),
         observation: at('/pages/0/status'),
       },
-      {
-        check: 'no-4xx',
-        page: '/ok',
-        status: 401,
-        call: { method: 'GET', path: '/api/me' },
-        sourceRef: ref('no-4xx'),
-        observation: at('/pages/2/calls/1/status'),
-      },
     ]);
     expect(check(r, 'no-5xx').findings).toEqual([
       {
@@ -149,64 +104,20 @@ describe('freeChecks', () => {
     ]);
   });
 
-  it('reports a link whose target page answered 4xx, 5xx or nothing, from each page that links to it', () => {
+  it('does not judge a 4xx fetch/xhr call: an app may probe with an expected 401, 404 or 422', () => {
     const r = freeChecks(
       mapOf([
-        pageAt('/', { links: ['/', '/gone', '/hop', '/never', '/ok'] }),
-        pageAt('/gone', { status: 404 }),
-        pageAt('/hop', { status: 0, refused: ['scope_violation'] }),
-        pageAt('/ok', { links: ['/dead', '/gone'] }),
-        pageAt('/dead', { status: 0 }),
+        pageAt('/', {
+          calls: [
+            { method: 'GET', path: '/api/me', status: 401 },
+            { method: 'GET', path: '/api/draft', status: 404 },
+            { method: 'POST', path: '/api/check', status: 422 },
+          ],
+        }),
       ]),
     );
-    expect(check(r, 'no-broken-link').findings).toEqual([
-      {
-        check: 'no-broken-link',
-        page: '/',
-        target: '/gone',
-        status: 404,
-        sourceRef: ref('no-broken-link'),
-        observation: at('/pages/0/links/1'),
-      },
-      {
-        check: 'no-broken-link',
-        page: '/ok',
-        target: '/dead',
-        status: 0,
-        sourceRef: ref('no-broken-link'),
-        observation: at('/pages/3/links/0'),
-      },
-      {
-        check: 'no-broken-link',
-        page: '/ok',
-        target: '/gone',
-        status: 404,
-        sourceRef: ref('no-broken-link'),
-        observation: at('/pages/3/links/1'),
-      },
-    ]);
-  });
-
-  it('reports a page that gave no answer, but not one whose navigation the guards refused', () => {
-    const r = freeChecks(
-      mapOf([
-        pageAt('/'),
-        pageAt('/dead', { status: 0 }),
-        pageAt('/hop', { status: 0, refused: ['scope_violation'] }),
-        pageAt('/w', { status: 0, refused: ['destructive_blocked'] }),
-      ]),
-    );
-    expect(check(r, 'no-unreachable-page').findings).toEqual([
-      {
-        check: 'no-unreachable-page',
-        page: '/dead',
-        status: 0,
-        sourceRef: ref('no-unreachable-page'),
-        observation: at('/pages/1/status'),
-      },
-    ]);
+    expect(r.status).toBe('passed');
     expect(check(r, 'no-4xx').findings).toEqual([]);
-    expect(check(r, 'no-5xx').findings).toEqual([]);
   });
 
   it('carries the map origin and truncated flag, so a pass on a cut map reads as partial', () => {

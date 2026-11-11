@@ -5,7 +5,8 @@ description: Use when a flowctl run failed, escalated, errored or looks wrong, o
 
 # Debug a run
 
-Evidence is in `<flowsDir>/.runs/<runId>/`.
+Evidence is in `<flowsDir>/.runs/<runId>/`. For an observe run, the verdict is `checks.json`, not `run.json`: a
+completed crawl's `run.json` says `passed` whatever the checks found (ADR 0033, amendment 2026-11-12).
 
 ## Read in this order
 

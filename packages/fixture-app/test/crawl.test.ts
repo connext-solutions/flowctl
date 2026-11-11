@@ -29,7 +29,12 @@ describe('crawl pages (T2.6)', () => {
       'console.error',
     );
     expect(map).toContain('href="/map/help"');
+    expect(map).not.toContain('sendBeacon');
     expect((await get('/map/help')).status).toBe(200);
+    expect(await (await get('/map/report')).text()).toContain(
+      "fetch('/map/api/summary')",
+    );
+    expect((await get('/map/api/summary')).status).toBe(200);
   });
 
   it('switches on each crawl-class bug alone', async () => {
@@ -37,6 +42,9 @@ describe('crawl pages (T2.6)', () => {
       'brokenLink',
       'page500',
       'pageConsoleError',
+      'pageNoAnswer',
+      'call500',
+      'call404',
     ]);
     f = await startFixture('brokenLink');
     const map = await (await get('/map')).text();
@@ -50,6 +58,19 @@ describe('crawl pages (T2.6)', () => {
     expect(await (await get('/map/report')).text()).toContain(
       "console.error('seeded bug",
     );
+    await f.close();
+    f = await startFixture('pageNoAnswer');
+    const withDeadLink = await (await get('/map')).text();
+    expect(withDeadLink).toContain('href="/map/down"');
+    expect(withDeadLink).toContain("sendBeacon('/map/api/left'");
+    await expect(get('/map/down')).rejects.toThrow();
+    await f.close();
+    f = await startFixture('call500');
+    expect((await get('/map/report')).status).toBe(200);
+    expect((await get('/map/api/summary')).status).toBe(500);
+    await f.close();
+    f = await startFixture('call404');
+    expect((await get('/map/api/summary')).status).toBe(404);
   });
 
   it('makes the redirect hop leave the origin and the side-effecting GET wipe data', async () => {

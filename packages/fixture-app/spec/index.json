@@ -14,5 +14,8 @@
   "toastInList": { "doc": "leave/submit.md", "sentence": "Màn hình hiện thông báo \"Đã gửi đơn\"." },
   "brokenLink": { "doc": "map/pages.md", "sentence": "Mọi liên kết trong phần điều hướng mở được trang, không trang nào trả về mã 404." },
   "page500": { "doc": "map/pages.md", "sentence": "Trang Báo cáo mở được với mã 200." },
-  "pageConsoleError": { "doc": "map/pages.md", "sentence": "Trang Báo cáo không ghi lỗi nào vào console." }
+  "pageConsoleError": { "doc": "map/pages.md", "sentence": "Trang Báo cáo không ghi lỗi nào vào console." },
+  "pageNoAnswer": { "doc": "map/pages.md", "sentence": "Mọi liên kết trong phần điều hướng đều nhận được phản hồi từ máy chủ." },
+  "call500": { "doc": "map/pages.md", "sentence": "Trang Báo cáo tải số liệu tổng hợp mà máy chủ không gặp lỗi." },
+  "call404": { "doc": "map/pages.md", "sentence": "Trang Báo cáo tải được số liệu tổng hợp và hiện tổng số." }
 }

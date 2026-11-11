@@ -30,18 +30,28 @@ function findingLine(f: CheckFinding): string {
   return `  ${f.check} ${terminalSafe(f.page)}: ${terminalSafe(seen)}`;
 }
 
-/** The free-check lines: the verdict with the failed checks and their finding counts, then at most 20 findings. */
-function formatChecks(c: FreeChecks, file: string): string[] {
+/**
+ * The free-check lines: the verdict with the failed checks and their finding counts, then at most 20 findings, how
+ * many more `checks.json` holds, and how many it does not keep (`omitted`, past each check's cap).
+ *
+ * @internal exported for the CLI's tests.
+ */
+export function formatChecks(c: FreeChecks, file: string): string[] {
   const failed = c.checks.filter((r) => r.status === 'failed');
   const findings = failed.flatMap((r) => r.findings);
-  const total = failed.reduce((n, r) => n + r.findings.length + r.omitted, 0);
+  const omitted = failed.reduce((n, r) => n + r.omitted, 0);
   return [
     failed.length === 0
       ? `Checks: passed (${c.checks.length} checks${c.truncated ? ', on a truncated map' : ''})`
       : `Checks: failed (${failed.map((r) => `${r.id}: ${String(r.findings.length + r.omitted)}`).join(', ')})`,
     ...findings.slice(0, MAX_PRINTED).map(findingLine),
-    ...(total > MAX_PRINTED
-      ? [`  … ${String(total - MAX_PRINTED)} more in checks.json`]
+    ...(findings.length > MAX_PRINTED
+      ? [`  … ${String(findings.length - MAX_PRINTED)} more in checks.json`]
+      : []),
+    ...(omitted > 0
+      ? [
+          `  … ${String(omitted)} more not kept in checks.json (past a check's finding cap, counted in omitted)`,
+        ]
       : []),
     `Checks file: ${file}`,
   ];

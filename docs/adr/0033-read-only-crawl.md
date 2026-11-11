@@ -102,17 +102,27 @@ link answers with a redirect to another origin: ending there would leave most ap
 
 ## Amendment 2026-11-12: free checks on the map (task T2.4)
 
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
 Decision 7 left the verdicts from observations to the free checks. They are now built
 (`core/src/observe/checks/`), and they change what `flowctl observe` returns.
 
 1. **Five checks, from the map alone.** `freeChecks(map)` is pure: no model, no browser, no expected value but the
-   rule itself. `no-console-error` (each console error of a page), `no-4xx` and `no-5xx` (each document status and
-   each fetch/xhr call status in that range, for every origin the page called), `no-broken-link` (a link whose
-   target page is in the map and answered 4xx, 5xx or nothing), `no-unreachable-page` (a page with status 0 while
-   nothing was refused). A page with status 0 and a refusal is an observation of the guard (decision 5), not of the
-   app, so it is not unreachable and a link to it is not broken. A call with status 0 (aborted or refused) is not
-   judged. A link to a page the crawl did not open (out of scope, a decoy, past the budget, the first path of a
-   redirect) is not judged: nothing was observed about it.
+   rule itself. `no-console-error` (each console error of a page), `no-4xx` (each document status in that range),
+   `no-5xx` (each document status and each fetch/xhr call status in that range, for every origin the page called),
+   `no-broken-link` (a link whose target page is in the map and answered 4xx, 5xx or nothing),
+   `no-unreachable-page` (a page with status 0 whose own navigation the guards did not refuse). A 4xx fetch/xhr
+   call is not judged: apps probe with expected 401, 404 or 422 answers, and without an allow-list of expected
+   statuses such a probe would fail the crawl. Each page records `navigationRefused`, true only when the guards
+   refused its own navigation request or a redirect hop of it (or the scope check before navigating refused it).
+   Such a page is an observation of the guard (decision 5), not of the app, so it is not unreachable and a link to
+   it is not broken. Its `refused` list is not used for this: a late refusal of the page opened before it (a call
+   or beacon sent while the next navigation starts) lands there and explains nothing. A call with status 0 (aborted
+   or refused) is not judged. A link to a page the crawl did not open (out of scope, a decoy, past the budget, the
+   first path of a redirect) is not judged: nothing was observed about it. Every check has a crawl-class seeded bug
+   in the test app (ADR 0020), except `no-broken-link`: it re-reports the failure of the target page from each page
+   that links to it, so it has no unique seeded bug and is required next to the target's check. The 404 call mode
+   (`call404`) is a documented non-detection: no status check reports it.
 2. **Provenance.** ADR 0020 section c makes a free check the invariant `no-5xx` or `no-console-error` with
    `sourceRef: { kind: invariant }`. Each finding follows that: `sourceRef: { kind: "invariant", ref: <check id> }`,
    since the expectation comes from the rule. What the finding stands on is a separate typed field,
@@ -123,16 +133,20 @@ Decision 7 left the verdicts from observations to the free checks. They are now 
 3. **Output.** `checks.json` (schema `FreeChecksSchema`) is written beside `appmap.json` through the run's evidence:
    a status per check with its findings (at most 200 per check, the rest counted in `omitted`), the overall status,
    and the map's `truncated` flag, so a pass on a cut map reads as covering only the pages it holds. `run.json` keeps
-   `passed` for a completed crawl, as decision 7 says; the verdict is in `checks.json`. The caller summary
-   (`observeSummary`) gains `checks`: status, failed ids, finding count and file; it still has no top-level `status`.
+   `passed` for a completed crawl, as decision 7 says: for an observe run, the verdict is `checks.json`, not
+   `run.json`. The caller summary (`observeSummary`) gains `checks`: status, failed ids, finding count and file; it
+   still has no top-level `status`.
 4. **No checks on a run that ended in an error.** When the crawl ends in an error (a guard breach detected after the
    request was sent, an expired profile, the wall-clock budget), `checks.json` is not written and `checks` is absent:
    a verdict must not stand on a run that ended there, and a breach must not be hidden behind a list of findings.
 5. **Exit codes.** `flowctl observe` exits `2` when the run ended in an error, `1` when a free check failed, else `0`.
-   This replaces "observe never exits 1": a failed free check is a verdict from a deterministic rule (ADR 0004), the
-   same meaning `1` has for `replay`, so a CI job can gate on a crawl.
+   This replaces the exit code described by decision 7 and the CLI README until now (`0` for a finished crawl,
+   since a map is not a verdict, and `2` for an error): a failed free check is a verdict from a deterministic rule
+   (ADR 0004), the same meaning `1` has for `replay`, so a CI job can gate on a crawl.
 
 Options considered: a fifth `sourceRef` kind `observation` (rejected, see point 2); keep exiting `0` and leave the
 verdict to the JSON (rejected: a CI caller would have to parse output to notice a 5xx); mark `run.json` `failed`
-(rejected for now: `failed` carries one assertion or step failure, and a crawl has neither); allow-lists for expected
-4xx calls (deferred: a page that probes with an expected 401 fails `no-4xx` today; revisit when an app needs it).
+(rejected for now: `failed` carries one assertion or step failure, and a crawl has neither); judge 4xx fetch/xhr
+calls under `no-4xx` (rejected: a page that probes with an expected 401, 404 or 422 would fail the crawl);
+allow-lists for expected 4xx calls (still deferred: until one exists, a 4xx fetch/xhr call is not judged at all, so a
+broken endpoint that answers 404 to a call is not caught; revisit when an app needs it).
