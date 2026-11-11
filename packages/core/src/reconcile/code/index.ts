@@ -1,8 +1,8 @@
 /**
- * The read-only code index (task T6.1, ADR 0033): routes, i18n labels and validator messages of a web app's
+ * The read-only code index (task T6.1, ADR 0035): routes, i18n labels and validator messages of a web app's
  * source, with file and line, read only through the containment helper from a root of purpose `repos`.
  *
- * @see docs/adr/0033-code-index.md
+ * @see docs/adr/0035-code-index.md
  */
 export { buildCodeIndex, type CodeIndexOptions } from './build.js';
 export {

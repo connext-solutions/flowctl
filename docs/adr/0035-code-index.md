@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0033"
+id: "0035"
 title: "The code index walks contained files with a lexer; it never runs git"
 status: accepted
 date: 2026-11-12

@@ -100,7 +100,7 @@ function readText(
  * Builds the read-only {@link CodeIndex} of the web app below `root`, a root of purpose `repos` (ADR 0025
  * section 2). Files are listed with `walkContained` (dot folders and `prune` folders are not entered; links, hard
  * links, special files, non-NFC names and files over `maxFileBytes` are skipped) and read with `readContained`;
- * nothing else touches the file system and no process is started (ADR 0033). JavaScript, TypeScript and Vue files
+ * nothing else touches the file system and no process is started (ADR 0035). JavaScript, TypeScript and Vue files
  * are read for routes and validator messages, locale JSON files for labels; a file that is binary, not UTF-8 or
  * not strict JSON is skipped. Texts are normalised as ADR 0020 section d says; a refused text is skipped with its
  * line.
@@ -112,7 +112,7 @@ function readText(
  *   plain relative path to a real folder inside the root, or a root that changed; `not_found` for a missing
  *   `dirs` entry; `too_large` past `maxEntries`, `maxBytes`, `maxFiles` or `maxRecords` (the build is refused,
  *   never returned in part).
- * @see docs/adr/0033-code-index.md
+ * @see docs/adr/0035-code-index.md
  */
 export function buildCodeIndex(
   root: ContainedRoot,
