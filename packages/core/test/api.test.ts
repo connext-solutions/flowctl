@@ -35,6 +35,8 @@ it('exposes exactly the documented runtime interface', () => {
     'checkEnvOrigin',
     'checkProductionOrigin',
     'checkProjectSetting',
+    'cleanupRun',
+    'confirmInputFor',
     'confirmLine',
     'confirmReadContext',
     'createOwnerKey',

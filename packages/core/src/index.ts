@@ -26,6 +26,8 @@ export { exitCodeFor, replayFlow, replayMany, summarize } from './replay.js';
 export { login, type LoginOptions } from './login.js';
 export type * from './result.js';
 export {
+  cleanupRun,
+  confirmInputFor,
   confirmReadContext,
   RunError,
   RunSession,

@@ -45,6 +45,32 @@ export interface HealProposal {
   written: boolean;
 }
 
+/**
+ * A record a run (or `flowctl cleanup`) created and could not confirm deleted (ADR 0024 amendment 2026-11-12, s.8):
+ * `id: null` for a create whose answer never came, found by its `name`.
+ */
+export interface Leftover {
+  /** The create entry that minted it. */
+  entry: string;
+  id: string | null;
+  name: string | null;
+  detail:
+    | 'create_unconfirmed'
+    | 'cleanup_failed'
+    | 'verify_failed'
+    | 'timeout'
+    | 'entry_missing';
+}
+
+/**
+ * The end-of-run cleanup of the records a replay on a `shared` env created: how many were confirmed deleted, and
+ * what is left. A non-empty `leftover` is `cleanup_incomplete`: the verdict is unchanged, the CLI exits non-zero.
+ */
+export interface CleanupResult {
+  confirmed: number;
+  leftover: Leftover[];
+}
+
 export interface RunResult {
   runId: string;
   flow: string;
@@ -62,6 +88,8 @@ export interface RunResult {
    */
   heals?: HealProposal[];
   teardownFailed: boolean;
+  /** Present when the run kept a ledger (a replay on a `shared` env with stored confirmations). */
+  cleanup?: CleanupResult;
   weakLocators: string[];
   evidence: EvidenceSummary;
   ms: number;

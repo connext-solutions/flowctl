@@ -136,9 +136,15 @@ export function summarize(results: RunResult[]): ReplaySummary {
   };
 }
 
-/** CLI exit code: `2` if any flow errored, `1` if any failed or is flaky, else `0`. */
+/** CLI exit code: `2` if any flow errored, `1` if any failed or is flaky, `2` if a run left records it created (`cleanup_incomplete`), else `0`. */
 export const exitCodeFor = (s: ReplaySummary): 0 | 1 | 2 =>
-  s.errors > 0 ? 2 : s.failed > 0 || s.flaky > 0 ? 1 : 0;
+  s.errors > 0
+    ? 2
+    : s.failed > 0 || s.flaky > 0
+      ? 1
+      : s.results.some((r) => (r.cleanup?.leftover.length ?? 0) > 0)
+        ? 2
+        : 0;
 
 /**
  * Replays each flow `repeat` times in one shared browser and summarises the results.

@@ -143,6 +143,21 @@ export class ScopeGuard {
     await context.route('**/*', async (route: Route) => {
       const r = route.request();
       const kind: ScopeKind = r.resourceType() === DOCUMENT ? 'visit' : 'call';
+      const ledger = this.writes?.ledgerFor(r.method(), r.resourceType());
+      this.writes?.ledger?.scanRequest(
+        r.url(),
+        r.postDataBuffer(),
+        r.resourceType(),
+      );
+      if (ledger !== undefined) {
+        const from = this.pageOf(r);
+        if (
+          !this.allows(r.url(), kind) ||
+          (from !== undefined && !(await this.hold(from)))
+        )
+          return route.abort('blockedbyclient');
+        return ledger.authorise(route, from);
+      }
       if (!this.judge(r.url(), kind, r.method(), r.resourceType()))
         return route.abort('blockedbyclient');
       const page = this.pageOf(r);
@@ -162,9 +177,19 @@ export class ScopeGuard {
         ? route.continue()
         : route.abort('blockedbyclient');
     });
-    await context.routeWebSocket(/.*/, (ws: WebSocketRoute) =>
-      this.allows(asHttp(ws.url()), 'call') ? ws.connectToServer() : ws.close(),
-    );
+    await context.routeWebSocket(/.*/, (ws: WebSocketRoute) => {
+      if (!this.allows(asHttp(ws.url()), 'call')) return ws.close();
+      const server = ws.connectToServer();
+      const ledger = this.writes?.ledger;
+      if (ledger?.seen !== undefined)
+        server.onMessage((m) => {
+          ledger.see(
+            typeof m === 'string' ? m : m.toString('utf8'),
+            'a WebSocket message',
+          );
+          ws.send(m);
+        });
+    });
     context.on('request', (r) => {
       if (r.redirectedFrom() !== null)
         this.judge(
@@ -189,8 +214,11 @@ export class ScopeGuard {
     const known = this.held.get(page);
     if (known !== undefined) return known;
     this.watch(page);
-    const held = holdRedirects(page, (url, kind, method, type) =>
-      this.judge(url, kind, method, type),
+    const held = holdRedirects(
+      page,
+      (url, kind, method, type) => this.judge(url, kind, method, type),
+      undefined,
+      this.writes?.ledger?.scanResponse,
     ).then(
       () => true,
       (e: unknown) => {

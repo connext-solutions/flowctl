@@ -102,7 +102,7 @@ export class RunSession {
    * Resolves inputs and templates, runs the setup hook, then opens the flow's profile at its
    * start page.
    *
-   * @throws {RunError} `hooks_untrusted`, `env_not_allowed` or `scope_violation` (before anything runs),
+   * @throws {RunError} `hooks_untrusted`, `env_not_allowed`, `scope_violation` or `ledger_exists` (before anything runs),
    *   `flow_invalid` (a video asked for a flow with secret inputs), `setup_failed`, `budget_exceeded` (the budget
    *   ran out during setup: no profile is opened), `profile_expired` or `app_unreachable`.
    * @throws {FlowError} when an `{ env }` input is not set.
@@ -110,7 +110,10 @@ export class RunSession {
    */
   async begin(): Promise<void> {
     this.deadline.start(() => this.profiles.closePages());
-    this.guard = guardFor(this.cfg, this.env, this.flow.name, this.opts);
+    this.guard = guardFor(this.cfg, this.env, this.flow, this.opts, {
+      id: this.runId,
+      uid: () => this.prepared?.templates.uid,
+    });
     this.profiles.useGuard(this.guard);
     this.hooks = prepareHooks(this.cfg, this.flow, this.store);
     const inputs = checkEnvInputs(this.flow, this.store);
@@ -280,6 +283,7 @@ export class RunSession {
         prepared: this.prepared !== undefined,
         hooks: this.hooks,
         secrets: this.prepared?.secrets ?? [],
+        ledger: this.guard?.writes?.ledger,
       },
       final,
       stepsDone,

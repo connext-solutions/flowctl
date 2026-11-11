@@ -5,6 +5,7 @@ import type { HookSession } from '../trust/index.js';
 import type { Evidence } from './evidence.js';
 import { runHookKind } from './hooks.js';
 import { errorMessage, RunError, type Outcome } from './outcome.js';
+import type { RunLedger, Send } from './ledger/index.js';
 import type { Profiles } from './profiles.js';
 import { redactText } from './redact.js';
 
@@ -23,6 +24,8 @@ export interface FinishInput {
   hooks: HookSession | undefined;
   /** Resolved `{ env }` input values; masked as `***` in the result and `run.json`. */
   secrets: readonly string[];
+  /** The run ledger of a replay on a `shared` env with stored confirmations; cleaned up before the contexts close. */
+  ledger?: RunLedger;
 }
 
 /**
@@ -64,6 +67,11 @@ export async function finishRun(
     console: [],
     trace: run.evidence.trace,
   };
+  const ledger = run.ledger;
+  const cleanup =
+    ledger === undefined
+      ? undefined
+      : await stage('cleanup', () => ledger.finish(senderOf(run)));
   await stage('close', () => run.profiles.closeAll());
   if (run.evidence.video !== undefined)
     summary.videos = run.evidence.video.files;
@@ -108,6 +116,7 @@ export async function finishRun(
       ? {}
       : { heals: extra.heals }),
     teardownFailed,
+    ...(cleanup === undefined ? {} : { cleanup }),
     weakLocators: weakLocators(extra.recorded ?? run.flow.parsedSteps),
     evidence: summary,
     ms: Date.now() - run.started,
@@ -127,6 +136,29 @@ export async function finishRun(
       });
   }
   return result;
+}
+
+/**
+ * Sends cleanup and verify requests with the session of the flow's own profile (else the first open one), from the
+ * browser context, so they carry the cookies the run used; an unanswered request is `error`.
+ */
+function senderOf(run: FinishInput): Send {
+  const contexts = run.profiles.all;
+  const ctx = (contexts.find(([p]) => p === run.flow.profile) ??
+    contexts[0])?.[1].context;
+  return async (method, url) => {
+    if (ctx === undefined) return 'error';
+    try {
+      const r = await ctx.request.fetch(url, {
+        method,
+        maxRedirects: 0,
+        failOnStatusCode: false,
+      });
+      return r.status();
+    } catch {
+      return 'error';
+    }
+  };
 }
 
 function maskResult(result: RunResult, secrets: readonly string[]): void {

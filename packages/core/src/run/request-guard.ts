@@ -1,6 +1,7 @@
 import { destructiveRequest } from '../browser/index.js';
 import { RunError } from '../foundation/index.js';
 import type { EnvClass } from '../trust/index.js';
+import type { RunLedger } from './ledger/index.js';
 import type { Outcome } from './outcome.js';
 
 /** The class of the env a run is on, or `unknown` for a non-loopback origin the trust store does not list. */
@@ -41,6 +42,8 @@ const JUDGED_TYPES = new Set([
 export class RequestGuard {
   private first: string | undefined;
   private orchestrating = false;
+  private runLedger: RunLedger | undefined;
+  private stale = false;
 
   /**
    * @param extraWords the repo's `target.destructiveWords`, already narrowed by the effective configuration.
@@ -58,8 +61,9 @@ export class RequestGuard {
    * refuses every request that is not a `GET`, of any resource type (`HEAD` included), and every `GET` that
    * {@link destructiveRequest} names, of a type in {@link JUDGED_TYPES}; on `local` it refuses nothing.
    *
-   * @remarks A `destructiveConfirm` entry is the only thing that will let a replay write on `shared`; until stored
-   *   confirmations exist, nothing does, and the hint says which confirmation is missing. Production hosts are
+   * @remarks A `destructiveConfirm` entry is the only thing that lets a replay write on `shared`: with
+   *   {@link useLedger}, a `fetch` or `xhr` write an entry matches is sent ({@link ledgerFor}); every other write is
+   *   refused, and the hint says which confirmation is missing. Production hosts are
    *   already unreachable through the scope guard, which judges a request first; this layer is the second line.
    *   `allowDestructive` and {@link asOrchestrator} do not apply to a replay.
    */
@@ -69,6 +73,38 @@ export class RequestGuard {
     extraWords: readonly string[] = [],
   ): RequestGuard {
     return new RequestGuard(envClass, false, extraWords, flow);
+  }
+
+  /**
+   * Lets stored confirmations authorise writes of this replay through `ledger` (ADR 0024 section 5): a `fetch` or
+   * `xhr` request that is not a `GET` is then judged by {@link RunLedger.authorise} instead of refused.
+   */
+  useLedger(ledger: RunLedger): void {
+    this.runLedger = ledger;
+  }
+
+  /** The run ledger, when stored confirmations apply to this replay. */
+  get ledger(): RunLedger | undefined {
+    return this.runLedger;
+  }
+
+  /** Notes that the store holds entries for this flow and env, but for another version of the flow. */
+  staleConfirmations(): void {
+    this.stale = true;
+  }
+
+  /** The ledger to judge a request of `method` and resource `type` with, or `undefined` for the plain rules. */
+  ledgerFor(method: string, type: string): RunLedger | undefined {
+    return this.replayOf !== undefined &&
+      this.envClass === 'shared' &&
+      this.runLedger?.defers(method, type) === true
+      ? this.runLedger
+      : undefined;
+  }
+
+  /** Notes a write the ledger refused, with `why` (no entry matched, an id the run did not create, a name rule). */
+  refuseWrite(method: string, url: string, why: string): void {
+    this.first ??= `flowctl stopped ${method.toUpperCase()} ${pathOf(url)} in a replay on a shared env: ${why}. ${this.replayRemedy()}`;
   }
 
   /**
@@ -114,7 +150,11 @@ export class RequestGuard {
       return "The trust store does not list the env's origin, and a replay never writes on such an env: classify it with flowctl trust add env <env>.";
     if (this.envClass === 'production')
       return 'A replay never writes on production (ADR 0024 section 2a).';
-    return `A replay writes on a shared env only when a destructiveConfirm entry in this machine's trust store authorises the request for flow "${this.replayOf ?? ''}", and none does: stored confirmations are not available yet (ADR 0024 section 5). Replay the flow on a local env.`;
+    const flow = this.replayOf ?? '';
+    const why = this.stale
+      ? `the destructiveConfirm entries for flow "${flow}" were confirmed for another version of it (the flow, a file it uses or an env var changed)`
+      : `a replay writes on a shared env only what a destructiveConfirm entry for flow "${flow}" in this machine's trust store authorises`;
+    return `Here ${why}. Confirm the flow once from a recorded local run: flowctl trust add destructive ${flow} --env <env> --from-run <run id> (ADR 0024 section 5), or replay it on a local env.`;
   }
 
   /**
@@ -135,15 +175,24 @@ export class RequestGuard {
     return this.first;
   }
 
-  /** @throws {RunError} `destructive_blocked` naming the first request the guard stopped. */
+  /**
+   * @throws {RunError} the ledger's problem (`ledger_replay`, `ledger_mismatch`, `ledger_overflow`), else
+   *   `destructive_blocked` naming the first request the guard stopped.
+   */
   assertClean(): void {
+    const p = this.runLedger?.problem;
+    if (p !== undefined) throw p;
     if (this.first !== undefined)
       throw new RunError('destructive_blocked', this.first);
   }
 
-  /** `outcome`, or `error: destructive_blocked` when a request was refused and `outcome` is not already an error. */
+  /** `outcome`, or the error {@link assertClean} would throw when there is one and `outcome` is not already an error. */
   overrule(outcome: Outcome): Outcome {
-    return this.first !== undefined && outcome.status !== 'error'
+    if (outcome.status === 'error') return outcome;
+    const p = this.runLedger?.problem;
+    if (p !== undefined)
+      return { status: 'error', error: { kind: p.kind, hint: p.hint } };
+    return this.first !== undefined
       ? {
           status: 'error',
           error: { kind: 'destructive_blocked', hint: this.first },

@@ -181,4 +181,22 @@ export {
   type Segment,
   type IdPosition,
   utcDate,
+  canonicalId,
+  escapeSegment,
+  idValues,
+  type Leaf,
+  leavesOf,
+  matchEntry,
+  type Matched,
+  MAX_BULK,
+  parseStrictJson,
+  readBody,
+  stringAt,
+  type WireRequest,
 } from './confirm/index.js';
+export {
+  LedgerFile,
+  type LedgerLine,
+  type NewLedgerLine,
+  RUN_ID_PATTERN,
+} from './ledger-file.js';

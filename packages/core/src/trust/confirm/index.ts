@@ -1,7 +1,8 @@
 /**
  * Stored destructive confirmations (ADR 0024 section 5 and its amendment 2026-11-12 "destructive ledger details"):
  * the `destructiveConfirm` entry schema and rules, the confirmation digest, and reading, writing and revoking
- * owner-signed entries. The request layer that applies them and the run ledger come with T1.3 step 3.
+ * owner-signed entries, and matching a request against them (strict body reading, exact templates, headers). The
+ * run ledger that binds ids is in `run/ledger/`; its file is `trust/ledger-file.ts`.
  *
  * @see docs/adr/0024-target-scope-and-guards.md
  */
@@ -27,6 +28,22 @@ export {
   type Segment,
 } from './grammar.js';
 export { latestExpiry, MAX_DAYS, utcDate } from './rules.js';
+export {
+  escapeSegment,
+  type Leaf,
+  leavesOf,
+  parseStrictJson,
+  readBody,
+} from './body.js';
+export {
+  canonicalId,
+  idValues,
+  matchEntry,
+  type Matched,
+  MAX_BULK,
+  stringAt,
+  type WireRequest,
+} from './match.js';
 export {
   type ConfirmEntry,
   ConfirmEntrySchema,

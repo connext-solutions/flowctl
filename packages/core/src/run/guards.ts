@@ -1,14 +1,21 @@
-import { BUILT_IN_DENY, pathGlob } from '../browser/index.js';
 import type { LoadedConfig, ResolvedEnv } from '../config.js';
+import type { Flow } from '../flow/index.js';
 import { RunError } from '../foundation/index.js';
 import {
   isLoopback,
+  LedgerFile,
   openTrustStore,
-  type ReadContext,
+  planConfirm,
+  readConfirmEntries,
   TrustError,
   trustedEnv,
   type TrustStore,
 } from '../trust/index.js';
+import {
+  confirmInputFor,
+  confirmReadContext,
+  RunLedger,
+} from './ledger/index.js';
 import { RequestGuard, type RequestClass } from './request-guard.js';
 import { ScopeGuard, scopeFor } from './scope-guard.js';
 
@@ -54,28 +61,38 @@ export function envClassFor(
   return isLoopback(origin) ? 'local' : 'unknown';
 }
 
+export { confirmReadContext } from './ledger/index.js';
+
+/** The run a guard is built for: its id (the ledger's file name) and its `{{uid}}` once prepared. */
+export interface GuardRun {
+  id: string;
+  uid: () => string | undefined;
+}
+
 /**
  * The scope guard of a run of `flow` on `env` ({@link scopeFor}), with its request layer: the caller's
- * (`opts.writes`, an exploration's), else the replay layer of {@link RequestGuard.forReplay} for the env's class.
+ * (`opts.writes`, an exploration's), else the replay layer of {@link RequestGuard.forReplay} for the env's class,
+ * which on a `shared` env keeps a run ledger when stored confirmations apply ({@link startLedger}).
  *
- * @throws {RunError} `scope_violation` when the trust store cannot be read for the production hosts or the env's
- *   class.
+ * @throws {RunError} `scope_violation` when the trust store cannot be read for the production hosts, the env's class
+ *   or the confirmations; `ledger_exists` when the run's ledger file exists already.
  */
 export function guardFor(
   cfg: LoadedConfig,
   env: ResolvedEnv,
-  flow: string,
+  flow: Flow,
   opts: { store?: TrustStore; writes?: RequestGuard },
+  run: GuardRun,
 ): ScopeGuard {
   try {
+    const cls = envClassFor(new URL(env.baseUrl).origin, opts.store);
     const writes =
       opts.writes ??
-      RequestGuard.forReplay(
-        envClassFor(new URL(env.baseUrl).origin, opts.store),
-        flow,
-        cfg.target.destructiveWords,
-      );
-    return new ScopeGuard(scopeFor(cfg, env, opts.store ?? 'default'), writes);
+      RequestGuard.forReplay(cls, flow.name, cfg.target.destructiveWords);
+    const scope = scopeFor(cfg, env, opts.store ?? 'default');
+    if (opts.writes === undefined && cls === 'shared')
+      startLedger(cfg, env, flow, writes, opts.store ?? openTrustStore(), run);
+    return new ScopeGuard(scope, writes);
   } catch (e) {
     if (!(e instanceof TrustError)) throw e;
     throw new RunError(
@@ -86,15 +103,39 @@ export function guardFor(
 }
 
 /**
- * What reading `destructiveConfirm` entries needs from the run layer: now, and the `deny` matcher a `session`
- * template is judged by (the built-in list of `browser/scope.ts` and the repo's `target.scope.deny`, case-folded).
+ * Gives a replay on a `shared` env its run ledger when the store holds valid `destructiveConfirm` entries for this
+ * env and flow whose `hash` is the flow's current confirmation digest (ADR 0024 section 5). Entries for an older
+ * version of the flow authorise nothing; the guard's hint then says the flow changed.
+ *
+ * @throws {RunError} `ledger_exists` from creating the ledger file.
+ * @throws {TrustError} `ledgers_invalid`, `trust_tampered` from the store.
  */
-export function confirmReadContext(
+function startLedger(
   cfg: LoadedConfig,
-  now: Date = new Date(),
-): ReadContext {
-  const deny = [...BUILT_IN_DENY, ...cfg.target.scope.deny].map((p) =>
-    pathGlob(p, true),
+  env: ResolvedEnv,
+  flow: Flow,
+  guard: RequestGuard,
+  store: TrustStore | undefined,
+  run: GuardRun,
+): void {
+  if (store === undefined) return;
+  const mine = readConfirmEntries(
+    store,
+    confirmReadContext(cfg),
+  ).entries.filter((e) => e.env === env.name && e.flow === flow.name);
+  if (mine.length === 0) return;
+  const digest = planConfirm(confirmInputFor(cfg, flow, env)).digest;
+  const entries = mine.filter((e) => digest !== '' && e.hash === digest);
+  if (entries.length === 0) {
+    guard.staleConfirmations();
+    return;
+  }
+  guard.useLedger(
+    new RunLedger({
+      entries,
+      file: LedgerFile.create(store.dir, run.id, null),
+      uid: run.uid,
+      refuse: (method, url, why) => guard.refuseWrite(method, url, why),
+    }),
   );
-  return { now, denied: (path) => deny.some((re) => re.test(path)) };
 }

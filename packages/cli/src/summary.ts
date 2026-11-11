@@ -80,6 +80,11 @@ export function formatSummary(s: ReplaySummary): string {
     ...(r.teardownFailed
       ? [`  ⚠ teardown failed (see ${terminalSafe(r.evidence.dir, Infinity)})`]
       : []),
+    ...(r.cleanup === undefined || r.cleanup.leftover.length === 0
+      ? []
+      : [
+          `  ⚠ cleanup_incomplete: ${r.cleanup.leftover.length} record(s) left: ${terminalSafe(r.cleanup.leftover.map((l) => `${l.entry} ${l.id ?? `name ${l.name ?? '?'}`} (${l.detail})`).join(', '))}; run flowctl cleanup ${terminalSafe(r.runId)}`,
+        ]),
     ...(r.weakLocators.length > 0
       ? [`  ⚠ weak locators: ${terminalSafe(r.weakLocators.join(', '))}`]
       : []),
