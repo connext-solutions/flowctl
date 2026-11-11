@@ -13,7 +13,7 @@
     },
     "packages/cli": {
       "name": "@flowctl/cli",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "flowctl": "dist/bin.js",
       },
@@ -28,7 +28,7 @@
     },
     "packages/core": {
       "name": "@flowctl/core",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "dayjs": "^1.11.23",
         "playwright": "^1.63.0",
@@ -41,11 +41,11 @@
     },
     "packages/fixture-app": {
       "name": "@flowctl/fixture-app",
-      "version": "0.1.0",
+      "version": "0.2.0",
     },
     "packages/mcp": {
       "name": "@flowctl/mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "flowctl-mcp": "dist/bin.js",
       },

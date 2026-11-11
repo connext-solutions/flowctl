@@ -6,7 +6,7 @@ comes from the flow's assertions, never from a model (ADR 0004). Design: ADR 001
 
 ## Run it
 
-Install it from a release (`npm install https://github.com/connext-solutions/flowctl/releases/download/v0.1.0/flowctl-mcp-0.1.0.tgz`;
+Install it from a release (`npm install https://github.com/connext-solutions/flowctl/releases/download/v0.2.0/flowctl-mcp-0.2.0.tgz`;
 the bin is then `node_modules/@flowctl/mcp/dist/bin.js`), or build it from a checkout (`bun install && bun run
 build`; the bin is `packages/mcp/dist/bin.js`). Then register the server with your client; the paths below use the
 checkout form. It needs the same things as the CLI: a `flowctl.config.yaml`, a trust store with the project

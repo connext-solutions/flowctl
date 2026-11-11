@@ -33,7 +33,7 @@ Design decisions are recorded in [docs/adr/](docs/adr/README.md); the vocabulary
 
 ## Status
 
-Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/tag/v0.1.0) (pre-release).
+Latest release: [v0.2.0](https://github.com/connext-solutions/flowctl/releases/tag/v0.2.0) (pre-release).
 
 | Area | State |
 |---|---|
@@ -48,7 +48,8 @@ Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/t
 | Stored destructive confirmations and the run ledger (CRUD flows on shared envs, `flowctl cleanup`) | done, first version |
 | Read-only replay on production, computed System 1 cost | open |
 | Observe: read-only crawler, `AppMap` and free checks (`flowctl observe`, ADR 0033) | early |
-| Derive (test cases from specs), Reconcile (classify failures) | planned |
+| Derive: spec-to-map matcher and conflicts file (ADR 0034); Reconcile: read-only code index (ADR 0035); inside core, not exported yet | early |
+| Derive: drafting test cases and assertions; Reconcile: classifying failures | planned |
 
 Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
 
@@ -56,10 +57,10 @@ Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues
 
 Requires Node 22.12+. Releases are published on
 [GitHub Releases](https://github.com/connext-solutions/flowctl/releases), not on npm (ADR 0031). Install a
-release by its URL (replace `0.1.0` with the release you want):
+release by its URL (replace `0.2.0` with the release you want):
 
 ```bash
-npm install --save-dev https://github.com/connext-solutions/flowctl/releases/download/v0.1.0/flowctl-cli-0.1.0.tgz
+npm install --save-dev https://github.com/connext-solutions/flowctl/releases/download/v0.2.0/flowctl-cli-0.2.0.tgz
 npx playwright install chromium
 npx flowctl --help
 ```
