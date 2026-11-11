@@ -34,7 +34,7 @@ export type Values = ReturnType<
 >['values'];
 
 /** Trust subcommands whose next word names the command too: `trust add env`, `trust key rotate-owner`. */
-const GROUPS = new Set(['add', 'key']);
+const GROUPS = new Set(['add', 'key', 'revoke']);
 
 /** The registered command named by the positionals, and its own arguments. */
 export function resolve(positionals: string[]): {
@@ -94,6 +94,7 @@ export const ARITY: Record<Runnable, (n: number) => boolean> = {
   'trust key rotate-owner': (n) => n === 0,
   'trust add system1': (n) => n >= 3,
   'trust add origin': (n) => n === 3,
+  'trust revoke destructive': (n) => n === 1,
 };
 
 /** True when `name` is a registered command the CLI runs (not `--help`, not an MCP tool). */

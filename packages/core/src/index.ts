@@ -25,7 +25,12 @@ export {
 export { exitCodeFor, replayFlow, replayMany, summarize } from './replay.js';
 export { login, type LoginOptions } from './login.js';
 export type * from './result.js';
-export { RunError, RunSession, verify } from './run/index.js';
+export {
+  confirmReadContext,
+  RunError,
+  RunSession,
+  verify,
+} from './run/index.js';
 export {
   addEnvOrigin,
   addProfileEnvVar,
@@ -37,6 +42,10 @@ export {
   checkProjectSetting,
   assertNoStore,
   addTrustedEnv,
+  confirmLine,
+  type ConfirmEntry,
+  readConfirmEntries,
+  revokeConfirmEntry,
   type EnvVarKind,
   type CommandName,
   COMMANDS,

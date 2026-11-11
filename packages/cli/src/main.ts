@@ -42,6 +42,7 @@ import {
 import { trustInit } from './trust-init.js';
 import { trustReplace } from './trust-replace.js';
 import { trustAddOrigin } from './trust-origin.js';
+import { trustRevokeDestructive } from './trust-destructive.js';
 import { trustAddSystem1 } from './trust-system1.js';
 import { trustRotateOwner } from './trust-key.js';
 import { trustAddProductionOrigin, trustSetProject } from './trust-settings.js';
@@ -184,6 +185,10 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
   },
   'trust key rotate-owner': () => {
     trustRotateOwner(write);
+    return 0;
+  },
+  'trust revoke destructive': (c) => {
+    trustRevokeDestructive(c.cfg, trustedOf(c).store, c.args[0] ?? '', write);
     return 0;
   },
   'trust add profile': (c) => {

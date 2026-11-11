@@ -1,8 +1,10 @@
+import { BUILT_IN_DENY, pathGlob } from '../browser/index.js';
 import type { LoadedConfig, ResolvedEnv } from '../config.js';
 import { RunError } from '../foundation/index.js';
 import {
   isLoopback,
   openTrustStore,
+  type ReadContext,
   TrustError,
   trustedEnv,
   type TrustStore,
@@ -81,4 +83,18 @@ export function guardFor(
       `The trust store refused the run's scope (${e.kind}${e.detail === undefined ? '' : `: ${e.detail}`}): ${e.message}`,
     );
   }
+}
+
+/**
+ * What reading `destructiveConfirm` entries needs from the run layer: now, and the `deny` matcher a `session`
+ * template is judged by (the built-in list of `browser/scope.ts` and the repo's `target.scope.deny`, case-folded).
+ */
+export function confirmReadContext(
+  cfg: LoadedConfig,
+  now: Date = new Date(),
+): ReadContext {
+  const deny = [...BUILT_IN_DENY, ...cfg.target.scope.deny].map((p) =>
+    pathGlob(p, true),
+  );
+  return { now, denied: (path) => deny.some((re) => re.test(path)) };
 }

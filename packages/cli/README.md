@@ -10,6 +10,7 @@ flowctl trust init [--replace] [--anchor-dir <abs dir>] [--config <path>]
 flowctl trust hook <name...> [--hook-env NAME] [--pin NAME=VALUE] [--config <path>]
 flowctl trust add env <env> [--config <path>]
 flowctl trust key rotate-owner [--config <path>]
+flowctl trust revoke destructive <id> [--config <path>]
 ```
 
 The full list, with every `trust add` kind, is `flowctl --help`.

@@ -24,6 +24,9 @@ export interface Judged {
 
 const GLOB = new Set(['*', '?', '[', '{']);
 
+/** Commands a hook of a destructive confirmation may not use: they can reach shared data or other hosts. */
+const NOT_FOR_CONFIRM = new Set(['curl', 'psql', 'rm', 'mv', 'cp']);
+
 /**
  * Step 1 of the decision order: the quote-state table of ADR 0021 Amendment 2026-11-02 section 1.
  *
@@ -80,7 +83,10 @@ export function judgeCommand(ctx: JudgeCtx, cmd: ShellCommand): Judged {
   const name = head.text;
   let callee: ReadFile | undefined;
   let own: JudgeFail | undefined;
-  if (head.chars.some((c) => c.c === '=' && c.s === 'U'))
+  if (
+    head.chars.some((c) => c.c === '=' && c.s === 'U') ||
+    (ctx.purpose === 'confirm' && NOT_FOR_CONFIRM.has(name))
+  )
     own = fail('command_not_allowed', head.pos, name);
   else if (BUILTINS.has(name)) own = judgeBuiltin(ctx, cmd);
   else if (isFileUtility(name)) own = judgeFileUtility(ctx, cmd);

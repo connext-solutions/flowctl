@@ -28,6 +28,9 @@ export const USAGE = `Usage:
                                          (interactive)
   flowctl trust add project [<name>] [--config <path>]
                                          register this checkout (or record its identity) in the trust store (interactive)
+  flowctl trust revoke destructive <id> [--config <path>]
+                                         remove a stored destructive confirmation and the mutate entries that
+                                         depend on it (interactive)
   flowctl trust key rotate-owner [--config <path>]
                                          replace the owner key and re-sign every entry; a rerun finishes or rolls
                                          back a rotation that was interrupted (interactive)

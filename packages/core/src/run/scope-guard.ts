@@ -17,7 +17,6 @@ import {
   isLoopback,
   openTrustStore,
   productionHosts,
-  TrustError,
   type TrustStore,
 } from '../trust/index.js';
 

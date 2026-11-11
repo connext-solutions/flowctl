@@ -1262,3 +1262,30 @@ open for the first part of the replay guard, the stricter option was taken:
   `allowDestructive`) cannot be saved until its flow has a stored confirmation. *Rejected:* exempting the
   confirming replay, which would let a write reach `shared` without an entry the owner signed.
 - `allowDestructive` belongs to an exploration request and never reaches a replay.
+
+Rules of the `destructiveConfirm` entry that section 5 and the ledger amendment leave open, again the stricter
+option each time:
+
+- **Template shape.** A destructive template follows the grammar of the read-only amendment (literal segments,
+  whole-segment `{int}` and `{uuid}`, `/` as the only boundary, 2048 bytes, 32 segments), except that its **last
+  segment may be a placeholder** (`/api/items/{int}` is the shape of every `mutate`, `cleanup` and `verify`
+  template); its first segment is literal, and a trailing `/` is refused. A `create` template has **no
+  placeholder**, so a create never names an id the ledger did not mint; a child created under a parent path cannot
+  be confirmed yet.
+- **Cleanup** is a `DELETE` request on a template with exactly one placeholder; the `cleanup: step` form is not
+  offered. The `verify` template also has exactly one placeholder; both share the create template's literal prefix.
+- **Prefix** starts with `QA-`; `naturalKeys`, `nameField` and the `idFrom` pointer name one value (no `*`).
+- **Caps per entry:** 64 `bodyKeys`, 16 `queryKeys`, 8 `headers`.
+- **Expiry on read.** The entry stores no signing date, so a stored `expires` more than 90 days after the UTC date of
+  the read is `trust_entry_invalid`; an `expires` before today is absent.
+- **Unconfirmable.** Any `env:` input makes a flow unconfirmable, whether or not its value reaches a covered request,
+  because flowctl cannot tell which requests a value reaches before the run.
+- **Signatures** cover the value as stored, before the `queryKeys` and `prefix` defaults apply. A signature that does
+  not verify is `trust_tampered` (as for every signed entry); a signed entry that breaks a rule is ignored with
+  `trust_entry_invalid`, and a `mutate` whose `ledgerFrom` entry is ignored is ignored too.
+- **Writing** entries for a flow and env replaces every earlier entry of that flow and env, so a re-confirmed flow
+  keeps nothing of its previous version; an id already used by another flow's entry is refused. **Revoking** a
+  `create` entry also removes the `mutate` entries whose `ledgerFrom` names it.
+- A `session` template is judged against the built-in `deny` list and the repo's `target.scope.deny`.
+- Owner-key rotation keeps refusing a store whose `destructiveConfirm` section is not empty until it re-signs those
+  entries.

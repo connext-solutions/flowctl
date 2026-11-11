@@ -158,3 +158,27 @@ export {
   TrustStoreSchema,
 } from './schema.js';
 export { TrustStore } from './store.js';
+export {
+  confirmLine,
+  type ConfirmDigestInput,
+  type ConfirmEntry,
+  ConfirmEntrySchema,
+  type ConfirmPlan,
+  type ConfirmRead,
+  type CreateConfirm,
+  latestExpiry,
+  literalPrefix,
+  MAX_DAYS,
+  type MutateConfirm,
+  parseIdPosition,
+  parsePointer,
+  parseTemplate,
+  planConfirm,
+  readConfirmEntries,
+  type ReadContext,
+  revokeConfirmEntry,
+  saveConfirmEntries,
+  type Segment,
+  type IdPosition,
+  utcDate,
+} from './confirm/index.js';
