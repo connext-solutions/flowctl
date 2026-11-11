@@ -54,6 +54,7 @@ describe('replayFlow', () => {
     const r = await replayFlow(cfg, flow, { browser });
     expect(r.status, JSON.stringify(r.failed ?? r.error)).toBe('passed');
     expect(r.steps).toBe(9);
+    expect(r).not.toHaveProperty('system1');
     expect(r.evidence.traces.map((t) => t.split('/').pop())).toEqual([
       'trace-employee.zip',
       'trace-manager.zip',

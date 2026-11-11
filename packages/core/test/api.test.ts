@@ -36,6 +36,7 @@ it('exposes exactly the documented runtime interface', () => {
     'checkEnvOrigin',
     'checkProductionOrigin',
     'checkProjectSetting',
+    'createDriver',
     'createOwnerKey',
     'defaultKeyDir',
     'defaultStoreDir',

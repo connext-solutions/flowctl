@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import type { PageSnapshot } from '../src/browser/index.js';
 import { Deadline } from '../src/run/deadline.js';
-import { System1Client } from '../src/system1/index.js';
+import { JevDriver } from '../src/system1/jev.js';
 
 const page: PageSnapshot = {
   url: 'http://app.test/requests',
@@ -64,7 +64,7 @@ describe('Deadline (wall-clock budget, ADR 0024 section 6)', () => {
   });
 });
 
-describe('System1Client.decide with the run signal', () => {
+describe('JevDriver.decide with the run signal', () => {
   it('stops a request that hangs as soon as the signal aborts', async () => {
     const server = createServer(() => undefined);
     await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
@@ -72,7 +72,7 @@ describe('System1Client.decide with the run signal', () => {
     const port = typeof addr === 'object' && addr !== null ? addr.port : 0;
     try {
       const started = Date.now();
-      const err: unknown = await new System1Client({
+      const err: unknown = await new JevDriver({
         baseUrl: `http://127.0.0.1:${port}`,
         apiKey: 'k',
       })

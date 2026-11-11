@@ -11,12 +11,12 @@ import {
   toOutcome,
   type Outcome,
 } from '../run/index.js';
-import { System1Client, type HistoryEntry } from '../system1/index.js';
+import type { CheckedDriver, HistoryEntry } from '../system1/index.js';
 import type { TrustStore } from '../trust/index.js';
 import { StaleControl, actOp, directStep, type Acted } from './act.js';
 import { ActionGuard, DestructiveAction, envClassFor } from './guard.js';
 import { type Action } from './policy.js';
-import { draftFlow } from './request.js';
+import { draftFlow, driverOrRefusal } from './request.js';
 import {
   checkDirectedSteps,
   MAX_GOAL_CHARS,
@@ -68,7 +68,7 @@ export class Exploration {
     private readonly cfg: LoadedConfig,
     private readonly req: ExploreRequest,
     private readonly run: RunSession,
-    private readonly system1: System1Client | undefined,
+    private readonly system1: CheckedDriver | undefined,
     private readonly guard: ActionGuard,
     private readonly writes: RequestGuard,
   ) {
@@ -106,14 +106,8 @@ export class Exploration {
     const words = cfg.target.destructiveWords;
     const guard = new ActionGuard(envClass, allow, words);
     const writes = new RequestGuard(envClass, allow, words);
-    let system1: System1Client | undefined;
-    let refused: RunError | undefined;
-    try {
-      system1 = System1Client.fromConfig(cfg, env, opts.vars);
-    } catch (e) {
-      if (!(e instanceof RunError)) throw e;
-      refused = e;
-    }
+    const driver = driverOrRefusal(cfg, env, opts.vars);
+    const system1 = driver instanceof RunError ? undefined : driver;
     const run = RunSession.open(cfg, draftFlow(req), {
       env,
       browser: opts.browser,
@@ -122,7 +116,7 @@ export class Exploration {
     });
     const x = new Exploration(cfg, req, run, system1, guard, writes);
     try {
-      if (refused !== undefined) throw refused;
+      if (driver instanceof RunError) throw driver;
       await run.begin();
     } catch (e) {
       await x.end(toOutcome(e));
