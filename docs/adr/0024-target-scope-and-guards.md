@@ -1239,3 +1239,26 @@ match. The request layer's non-GET rule and the stored confirmations are the lin
   `destructiveRequest('GET', 'https://app.test/items?action=delete')` gives nothing (the query is not read).
 - A docs test lists every line of ADRs 0020, 0021, 0023, 0024 and 0025 that contains `Owner decision` as a marker
   (outside this section) and fails unless each one maps to a row of the table above.
+
+## Amendment 2026-11-13: the replay request layer before stored confirmations exist
+
+Proposed with task T1.3; not yet accepted by the owner. The status stays `proposed`. Where section 5 leaves a choice
+open for the first part of the replay guard, the stricter option was taken:
+
+- **What a replay refuses.** On an env classed `shared`, `production` or `unknown` (a non-loopback origin the store
+  does not list), every request whose method is not `GET` is refused, of any resource type, `HEAD` included (section
+  5 says "non-GET"; `HEAD` is not singled out). A `GET` is refused when its path holds a destructive token, for the
+  request types that can carry a write (`document`, `fetch`, `xhr`, `ping`, `eventsource`, `other`), as in the
+  exploration layer, so a bundle chunk such as `DeleteDialog-3f2a.js` never stops a replay. Redirect hops are judged
+  the same way. On `local` nothing is refused.
+- **Until stored confirmations exist** no entry can authorise a request, so the run ends `error:
+  destructive_blocked` with a hint that names the method, the origin and path (never the query), the flow, and the
+  missing `destructiveConfirm` entry; on `unknown` the hint says to classify the env instead, since no entry can
+  exist for it.
+- **Production.** The scope guard judges a request first and already refuses every production host; the replay
+  layer judges production too, behind it, so a production replay never depends on the scope guard alone.
+- **The confirming replay of a save is a replay.** `flow_save` replays the recording before it writes the file;
+  on `shared` that replay is guarded like any other, so an exploration that wrote on `shared` (with
+  `allowDestructive`) cannot be saved until its flow has a stored confirmation. *Rejected:* exempting the
+  confirming replay, which would let a write reach `shared` without an entry the owner signed.
+- `allowDestructive` belongs to an exploration request and never reaches a replay.

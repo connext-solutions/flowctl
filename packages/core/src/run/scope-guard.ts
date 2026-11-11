@@ -262,25 +262,3 @@ export class ScopeGuard {
     this.writes?.assertClean();
   }
 }
-
-/**
- * The scope guard of a run on `env` ({@link scopeFor}).
- *
- * @throws {RunError} `scope_violation` when the trust store cannot be read for the production hosts.
- */
-export function guardFor(
-  cfg: LoadedConfig,
-  env: ResolvedEnv,
-  store: TrustStore | 'default',
-  writes?: RequestGuard,
-): ScopeGuard {
-  try {
-    return new ScopeGuard(scopeFor(cfg, env, store), writes);
-  } catch (e) {
-    if (!(e instanceof TrustError)) throw e;
-    throw new RunError(
-      'scope_violation',
-      `The trust store refused the run's scope (${e.kind}${e.detail === undefined ? '' : `: ${e.detail}`}): ${e.message}`,
-    );
-  }
-}

@@ -29,12 +29,13 @@ const JUDGED_TYPES = new Set([
  * @remarks The run's scope guard calls {@link allows} for every request and redirect hop, and {@link assertClean}
  *   wherever it checks its own scope, so the run ends `error: destructive_blocked` at its next step or check, and
  *   {@link overrule} keeps any verdict off it. `allowDestructive` lifts the guard on a `shared` env only, and only
- *   while the orchestrator's own steps run ({@link asOrchestrator}): System 1's clicks stay guarded. Replay is not
- *   guarded yet; the stored confirmations that would let a reviewed flow write on `shared` come with a later chunk.
- *   On `production` the ADR blocks every non-GET; this interim layer blocks only what it names, so it must not be
- *   reused for a production replay as it is. Not caught: a write whose path holds no destructive word (`PUT
- *   /items/12`), an action named in the body or query, a GraphQL mutation, a method override header or `_method`
- *   field, a WebSocket message, a destructive request from a script, style or image request type.
+ *   while the orchestrator's own steps run ({@link asOrchestrator}): System 1's clicks stay guarded. A replay is
+ *   guarded more strictly ({@link forReplay}): every non-GET is refused. On `production` the ADR blocks every non-GET;
+ *   the exploration form blocks only what it names, so only {@link forReplay} may judge a production replay. Not
+ *   caught in an exploration: a write whose path holds no destructive word (`PUT /items/12`), an action named in the
+ *   body or query, a GraphQL mutation, a method override header or `_method` field, a WebSocket message, a
+ *   destructive request from a script, style or image request type. Not caught in a replay: a destructive `GET`
+ *   whose path holds no destructive word or which is sent as a script, style or image, and a WebSocket message.
  * @see docs/adr/0024-target-scope-and-guards.md
  */
 export class RequestGuard {
@@ -43,12 +44,32 @@ export class RequestGuard {
 
   /**
    * @param extraWords the repo's `target.destructiveWords`, already narrowed by the effective configuration.
+   * @param replayOf the name of the flow a replay runs ({@link forReplay}); `undefined` for an exploration.
    */
   constructor(
     readonly envClass: RequestClass,
     private readonly allowDestructive: boolean,
     private readonly extraWords: readonly string[] = [],
+    private readonly replayOf?: string,
   ) {}
+
+  /**
+   * The request layer of a replay of `flow` (ADR 0024 section 5): on a `shared`, `production` or `unknown` env it
+   * refuses every request that is not a `GET`, of any resource type (`HEAD` included), and every `GET` that
+   * {@link destructiveRequest} names, of a type in {@link JUDGED_TYPES}; on `local` it refuses nothing.
+   *
+   * @remarks A `destructiveConfirm` entry is the only thing that will let a replay write on `shared`; until stored
+   *   confirmations exist, nothing does, and the hint says which confirmation is missing. Production hosts are
+   *   already unreachable through the scope guard, which judges a request first; this layer is the second line.
+   *   `allowDestructive` and {@link asOrchestrator} do not apply to a replay.
+   */
+  static forReplay(
+    envClass: RequestClass,
+    flow: string,
+    extraWords: readonly string[] = [],
+  ): RequestGuard {
+    return new RequestGuard(envClass, false, extraWords, flow);
+  }
 
   /**
    * Whether a request may be sent, noting a refusal when not.
@@ -58,6 +79,8 @@ export class RequestGuard {
    */
   allows(method: string, url: string, type: string): boolean {
     if (this.envClass === 'local') return true;
+    if (this.replayOf !== undefined)
+      return this.allowsReplay(method, url, type);
     if (
       this.envClass === 'shared' &&
       this.allowDestructive &&
@@ -69,6 +92,29 @@ export class RequestGuard {
     if (word === undefined) return true;
     this.first ??= `flowctl stopped ${method.toUpperCase()} ${pathOf(url)}, which looks destructive ("${word}") on a ${this.envClass} env. ${this.remedy()}`;
     return false;
+  }
+
+  private allowsReplay(method: string, url: string, type: string): boolean {
+    const m = method.toUpperCase();
+    const word =
+      m !== 'GET'
+        ? m
+        : JUDGED_TYPES.has(type.toLowerCase())
+          ? destructiveRequest(m, url, this.extraWords)
+          : undefined;
+    if (word === undefined) return true;
+    const why =
+      m === 'GET' ? `a GET that looks destructive ("${word}")` : 'a write';
+    this.first ??= `flowctl stopped ${m} ${pathOf(url)}, ${why}, in a replay on a ${this.envClass} env. ${this.replayRemedy()}`;
+    return false;
+  }
+
+  private replayRemedy(): string {
+    if (this.envClass === 'unknown')
+      return "The trust store does not list the env's origin, and a replay never writes on such an env: classify it with flowctl trust add env <env>.";
+    if (this.envClass === 'production')
+      return 'A replay never writes on production (ADR 0024 section 2a).';
+    return `A replay writes on a shared env only when a destructiveConfirm entry in this machine's trust store authorises the request for flow "${this.replayOf ?? ''}", and none does: stored confirmations are not available yet (ADR 0024 section 5). Replay the flow on a local env.`;
   }
 
   /**

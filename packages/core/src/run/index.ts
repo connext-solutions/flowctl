@@ -23,6 +23,7 @@ export {
 } from './outcome.js';
 export { RunSession } from './session.js';
 export { RequestGuard, type RequestClass } from './request-guard.js';
+export { envClassFor } from './guards.js';
 export { redactBody, redactResponse, redactText } from './redact.js';
 export {
   cookieMatches,

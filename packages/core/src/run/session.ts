@@ -12,12 +12,7 @@ import {
   type LoadedConfig,
   type ResolvedEnv,
 } from '../config.js';
-import {
-  type Assertion,
-  type Flow,
-  type Step,
-  type TemplateContext,
-} from '../flow/index.js';
+import type { Assertion, Flow, Step, TemplateContext } from '../flow/index.js';
 import type { RunResult } from '../result.js';
 import { Deadline } from './deadline.js';
 import { Evidence } from './evidence.js';
@@ -26,7 +21,8 @@ import { checkEnvInputs } from './env-inputs.js';
 import { RunError, type Outcome } from './outcome.js';
 import { finishRun } from './finish.js';
 import { Profiles } from './profiles.js';
-import { guardFor, type ScopeGuard } from './scope-guard.js';
+import { guardFor } from './guards.js';
+import type { ScopeGuard } from './scope-guard.js';
 import { actContext, prepareRun, type Prepared } from './prepare.js';
 import type { HookSession } from '../trust/index.js';
 import { verify, type Verdict } from './verifier.js';
@@ -114,7 +110,7 @@ export class RunSession {
    */
   async begin(): Promise<void> {
     this.deadline.start(() => this.profiles.closePages());
-    this.guard = guardFor(this.cfg, this.env, this.store, this.opts.writes);
+    this.guard = guardFor(this.cfg, this.env, this.flow.name, this.opts);
     this.profiles.useGuard(this.guard);
     this.hooks = prepareHooks(this.cfg, this.flow, this.store);
     const inputs = checkEnvInputs(this.flow, this.store);
