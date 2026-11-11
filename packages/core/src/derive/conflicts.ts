@@ -17,7 +17,8 @@ import type {
  * - `label_not_on_screen`: a step quotes a label that is not a control or field of the matched screen, though
  *   another page has it;
  * - `label_not_found`: a step quotes a label no page has;
- * - `path_not_found`: a quoted address (`/…`) names no page of the map;
+ * - `path_not_found`: a quoted address (`/…`) names no page of the map (one that names another page than the
+ *   screen is not a conflict: an action may lead there);
  * - `expected_not_observed`: an expected item quotes a text the map never holds (a read-only crawl records titles,
  *   controls and fields, not messages shown after an action);
  * - `text_refused`: a quoted literal the Unicode rules refuse (ADR 0020 section d), so it cannot be checked.
@@ -189,8 +190,8 @@ export function conflictsMarkdown(
 }
 
 /**
- * The conflicts as JSON (`v: 1`, the map's origin, time and `truncated`, the conflicts), with every non-ASCII
- * invisible or control code point written as a `\u` escape, so the file shows no hidden text in an editor.
+ * The conflicts as JSON (`v: 1`, the map's origin, time and `truncated`, the conflicts), with every invisible or
+ * control code point written as a `\u` escape, so the file shows no hidden text in an editor.
  */
 export function conflictsJson(
   report: MatchReport,
@@ -211,6 +212,7 @@ export function conflictsJson(
  * Writes `conflicts.md` and `conflicts.json` into `dir`, which must be inside `root`, and returns their paths.
  *
  * @throws {ConfigError} when `dir` is not inside `root` or a component on the way is a symlink or a file.
+ * @throws {NodeJS.ErrnoException} when the file system refuses the write (`EACCES`, `ENOSPC`), unchanged.
  */
 export function writeConflicts(
   dir: string,

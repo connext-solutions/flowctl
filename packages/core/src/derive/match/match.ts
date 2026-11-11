@@ -10,7 +10,7 @@ import { compareEvidence, compareKeys, elementKey } from './order.js';
 import { indexMap, type PageIndex, specTexts } from './sources.js';
 import { fold, normText } from './text.js';
 import type {
-  Evidence,
+  MatchEvidence,
   LiteralMatch,
   MatchReport,
   OperationMatch,
@@ -21,13 +21,16 @@ import type {
 } from './types.js';
 
 export { WEIGHTS } from './evidence.js';
-/** The value a piece of evidence is counted by: the literal for labels and paths, the element for route rules. */
-const scoreKey = (e: Evidence): string =>
-  `${e.kind}\u0000${e.kind === 'label' || e.kind === 'path-literal' ? e.spec.text : fold(e.element.name)}`;
+/**
+ * The value a piece of evidence is counted by, folded: the literal for labels and paths (so `"Gửi"`, `" Gửi "` and
+ * `"gửi"` count once), the element name for route rules.
+ */
+const scoreKey = (e: MatchEvidence): string =>
+  `${e.kind}\u0000${fold(e.kind === 'label' || e.kind === 'path-literal' ? normText(e.spec.text) : e.element.name)}`;
 
 /** Groups evidence into screen candidates, best score first, then by path. */
 function screens(
-  all: readonly Evidence[],
+  all: readonly MatchEvidence[],
   pages: readonly PageIndex[],
 ): ScreenCandidate[] {
   const out: ScreenCandidate[] = [];
@@ -64,7 +67,7 @@ function verdict(candidates: readonly ScreenCandidate[]): ScreenVerdict {
 
 function unmatchedSteps(
   op: Operation,
-  all: readonly Evidence[],
+  all: readonly MatchEvidence[],
   lits: readonly LiteralMatch[],
 ) {
   const out: UnmatchedStep[] = [];
@@ -83,7 +86,7 @@ function unmatchedSteps(
 function matchOne(op: Operation, pages: readonly PageIndex[]): OperationMatch {
   const texts = specTexts(op);
   const lits = literals(texts, pages);
-  const all: Evidence[] = [
+  const all: MatchEvidence[] = [
     ...routeEvidence(texts, pages),
     ...segmentEvidence(op, pages),
   ];
@@ -128,12 +131,13 @@ export function matchOperations(
   map: AppMap,
 ): MatchReport {
   const index = indexMap(map);
-  const sorted = [...ops].sort((a, b) =>
-    compareKeys(
-      [a.id, a.location.provider, a.location.ref],
-      [b.id, b.location.provider, b.location.ref],
-    ),
-  );
+  const key = (o: Operation) => [
+    o.id,
+    o.location.provider,
+    o.location.ref,
+    JSON.stringify(o),
+  ];
+  const sorted = [...ops].sort((a, b) => compareKeys(key(a), key(b)));
   return {
     v: 1,
     origin: map.origin,

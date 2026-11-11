@@ -3,15 +3,15 @@
  */
 
 const INVISIBLE =
-  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}]/gu;
+  /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}]/gu;
 /** As {@link INVISIBLE} but without the line feed, the only control character `JSON.stringify` leaves raw (between lines). */
 const HIDDEN_IN_JSON =
-  /(?!\n)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}]/gu;
+  /(?!\n)[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}]/gu;
 const MAX_SHOWN = 500;
 
 /**
- * Untrusted text as one markdown code span: invisible and control code points shown as `⟨U+XXXX⟩`, a leading `=`,
- * `+`, `-` or `@` prefixed with `'` (so a cell pasted into a spreadsheet is not a formula), cut at 500 code points,
+ * Untrusted text as one markdown code span: invisible, control and lone surrogate code points shown as `⟨U+XXXX⟩`,
+ * a leading `=`, `+`, `-` or `@` (or its fullwidth form) prefixed with `'` (so a cell pasted into a spreadsheet is not a formula), cut at 500 code points,
  * and fenced with one backtick more than its longest backtick run. Inside a code span markdown renders no HTML, link,
  * emphasis or heading.
  */
@@ -24,7 +24,9 @@ export function mdCode(raw: string): string {
       )
       .join(''),
   );
-  const points = [...(/^[=+\-@]/.test(visible) ? `'${visible}` : visible)];
+  const points = [
+    ...(/^[=+\-@＝＋－＠]/u.test(visible) ? `'${visible}` : visible),
+  ];
   const safe =
     points.length > MAX_SHOWN
       ? `${points.slice(0, MAX_SHOWN).join('')}…`

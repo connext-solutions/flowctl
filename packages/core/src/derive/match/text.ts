@@ -17,7 +17,7 @@ export type Refusal = 'compatibility' | 'invisible' | 'digit';
 export type TextRule = 'exact' | 'folded';
 
 const INVISIBLE =
-  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}]/u;
+  /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Default_Ignorable_Code_Point}]/u;
 const NON_ASCII_DIGIT = /(?![0-9])\p{Nd}/u;
 const WORDISH = /^[\p{L}\p{M}\p{N}_-]$/u;
 const DIGIT = /^\p{Nd}$/u;
@@ -65,8 +65,9 @@ export interface Occurrence {
   exact: boolean;
 }
 
+/** A letter, mark, number, `_` or `-` (ADR 0020 rule 1), or a refused invisible code point (ADR 0034: fail closed). */
 const isWordish = (c: string | undefined): boolean =>
-  c !== undefined && WORDISH.test(c);
+  c !== undefined && (WORDISH.test(c) || INVISIBLE.test(c));
 const isDigit = (c: string | undefined): boolean =>
   c !== undefined && DIGIT.test(c);
 const isSep = (c: string | undefined): boolean => c === '.' || c === ',';
@@ -86,6 +87,10 @@ function atBoundaries(
 /**
  * Every occurrence of `value` in `text` at token boundaries, compared code point by code point in lower case,
  * overlaps included. Both strings are expected normalised ({@link normText}).
+ *
+ * @remarks Lower case is taken per code point here and on the whole string in {@link fold}; they differ only where
+ *   case mapping depends on context (Greek final sigma). An invisible code point next to the value is not a
+ *   boundary, so `Lab` is not found in `Lab\u200bel`.
  */
 export function occurrences(text: string, value: string): Occurrence[] {
   const t = [...text];

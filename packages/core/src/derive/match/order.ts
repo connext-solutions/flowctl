@@ -1,4 +1,9 @@
-import type { Evidence, EvidenceKind, MapElement, SpecSpan } from './types.js';
+import type {
+  MatchEvidence,
+  MatchEvidenceKind,
+  MapElement,
+  SpecSpan,
+} from './types.js';
 
 /** A sort key: compared element by element, numbers before strings, strings by UTF-16 code units. */
 export type SortKey = readonly (string | number)[];
@@ -24,7 +29,7 @@ const ELEMENT_ORDER: Readonly<Record<MapElement['kind'], number>> = {
 };
 
 /** The evidence kinds in report order: route evidence first, then labels. */
-export const KIND_ORDER: Readonly<Record<EvidenceKind, number>> = {
+export const KIND_ORDER: Readonly<Record<MatchEvidenceKind, number>> = {
   'title-equal': 0,
   'path-literal': 1,
   'title-mention': 2,
@@ -44,7 +49,7 @@ export const elementKey = (e: MapElement): SortKey => [
 export const spanKey = (s: SpecSpan): SortKey => [...s.path, s.start, s.end];
 
 /** Orders evidence by kind, spec span, then map element. */
-export function compareEvidence(a: Evidence, b: Evidence): number {
+export function compareEvidence(a: MatchEvidence, b: MatchEvidence): number {
   const byKind = KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
   if (byKind !== 0) return byKind;
   const bySpan = compareKeys(spanKey(a.spec), spanKey(b.spec));

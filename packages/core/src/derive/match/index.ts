@@ -16,8 +16,8 @@ export {
   type TextRule,
 } from './text.js';
 export type {
-  Evidence,
-  EvidenceKind,
+  MatchEvidence,
+  MatchEvidenceKind,
   LiteralMatch,
   MapElement,
   MatchReport,

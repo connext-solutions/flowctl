@@ -43,7 +43,7 @@ export type MapElement =
  * - `doc-segment`: a folder of the operation's `location.ref` equals the first segment of the page path;
  * - `label`: a quoted literal of a step or expected item equals a control or form field name on the page.
  */
-export type EvidenceKind =
+export type MatchEvidenceKind =
   | 'title-equal'
   | 'title-mention'
   | 'path-literal'
@@ -51,8 +51,8 @@ export type EvidenceKind =
   | 'label';
 
 /** One match: the spec span, the map element, the rule that joined them and the weight it adds to its page. */
-export interface Evidence {
-  kind: EvidenceKind;
+export interface MatchEvidence {
+  kind: MatchEvidenceKind;
   rule: TextRule;
   weight: number;
   spec: SpecSpan;
@@ -65,7 +65,7 @@ export interface ScreenCandidate {
   title: string;
   status: number;
   score: number;
-  evidence: Evidence[];
+  evidence: MatchEvidence[];
 }
 
 /** The screen of an operation: one page with the top score, several tied at the top, or none with any evidence. */

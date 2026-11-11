@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { findConflicts, matchOperations } from '../../src/derive/index.js';
 import { observe, type AppMap } from '../../src/observe/index.js';
 import {
@@ -23,12 +24,12 @@ import { FIXTURE_TRUTH } from './fixture-truth.js';
 const SPEC = fileURLToPath(
   new URL('../../../fixture-app/spec', import.meta.url),
 );
-const index: Record<string, { doc: string }> = JSON.parse(
-  readFileSync(join(SPEC, 'index.json'), 'utf8'),
-);
+const index = z
+  .record(z.string(), z.object({ doc: z.string() }).passthrough())
+  .parse(JSON.parse(readFileSync(join(SPEC, 'index.json'), 'utf8')));
 
-let fixture: Fixture;
-let browser: Browser;
+let fixture: Fixture | undefined;
+let browser: Browser | undefined;
 let map: AppMap;
 let ops: Operation[];
 
@@ -37,10 +38,11 @@ let ops: Operation[];
  * crawl never follows a link to (ADR 0033: "Phê duyệt" holds a destructive word). Pages are merged by path.
  */
 beforeAll(async () => {
-  fixture = await startFixture();
+  const app = await startFixture();
+  fixture = app;
   browser = await chromium.launch();
-  const cfg = fixtureConfig(fixture.url);
-  await seedProfiles(cfg, fixture.url);
+  const cfg = fixtureConfig(app.url);
+  await seedProfiles(cfg, app.url);
   const a = await observe(cfg, { browser, start: '/map' });
   const b = await observe(cfg, {
     browser,
@@ -57,8 +59,8 @@ beforeAll(async () => {
   ops = await registry.operations('markdown');
 });
 afterAll(async () => {
-  await browser.close();
-  await fixture.close();
+  await browser?.close();
+  await fixture?.close();
 });
 
 describe('matcher on fixture-app (T4.1)', () => {

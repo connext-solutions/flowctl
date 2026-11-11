@@ -10,8 +10,8 @@ import {
   type TextRule,
 } from './text.js';
 import type {
-  Evidence,
-  EvidenceKind,
+  MatchEvidence,
+  MatchEvidenceKind,
   LiteralMatch,
   MapElement,
   SpecSpan,
@@ -21,7 +21,7 @@ import type {
  * What each kind of evidence adds to a page's score (ADR 0034). A page counts each kind once per matched value: a
  * title equal to three headings adds 3, not 9; each distinct label adds 2.
  */
-export const WEIGHTS: Readonly<Record<EvidenceKind, number>> = {
+export const WEIGHTS: Readonly<Record<MatchEvidenceKind, number>> = {
   'title-equal': 3,
   'path-literal': 3,
   'title-mention': 2,
@@ -36,19 +36,20 @@ const span = (t: SpecText, start: number, end: number): SpecSpan => ({
   text: t.text.slice(start, end),
 });
 
+/** One piece of evidence, with the weight of its kind. */
 export const evidence = (
-  kind: EvidenceKind,
+  kind: MatchEvidenceKind,
   rule: TextRule,
   spec: SpecSpan,
   element: MapElement,
-): Evidence => ({ kind, rule, weight: WEIGHTS[kind], spec, element });
+): MatchEvidence => ({ kind, rule, weight: WEIGHTS[kind], spec, element });
 
 /** `title-equal` (title and headings) and `title-mention` (title, headings and steps) against every page title. */
 export function routeEvidence(
   texts: readonly SpecText[],
   pages: readonly PageIndex[],
 ) {
-  const out: Evidence[] = [];
+  const out: MatchEvidence[] = [];
   for (const t of texts) {
     if (t.role === 'expected') continue;
     for (const p of pages) {
@@ -83,7 +84,7 @@ export function routeEvidence(
 /** `doc-segment`: each folder of `location.ref` against the first segment of every page path. */
 export function segmentEvidence(op: Operation, pages: readonly PageIndex[]) {
   const ref = normText(op.location.ref);
-  const out: Evidence[] = [];
+  const out: MatchEvidence[] = [];
   let start = 0;
   for (const seg of ref.split('/').slice(0, -1)) {
     const spec: SpecSpan = {

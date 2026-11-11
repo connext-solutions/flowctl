@@ -49,27 +49,34 @@ enough.
    | `label` | a quoted literal (`"…"` or `“…”`) in a step or expected item | control or form field name | rule 4 | 2 |
    | `doc-segment` | a folder of `location.ref` (`map/pages.md` gives `map`) | first segment of the page path | rule 4 | 1 |
 
-   `title-mention` is not counted for a spec string that already gives `title-equal` with that page. Expected items
+   `title-mention` is not counted for a spec string that already gives `title-equal` with that page. For the matcher
+   an invisible code point (as refused in rule 3) next to a title is not a token boundary, so a hidden character
+   cannot make a mention; and the mention compares lower case per code point where rule 4 lower-cases the whole
+   string (they differ only for context-dependent case mapping such as the Greek final sigma). Expected items
    give literals only: an outcome may mention another page ("the Report page opens"), so its unquoted text is not
    route evidence.
 6. **Score.** A page's score is the sum of the weights of its distinct evidence, where evidence is distinct by kind
-   and matched value (the literal for `label` and `path-literal`, the folded element name for the others): a title
-   equal to three headings adds 3, not 9; each distinct label adds 2. Roles are reported, not scored.
+   and folded matched value (the literal for `label` and `path-literal`, the element name for the others): a title
+   equal to three headings adds 3, not 9; `"Gửi"` and `"gửi"` quoted in two steps add 2 once. Roles are reported,
+   not scored.
 7. **Verdict.** The page with the top score is the operation's screen (`matched`). When two or more pages share the
    top score the verdict is `ambiguous` with all of them, and none is picked; when no page has evidence it is
    `none`. A tie is never broken by order, path or role.
 8. **Unmatched steps.** A step is listed when no evidence cites it, or when it quotes a literal that equals no
    element on any page (`missing`). Whether a literal is on the matched screen or only elsewhere is left to the
-   conflicts output.
-9. **Determinism.** Operations are sorted by id, provider and ref; candidates by score, then path; literals by text;
-   evidence and elements by kind, spec path, offsets, page, element kind and index; strings by UTF-16 code units. The
-   same operations and map give the same report in any input order.
+   conflicts output. A quoted address that names another page than the screen is not a conflict: an action may lead
+   there.
+9. **Determinism.** Operations are sorted by id, provider and ref (then by their content, for duplicates);
+   candidates by score, then path; literals by text; evidence and elements by kind, spec path, offsets, page, element
+   kind and index; strings by UTF-16 code units. The same operations and map give the same report in any input
+   order.
 10. **Conflicts for a person, not a verdict.** `findConflicts(report)` turns a report into spec ≠ app disagreements
     (`page_missing`, `page_ambiguous`, `label_not_on_screen`, `label_not_found`, `path_not_found`,
     `expected_not_observed`, `text_refused`); `writeConflicts` writes them as `conflicts.md` and `conflicts.json`
     inside a given root (`ensureDirInside`, no symlinks). In the markdown, every untrusted string (spec text, page
     paths, ids) is one code span fenced longer than its longest backtick run, so no HTML, link, heading or emphasis
-    renders; invisible and control code points are shown as `⟨U+XXXX⟩`; a leading `=`, `+`, `-` or `@` gets a `'`
+    renders; invisible, control and lone surrogate code points are shown as `⟨U+XXXX⟩`; a leading `=`, `+`, `-` or
+    `@` (or its fullwidth form) gets a `'`
     so a pasted cell is not a spreadsheet formula. In the JSON, every invisible or control code point is a `\u`
     escape. A conflict never changes a verdict and never becomes a flow.
 
