@@ -17,7 +17,8 @@ import {
   RunLedger,
 } from './ledger/index.js';
 import { RequestGuard, type RequestClass } from './request-guard.js';
-import { ScopeGuard, scopeFor } from './scope-guard.js';
+import { scopeFor } from './scope-for.js';
+import { ScopeGuard } from './scope-guard.js';
 
 const hostOf = (origin: string): string | undefined => {
   try {

@@ -13,12 +13,8 @@ import { errorMessage } from './outcome.js';
 import { watchFrames } from './frames.js';
 import { answerFirstHop, holdRedirects } from './redirect-hold.js';
 import type { RequestGuard } from './request-guard.js';
-import {
-  isLoopback,
-  openTrustStore,
-  productionHosts,
-  type TrustStore,
-} from '../trust/index.js';
+import { TrustError, type TrustStore } from '../trust/index.js';
+import { scopeFor } from './scope-for.js';
 
 /** A WebSocket URL judged as the http(s) URL of its handshake: `wss:` as `https:`, `ws:` as `http:`. */
 const asHttp = (url: string): string => url.replace(/^ws(s?):/i, 'http$1:');
@@ -27,46 +23,10 @@ const asHttp = (url: string): string => url.replace(/^ws(s?):/i, 'http$1:');
 const DOCUMENT = 'document';
 
 /**
- * The scope of a run on `env` (ADR 0024 section 3): the effective configuration's scope for the env when it has one,
- * else the env's own origin for both sets (a config read without the trust store, as library callers and tests use);
- * the repo's `allow` and `deny`; and every production host the store knows (its production origins, and every env
- * classed `production` with that env's own origins).
- *
- * @param store the run's store; `'default'` opens the owner's store only for an env off this machine, as the
- *   exploration guard does, so tests on the local fixture never read it.
- * @throws {TrustError} `trust_tampered` when a production entry is not owner-signed.
- */
-export function scopeFor(
-  cfg: LoadedConfig,
-  env: ResolvedEnv,
-  store: TrustStore | 'default',
-): Scope {
-  const envOrigin = new URL(env.baseUrl).origin;
-  const sets = cfg.trustView?.scopes?.[env.name] ?? {
-    visit: [envOrigin],
-    call: [envOrigin],
-  };
-  const s =
-    store === 'default'
-      ? isLoopback(envOrigin)
-        ? undefined
-        : openTrustStore()
-      : store;
-  const hosts = s === undefined ? [] : productionHosts(s);
-  return {
-    envOrigin,
-    visit: sets.visit,
-    call: sets.call,
-    allow: cfg.target.scope.allow,
-    deny: cfg.target.scope.deny,
-    productionHosts: hosts,
-  };
-}
-
-/**
  * Enforces a run's {@link Scope} on its browser contexts (ADR 0024 section 3, task T1.2):
  * - every request a context makes is routed: one out of scope is aborted before it leaves the browser, and noted;
- * - WebSockets go through `routeWebSocket` the same way, as `call`;
+ * - WebSockets go through `routeWebSocket` the same way, as `call`; in a crawl ({@link RequestGuard.crawling}) every
+ *   one is closed, since a frame on it could carry a write no route sees;
  * - service workers are blocked on the context (`serviceWorkers: 'block'`, set by the caller), so none can serve or
  *   send requests the route does not see;
  * - a frame is a visit: one out of scope is not entered, and a URL change of any frame without a request
@@ -79,7 +39,10 @@ export function scopeFor(
  *
  * The first problem is kept with its kind: a request or page out of scope (`scope_violation`), a page the hold could
  * not be attached to (`internal`), a popup whose first answer could not be fetched (`app_unreachable`).
- * {@link assertClean} throws it and {@link overrule} turns the run's outcome into it.
+ * {@link assertClean} throws it and {@link overrule} turns the run's outcome into it. A crawl keeps a scope refusal
+ * that stopped the request before it was sent (route, hold, first hop, a page check before navigating, a URL change
+ * that sends nothing) as an observation of its page; one only detected after the request was sent ({@link detect})
+ * ends the crawl too (ADR 0033 decision 5).
  *
  * @remarks A same-page URL change happens in the page before flowctl can see it, so it is detected, not prevented.
  *   A popup in scope whose first answer cannot be fetched (a dead link) ends the run `app_unreachable`, where a plain
@@ -100,15 +63,20 @@ export class ScopeGuard {
     readonly writes?: RequestGuard,
   ) {}
 
-  /** Whether a request of resource `type` sending `method url` may be reached as `kind`: in scope, and not a write the request layer refuses. */
+  /**
+   * Whether a request of resource `type` sending `method url` may be reached as `kind`: in scope, and not a write the
+   * request layer refuses. `prevented` as in {@link check}.
+   */
   private judge(
     url: string,
     kind: ScopeKind,
     method: string,
     type: string,
+    prevented = true,
   ): boolean {
     return (
-      this.allows(url, kind) && (this.writes?.allows(method, url, type) ?? true)
+      this.check(url, kind, prevented) &&
+      (this.writes?.allows(method, url, type, prevented) ?? true)
     );
   }
 
@@ -122,13 +90,24 @@ export class ScopeGuard {
     return this.first?.kind === 'scope_violation' ? this.first.hint : undefined;
   }
 
-  /** Whether `url` may be reached as `kind`, noting a violation when not. */
+  /** Whether `url` may be reached as `kind`, noting a violation when not; the caller stops it before it is sent. */
   allows(url: string, kind: ScopeKind): boolean {
+    return this.check(url, kind, true);
+  }
+
+  /** Whether `url`, already reached as `kind` (a cancelled download that got past the route), was in scope; a violation ends the run, crawl included. */
+  detect(url: string, kind: ScopeKind): boolean {
+    return this.check(url, kind, false);
+  }
+
+  /** @param prevented whether a refusal stops the request before it is sent, or only detects it afterwards. */
+  private check(url: string, kind: ScopeKind, prevented: boolean): boolean {
     const v = inScope(url, kind, this.scope);
     if (!v.ok)
       this.note(
         'scope_violation',
         `The run left its scope: ${kind} ${url.slice(0, 200)}: ${v.reason}`,
+        prevented,
       );
     return v.ok;
   }
@@ -178,7 +157,11 @@ export class ScopeGuard {
         : route.abort('blockedbyclient');
     });
     await context.routeWebSocket(/.*/, (ws: WebSocketRoute) => {
-      if (!this.allows(asHttp(ws.url()), 'call')) return ws.close();
+      if (
+        !this.allows(asHttp(ws.url()), 'call') ||
+        this.writes?.crawling === true
+      )
+        return ws.close();
       const server = ws.connectToServer();
       const ledger = this.writes?.ledger;
       if (ledger?.seen !== undefined)
@@ -197,6 +180,7 @@ export class ScopeGuard {
           r.resourceType() === DOCUMENT ? 'visit' : 'call',
           r.method(),
           r.resourceType(),
+          false,
         );
     });
     context.on('page', (page) => void this.hold(page));
@@ -234,7 +218,14 @@ export class ScopeGuard {
     return held;
   }
 
-  private note(kind: ErrorKind, hint: string): void {
+  /** Keeps the run's first problem; a crawl's request layer takes a prevented scope refusal as an observation instead. */
+  private note(kind: ErrorKind, hint: string, prevented = true): void {
+    if (
+      kind === 'scope_violation' &&
+      prevented &&
+      this.writes?.observes(kind) === true
+    )
+      return;
     this.first ??= new RunError(kind, hint);
   }
 
@@ -257,7 +248,7 @@ export class ScopeGuard {
   watch(page: Page): void {
     watchFrames(
       page,
-      (url) => void this.allows(url, 'visit'),
+      (url, sent) => void this.check(url, 'visit', !sent),
       (url, kind, method, type) => this.judge(url, kind, method, type),
     );
   }

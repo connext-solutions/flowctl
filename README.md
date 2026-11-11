@@ -47,7 +47,8 @@ Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/t
 | Destructive-action guard for replay: every write refused on shared and unlisted envs | done |
 | Stored destructive confirmations and the run ledger (CRUD flows on shared envs, `flowctl cleanup`) | done, first version |
 | Read-only replay on production, computed System 1 cost | open |
-| Observe (crawler), Derive (test cases from specs), Reconcile (classify failures) | planned |
+| Observe: read-only crawler and `AppMap` (`flowctl observe`, ADR 0033) | early |
+| Free checks on the map, Derive (test cases from specs), Reconcile (classify failures) | planned |
 
 Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
 
@@ -176,6 +177,31 @@ or delete may touch only ids that run created, each id goes to a ledger in the t
 and the run deletes them at the end (`cleanup` in the result; `flowctl cleanup <run id>` after a crash). Without a
 confirmation the run ends `error: destructive_blocked`; that includes the confirming replay of `flow_save`. On
 `local` replay is unchanged. A write sent over a WebSocket is not guarded in a replay; review flows that use one.
+
+## Observe (early)
+
+`flowctl observe` maps an app without a model: it opens the env's start page (or `--start <path>`) with a saved
+profile (`--profile`, the first one by default), then visits the same-origin links breadth-first, in sorted order.
+It never clicks, types or submits, and only reads leave the browser, on every env class: any other method, and any
+`GET` whose path looks destructive (`/items/purge`), is aborted, and every WebSocket is closed. A `GET` that
+changes data without a destructive word in its path, or with the action in its query (a GraphQL mutation in a `GET`),
+is not caught: add the app's words to `target.destructiveWords` or deny those paths. It does not follow links out of the `visit` scope,
+links that open a new window or a download, the login page, or links whose label or path looks destructive
+(ADR 0033). It never runs on an env the trust store classes `production`.
+
+```bash
+flowctl observe --start /home --env staging [--json] [--out .flows/maps/app.json]
+```
+
+The map (`appmap.json` in the run directory, and a copy at `--out`, which must be inside the flows directory) lists,
+per page: path, document status, title, the controls of the page snapshot, forms with their fields (label, type,
+required, submit), links, fetch/xhr calls (method, path, status) and console errors, with credential-looking text as
+`***`, and the requests refused while the page was open. A call to another origin keeps its origin. It stops at
+`target.budgets.pages` (at most 50) or the run's wall-clock budget, then says `truncated`. A request the guards only
+detect after it was sent, an expired session (including a page that routes itself to the login page) and a refused
+start page end the crawl with an error. Exit `0` when the crawl
+finished (a map is not a verdict), `2` on an error. Free checks on the map (broken links, 5xx, console errors) are not
+built yet.
 
 ## Flow format
 

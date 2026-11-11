@@ -7,6 +7,7 @@ core, print a summary, set the exit code.
 flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--accept-heals]] [--json] [--headed] [--trace safe|full] [--video] [--config <path>]
 flowctl login <profile> [--env <env>] [--config <path>]
 flowctl cleanup <run id> [--json] [--config <path>]
+flowctl observe [--env <env>] [--profile <profile>] [--start <path>] [--json] [--out <file.json>] [--config <path>]
 flowctl trust init [--replace] [--anchor-dir <abs dir>] [--config <path>]
 flowctl trust hook <name...> [--hook-env NAME] [--pin NAME=VALUE] [--config <path>]
 flowctl trust add env <env> [--config <path>]
@@ -42,6 +43,14 @@ verified), sends each stored create entry's `cleanup` request with the flow prof
 the `verify` request, and appends the result to the ledger, so it can run again and skips what is confirmed. A
 create whose answer never came is listed by name, never deleted by name. It exits `0` when nothing is left, else
 `2`; a run id that is not `r_` plus 1 to 32 lowercase letters or digits is a usage error.
+
+`flowctl observe` (early) crawls the env read-only and writes the map to `appmap.json` in the run directory; `--out`
+copies it to a `.json` path inside the flows directory (never under `.auth`, `.git` or `.runs`, and never over a file
+that is not a map), checked before the crawl starts. It prints one line per page, or with `--json` the core
+`ObserveSummary` (`runId`, `env`, `origin`, `pages`, `truncated`, `error` when the run ended in one, `attention`: at
+most 20 pages with no answer, a 4xx/5xx or a refused request, `budget`, `file`, `out`). It has no `status` and the
+command never exits `1`, since a map is not a verdict: it exits `0` when the crawl finished and `2` when the run ended
+in an error.
 
 `flowctl login` opens a headed browser; finish with Enter in a terminal or by closing the window (the
 only way without a TTY). It refuses to save a session that never left the login page.

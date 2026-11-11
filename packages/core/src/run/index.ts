@@ -1,4 +1,5 @@
 export { Evidence, type DecisionLogEntry } from './evidence.js';
+export { system1Metrics } from './metrics.js';
 export { fmtNet, redactEntry, type NetEntry } from './net-entry.js';
 export {
   MAX_CONSOLE_ERRORS,
@@ -22,7 +23,11 @@ export {
   type Outcome,
 } from './outcome.js';
 export { RunSession } from './session.js';
-export { RequestGuard, type RequestClass } from './request-guard.js';
+export {
+  RequestGuard,
+  type Refusal,
+  type RequestClass,
+} from './request-guard.js';
 export { confirmReadContext, envClassFor } from './guards.js';
 export {
   cleanIds,
@@ -37,6 +42,7 @@ export {
   RunLedger,
   SeenSet,
 } from './ledger/index.js';
+export { scopeFor } from './scope-for.js';
 export { redactBody, redactResponse, redactText } from './redact.js';
 export {
   cookieMatches,

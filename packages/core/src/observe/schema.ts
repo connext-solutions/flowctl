@@ -2,13 +2,15 @@ import { z } from 'zod';
 import { ARIA_ROLES } from '../flow/index.js';
 
 /**
- * A same-origin path: starts with one `/`, with no query string or fragment. The map never stores a full URL,
+ * A same-origin path (`PAGE_PATH`): starts with one `/`, with no query string or fragment. The map never stores a full URL,
  * so record ids in a query, tokens and other origins stay out of it.
  */
+export const PAGE_PATH = /^\/(?!\/)[^?#\s]*$/;
+
 const Path = z
   .string()
   .max(2048)
-  .regex(/^\/(?!\/)[^?#\s]*$/, 'must be a path: /..., no query or fragment');
+  .regex(PAGE_PATH, 'must be a path: /..., no query or fragment');
 
 /** Text read from the page (names, titles, console lines): untrusted, bounded, never a key or a command. */
 const PageText = z.string().max(300);
@@ -37,18 +39,30 @@ export const FormSchema = z
   })
   .strict();
 
-/** A fetch/xhr call the page made: method, path and status (0 when it got no response). No bodies. */
+/** An origin and nothing else: `https://host[:port]`. */
+const Origin = z
+  .string()
+  .url()
+  .refine((u) => new URL(u).origin === u, 'must be an origin, no path');
+
+/**
+ * A fetch/xhr call the page made: method, path and status (0 when it got no response). No bodies, no query. `origin`
+ * is set only for a call to another origin than the map's (an API origin, or one the scope refused), so a refused
+ * third-party call never reads as a broken endpoint of the app.
+ */
 export const CallSchema = z
   .object({
     method: z.string().regex(/^[A-Z]{3,7}$/),
     path: Path,
     status: z.number().int().min(0).max(599),
+    origin: Origin.optional(),
   })
   .strict();
 
 /**
  * One page the crawler visited: the document `status` (0 when the navigation got no response), its controls,
- * the same-origin links it offers, its forms, and the calls and console errors seen while it was open.
+ * the same-origin links it offers, its forms, the calls and console errors seen while it was open, and what the
+ * run's guards refused while it was open (`refused`: a request out of scope, or a write; the request was aborted).
  */
 export const PageSchema = z
   .object({
@@ -60,6 +74,7 @@ export const PageSchema = z
     forms: z.array(FormSchema).max(50),
     calls: z.array(CallSchema).max(500),
     consoleErrors: z.array(PageText).max(100),
+    refused: z.array(z.enum(['scope_violation', 'destructive_blocked'])).max(2),
   })
   .strict();
 
@@ -67,16 +82,16 @@ export const PageSchema = z
  * What Observe saw of one app, without a model (roadmap section 3.2): the input Derive joins with spec
  * operations, and the evidence an `invariant` or `baseline` assertion can cite (ADR 0020).
  *
- * @remarks Only paths are stored, never full URLs, bodies or field values, so a map is safe to attach to a bug.
+ * @remarks Pages, links and calls are stored as paths, never full URLs or query strings; no bodies or field values
+ *   are stored, and page text goes through the evidence redaction, so a map is safe to attach to a bug. A path
+ *   segment can still carry a record id, and a console line is page text: it may hold a URL with its query, redacted
+ *   like any other text (credential-looking values `***`) but not cut to a path.
  *   `truncated` is true when a page, time or size cap stopped the crawl (T2.5).
  */
 export const AppMapSchema = z
   .object({
     v: z.literal(1),
-    origin: z
-      .string()
-      .url()
-      .refine((u) => new URL(u).origin === u, 'must be an origin, no path'),
+    origin: Origin,
     observedAt: z.string().datetime(),
     truncated: z.boolean(),
     pages: z.array(PageSchema).max(1000),

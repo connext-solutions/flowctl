@@ -62,11 +62,12 @@ export function downloadUrl(url: string): string {
  *   verdict;
  * - every download the browser cancelled is noted in the network log as `DOWNLOAD <url>` with status 0 and
  *   `note: 'download_cancelled'` (never seen by a `network` assertion, ADR 0010), and its http(s) URL is put to the
- *   scope again: one that got past the route and the hold (a frame or popup neither held) ends the run
- *   `scope_violation` as any request does. A `blob:` or `data:` download sends nothing and is only noted.
+ *   scope again: one that got past the route and the hold (a frame or popup neither held) was already sent, so it
+ *   ends the run `scope_violation`, a crawl included. A `blob:` or `data:` download sends nothing and is only noted.
  *
  * @param note adds an entry to the run's network log.
- * @param visit judges a URL as a page visit, noting a violation when it is out of scope (the run's scope guard).
+ * @param visit judges a URL already reached as a page visit, noting a violation when it is out of scope (the run's
+ *   scope guard's `detect`).
  */
 export async function limitContext(
   context: BrowserContext,

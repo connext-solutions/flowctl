@@ -8,7 +8,11 @@ import {
   type RunSession,
   type Verdict,
 } from '../run/index.js';
-import type { HistoryEntry, System1Client } from '../system1/index.js';
+import {
+  assertDriverFor,
+  type CheckedDriver,
+  type HistoryEntry,
+} from '../system1/index.js';
 import { describeAction } from './decisions.js';
 import {
   DONE_REJECTIONS,
@@ -57,7 +61,7 @@ export interface LoopDeps {
   cfg: LoadedConfig;
   req: ExploreRequest;
   run: RunSession;
-  system1: System1Client | undefined;
+  system1: CheckedDriver | undefined;
   view: RunView;
   history: HistoryEntry[];
   goal: string;
@@ -78,7 +82,7 @@ export async function runLoop(d: LoopDeps): Promise<ExploreStop> {
   const { cfg, req, run, system1, view, history, state } = d;
   if (system1 === undefined)
     throw new RunError('system1_not_allowed', 'System 1 is not available');
-  system1.assertFor(run.env.name);
+  assertDriverFor(system1, run.env.name);
   const maxSteps = req.maxSteps ?? cfg.maxSteps;
   const threshold = cfg.system1?.confidenceThreshold ?? 0.5;
   const early = run.assertions.some((a) => !isOnce(a));

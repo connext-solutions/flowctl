@@ -21,6 +21,7 @@ export const COMMANDS = {
   replay: { guarded: true },
   login: { guarded: true },
   cleanup: { guarded: true },
+  observe: { guarded: true },
   'trust init': { guarded: false },
   'trust hook': { guarded: true },
   'trust add env': { guarded: true },

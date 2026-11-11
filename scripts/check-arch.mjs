@@ -28,7 +28,9 @@
  *   fails unless listed in `env-input-baseline.mjs` (ADR 0024 section 7; flow inputs are also checked against the
  *   trust store allowlist since T1.14); a baseline entry whose
  *   code is gone fails too (checked when the repo carries the baseline file). What is and is not detected is in
- *   the header of `env-reads.mjs`.
+ *   the header of `env-reads.mjs`;
+ * - a System 1 driver is constructed (or subclassed, or its class referenced) only in the factory module, outside
+ *   tests (T5.1, ADR 0022; see `driver-construction.mjs`).
  * A new package must be added to `PACKAGE_DEPS` and `PACKAGE_NAMES`.
  * This gate is a static tripwire for mistakes and cheap tricks, not a proof: a program can still build a
  * module name or path at run time. The real enforcement is the T0.16 load check over the built output,
@@ -45,6 +47,7 @@ import { inlineCommentLines } from './inline-comments.mjs';
 import { ENV_BASELINE } from './env-input-baseline.mjs';
 import { compareEnvBaseline, scanEnvReads } from './env-reads.mjs';
 import { inPluginFreePackage, isRootWiring, scanPluginBoundary } from './plugin-boundary.mjs';
+import { scanDriverConstruction } from './driver-construction.mjs';
 
 const MAX_LINES = 300;
 /** Scopes of workspace packages: the public engine (`@flowctl/`, ADR 0029) and the private plugins. */
@@ -86,7 +89,7 @@ const SLEEP_ALLOWED = new Map([
   ['packages/core/src/run/verifier.ts', 'bounded assertion polling'],
   ['packages/core/src/run/evidence.ts', 'bounded wait for response bodies before an escalation writes the logs'],
   ['packages/core/src/trust/hookrun/spawn.ts', 'hook timeout timer and pipe drain'],
-  ['packages/core/src/system1/client.ts', 'retry backoff'],
+  ['packages/core/src/system1/jev.ts', 'retry backoff'],
   ['packages/fixture-app/src/server.ts', 'simulated slow API'],
   ['packages/fixture-app/src/items.ts', 'a create answered late, for the run ledger tests'],
   ['packages/mcp/src/runs.ts', 'bounded wait of one tool call (ADR 0012)'],
@@ -276,6 +279,9 @@ for (const file of files) {
   if (kind === 'src' && !ALLOW_COMMENTS.has(file) && SOURCE.test(file))
     for (const n of attempt(file, () => inlineCommentLines(file, text), []))
       report(file, n, 'inline comment; move the context into JSDoc');
+
+  if (kind !== 'test' && SOURCE.test(file))
+    for (const v of attempt(file, () => scanDriverConstruction(file, text), [])) report(file, v.line, v.msg);
 
   const fromParts = /^packages\/core\/src\/([\s\S]+)$/i.exec(file)?.[1]?.split('/');
   const inCoreSrc = pkg === 'core' && kind === 'src' && fromParts !== undefined;

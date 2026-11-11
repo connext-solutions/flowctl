@@ -7,7 +7,9 @@ import type { CrawlAnswer } from './crawl.js';
  * @remarks `/guard/downloads` offers an export in scope (a navigation answered with an attachment, and a
  *   `download` link to it), the same export through a `download` link to another origin, and an export the page
  *   builds itself (`data:`). `/guard/frames` shows a frame in scope and inserts, on a click, a frame on another
- *   origin, a `data:` frame and a frame in scope that then moves to a denied hash route.
+ *   origin, a `data:` frame and a frame in scope that then moves to a denied hash route. `/guard/spa-login` loads,
+ *   makes a call the server answers late (`/slow?delay=150`), then routes itself to `/login` in the page, as a
+ *   single-page app does when its session check fails, so no server redirect is seen.
  */
 export const GUARD_PAGES = {
   downloads: '/guard/downloads',
@@ -18,6 +20,7 @@ export const GUARD_PAGES = {
   offScopeFile: 'https://evil.example/report.csv',
   offScopeFrame: 'https://evil.example/frame',
   frameInScope: '/guard/inner',
+  spaLogin: '/guard/spa-login',
 } as const;
 
 const head = (title: string): string =>
@@ -42,6 +45,11 @@ const framesPage = `${head('Khung')}<body>
 <button type="button" onclick="document.querySelector('iframe').contentWindow.location.hash = '#/admin/settings'">Khung sang cài đặt</button>
 </body></html>`;
 
+const spaLoginPage = `${head('Đang tải')}<body>
+<h1>Đang tải</h1>
+<script>fetch('/slow?delay=150').then(() => { history.pushState(null, '', '/login'); document.querySelector('h1').textContent = 'Đăng nhập'; });</script>
+</body></html>`;
+
 const innerPage = `${head('Khung trong')}<body><p>Nội dung khung</p></body></html>`;
 
 /** The answer for `pathname` under `/guard`, or `undefined` (not a guard page). */
@@ -51,6 +59,8 @@ export function guardRoute(pathname: string): CrawlAnswer | undefined {
       return { status: 200, type: 'html', body: downloadsPage };
     case GUARD_PAGES.frames:
       return { status: 200, type: 'html', body: framesPage };
+    case GUARD_PAGES.spaLogin:
+      return { status: 200, type: 'html', body: spaLoginPage };
     case GUARD_PAGES.frameInScope:
       return { status: 200, type: 'html', body: innerPage };
     case GUARD_PAGES.file:

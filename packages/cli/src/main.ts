@@ -33,6 +33,7 @@ import {
   type Values,
 } from './argv.js';
 import { waitForLogin } from './login-wait.js';
+import { observeCmd } from './observe-cmd.js';
 import {
   formatCleanup,
   formatSummary,
@@ -162,6 +163,8 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
     );
     return r.leftover.length === 0 && r.tornTail !== true ? 0 : 2;
   },
+  observe: ({ cfg, values, trusted }) =>
+    observeCmd(cfg, values, trusted?.store, write),
   'trust init': ({ cfg, values }) => {
     (values.replace ? trustReplace : trustInit)(
       cfg,
