@@ -28,7 +28,12 @@ export class Deadline {
     return this.controller.signal;
   }
 
-  /** Starts the timer once; a second call does nothing. */
+  /**
+   * Starts the timer once; a second call does nothing.
+   *
+   * @remarks A rejection of `onExpire` is dropped on purpose: closing the pages is best effort, and the run ends
+   *   `budget_exceeded` either way.
+   */
   start(onExpire: () => Promise<void>): void {
     if (this.timer !== undefined || this.expired !== undefined) return;
     this.timer = setTimeout(() => {

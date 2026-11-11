@@ -59,7 +59,7 @@ fix), record a **saved** flow; do not drive the browser by hand for it.
 
 1. If the flow is not saved yet, explore it and `flow_save` it first (sections 1 and 2).
 2. `flow_replay` with `names: ["<flow>"]` and `video: true`. Each profile gets `video-<profile>.webm` in the run's
-   evidence directory (`evidence.videos`). A box in the bottom-right corner shows each step before it runs, a
+   evidence directory; the `flow_replay` answer lists them under `videos` with each run's verdict. A box in the bottom-right corner shows each step before it runs, a
    cursor points at its target, and the last frames show the run's real result.
 3. Report the absolute paths and the result. If the result is not what the user expected, say so; a video of a
    failure is a repro, not a demo.

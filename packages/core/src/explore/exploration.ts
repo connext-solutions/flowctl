@@ -147,9 +147,9 @@ export class Exploration {
   /**
    * Runs orchestrator steps in order (recorded `by: system2`), then lets System 1 continue.
    *
-   * @remarks A failing step escalates `action_failed` with the reason instead of ending the run, and so do a
-   *   step that fails validation (`checkDirectedSteps`, before any step runs) and a navigation the run refuses
-   *   (`flow_invalid`, e.g. a template that expanded to another origin).
+   * @remarks A failing step escalates `action_failed` (also for failed validation or a refused navigation such as a
+   *   template that expanded to another origin), unless the run itself was stopped: a scope or destructive-request
+   *   refusal or the wall-clock budget ends it, since a step on a page the budget closed must not read as the app's.
    * @example x.step([{ kind: 'as', profile: 'manager' }, { kind: 'goto', url: '/approvals' }])
    */
   async step(s: DirectedStep | readonly unknown[]): Promise<ExploreStop> {
@@ -165,6 +165,11 @@ export class Exploration {
         this.run.assertInScope();
       }
     } catch (e) {
+      try {
+        this.run.assertInScope();
+      } catch (stop) {
+        return this.end(toOutcome(stop));
+      }
       if (e instanceof DestructiveAction)
         return this.view.escalated('destructive_action', e.message);
       if (
@@ -254,6 +259,7 @@ export class Exploration {
         snap,
       );
     } catch (e) {
+      this.run.assertInScope();
       if (e instanceof StaleControl) {
         this.history.push({ op: a.op, control: 'stale', changed: true });
         return undefined;

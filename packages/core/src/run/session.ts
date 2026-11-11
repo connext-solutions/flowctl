@@ -27,7 +27,7 @@ import { RunError, type Outcome } from './outcome.js';
 import { finishRun } from './finish.js';
 import { Profiles } from './profiles.js';
 import { guardFor, type ScopeGuard } from './scope-guard.js';
-import { prepareRun, type Prepared } from './prepare.js';
+import { actContext, prepareRun, type Prepared } from './prepare.js';
 import type { HookSession } from '../trust/index.js';
 import { verify, type Verdict } from './verifier.js';
 import type { RunSessionOptions } from './options.js';
@@ -89,7 +89,11 @@ export class RunSession {
     return this.deadline.signal;
   }
 
-  /** Creates the run directory and evidence; touches neither browser nor app. @throws {ConfigError} unknown env. */
+  /**
+   * Creates the run directory and evidence collector; touches neither the browser nor the app.
+   *
+   * @throws {ConfigError} when `opts.env` is not a configured env.
+   */
   static open(
     cfg: LoadedConfig,
     flow: Flow,
@@ -103,7 +107,8 @@ export class RunSession {
    * start page.
    *
    * @throws {RunError} `hooks_untrusted`, `env_not_allowed` or `scope_violation` (before anything runs),
-   *   `setup_failed`, `profile_expired` or `app_unreachable`.
+   *   `flow_invalid` (a video asked for a flow with secret inputs), `setup_failed`, `budget_exceeded` (the budget
+   *   ran out during setup: no profile is opened), `profile_expired` or `app_unreachable`.
    * @throws {FlowError} when an `{ env }` input is not set.
    * @see docs/adr/0021-hook-consent.md
    */
@@ -123,6 +128,7 @@ export class RunSession {
       });
       if (!hook.ok) throw new RunError('setup_failed', hook.output);
     }
+    this.deadline.assertWithin();
     await this.profiles.switchTo(
       this.flow.profile,
       undefined,
@@ -155,24 +161,18 @@ export class RunSession {
     return this.ready().assertions;
   }
 
-  /** Page of the active profile. @throws {Error} before {@link begin} has opened a profile. */
+  /**
+   * Page of the active profile.
+   *
+   * @throws {Error} before {@link begin} has opened a profile.
+   */
   get page(): Page {
     return this.profiles.page;
   }
 
   /** What an action needs on the active page: page, input values, timeouts, templated values. */
   ctx(): ActContext {
-    return {
-      page: this.page,
-      values: this.values,
-      exec: {
-        testIdAttribute: this.cfg.testIdAttribute,
-        timeout: this.cfg.stepTimeout,
-        flowsRoot: this.cfg.flowsPath,
-        secrets: this.ready().secrets,
-      },
-      templated: this.ready().templated,
-    };
+    return actContext(this.cfg, this.page, this.ready());
   }
 
   /**
@@ -181,10 +181,11 @@ export class RunSession {
    *
    * @throws {StepError} when an action cannot run (target not found or ambiguous, action failed).
    * @throws {RunError} `profile_expired` / `app_unreachable` from switching or navigating; `scope_violation` when
-   *   the step (or anything the page did meanwhile) reached outside the run's scope, also in place of the step's own
-   *   error.
+   *   the step (or the page meanwhile) reached outside the run's scope, and `budget_exceeded` once the wall-clock
+   *   budget ran out (checked before the step acts too), both also in place of the step's own error.
    */
   async perform(step: Step): Promise<void> {
+    this.assertInScope();
     await this.profiles.narrate(step);
     try {
       const start = this.ready().start;

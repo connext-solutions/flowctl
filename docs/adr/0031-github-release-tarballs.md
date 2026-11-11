@@ -20,7 +20,8 @@ even for a public package. A Bun or npm git dependency cannot install one packag
 
 1. **A release is a GitHub Release of `connext-solutions/flowctl`** whose assets are the `npm pack` tarballs of
    core, cli and mcp (`flowctl-core-<v>.tgz`, ...). A maintainer pushes a tag `v<version>` on `main`; the
-   `Release` workflow builds, packs, installs the tarballs into an empty project, runs both bins, and publishes.
+   `Release` workflow refuses a tag whose commit is not on `main`, then builds (no cache, no install scripts, since
+   the job can write releases), packs, installs the tarballs into an empty project, runs both bins, and publishes.
    Versions below 1.0.0 and versions with a pre-release part are marked pre-release.
 2. **Names stay `@flowctl/*`.** No registry owns the scope, so nothing has to match it.
 3. **Install by URL.** A consumer depends on the asset URL, for example

@@ -2,6 +2,7 @@ import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Exploration } from '../src/explore/index.js';
 import { replayFlow } from '../src/replay.js';
+import { consentHooks, testStore } from './trust-fixture.js';
 import {
   startFakeSystem1,
   startFixture,
@@ -51,6 +52,27 @@ describe('wall-clock budget', () => {
     expect(r.evidence.traces).toHaveLength(1);
   });
 
+  it('opens no page and acts on nothing when the budget runs out during the setup hook', async () => {
+    const cfg = fixtureConfig(fixture.url, {
+      target: { budgets: { wallClockMs: 500 } },
+    });
+    await seedProfiles(cfg, fixture.url);
+    const flow = writeFlow(cfg, {
+      name: 'slow-setup',
+      goal: 'g',
+      profile: 'employee',
+      start: '/requests',
+      setup: 'sleep 2',
+      steps: [{ click: { role: 'button', name: 'Gửi' } }],
+      assertions: [{ text: 'Vui lòng nhập lý do' }],
+    });
+    const store = consentHooks(cfg, testStore(cfg), [flow]);
+    const r = await replayFlow(cfg, flow, { browser, store });
+    expect(r.error?.kind).toBe('budget_exceeded');
+    expect(r.steps).toBe(0);
+    expect(r.evidence.traces).toEqual([]);
+  });
+
   it('leaves a run that ends in time alone', async () => {
     const cfg = fixtureConfig(fixture.url, {
       target: { budgets: { wallClockMs: 60_000 } },
@@ -68,7 +90,7 @@ describe('wall-clock budget', () => {
     expect(r.status, JSON.stringify(r.error ?? r.failed)).toBe('passed');
   });
 
-  it('ends an escalated exploration budget_exceeded on the next call after the budget ran out', async () => {
+  it('ends an escalated exploration budget_exceeded, not action_failed, when the agent steps after the budget ran out', async () => {
     const s1 = await startFakeSystem1([{ op: 'BLOCKED' }]);
     try {
       const cfg = exploreConfig(fixture.url, s1.url, {
@@ -87,9 +109,11 @@ describe('wall-clock budget', () => {
       );
       expect((await x.advance()).status).toBe('escalated');
       await new Promise((r) => setTimeout(r, 2000));
-      const r = await x.finish();
-      expect(r.status).toBe('error');
-      expect(r.error?.kind).toBe('budget_exceeded');
+      const stop = await x.step([{ kind: 'click', control: 1 }]);
+      expect(stop.status).toBe('error');
+      expect(stop.status === 'error' ? stop.error?.kind : stop.status).toBe(
+        'budget_exceeded',
+      );
     } finally {
       await s1.close();
     }

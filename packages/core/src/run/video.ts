@@ -41,7 +41,7 @@ export function describeStep(step: Step): string {
     case 'press':
       return `Press ${step.key}`;
     case 'upload':
-      return `Upload ${step.file} to ${describeLoc(step.target)}`;
+      return `Upload ${step.file.split('/').pop() ?? step.file} to ${describeLoc(step.target)}`;
     case 'drag':
       return `Drag ${describeLoc(step.target)} to ${describeLoc(step.to)}`;
     case 'goto':
@@ -139,7 +139,7 @@ export class VideoRecorder {
    * Moves each profile's finished video to `video-<profile>.webm`; call after the contexts closed (Playwright
    * finishes the file on close).
    *
-   * @throws when a video cannot be written.
+   * @throws {Error} from Playwright when a video cannot be written.
    */
   async save(pages: [string, Page][]): Promise<void> {
     for (const [profile, page] of pages) {

@@ -122,6 +122,8 @@ export class Evidence {
   /**
    * The run's secret input values: masked as `***` in everything this module writes (`network.json`, the summary)
    * and in `final.png`, whose text fields are masked when there is any. Set before the first context is attached.
+   *
+   * @throws {RunError} `flow_invalid` when a video was asked for and there is a secret (ADR 0032).
    */
   useSecrets(secrets: readonly string[]): void {
     this.secrets = secrets.filter((s) => s !== '');
