@@ -25,6 +25,10 @@ exits `3` with `trust_missing` before touching any file. The list lives in `COMM
 | `2` | an infrastructure error (config, app unreachable, expired profile, System 1 unreachable, hooks without consent), or a usage error |
 | `3` | a trust refusal: no store or project not registered (`trust_missing`), no terminal, tampered store, wrong passphrase, refused env name or class |
 
+`--trace full` adds DOM snapshots to the traces (not safe to share, ADR 0030). `--video` records a demo video per
+profile with each step shown on screen, slowed down to be read, and is refused for a flow with secret inputs (ADR
+0032). Both print a warning on stderr.
+
 `--json` prints the `ReplaySummary` from core; its shape and the exit codes are a contract for CI and
 agents, so changing them is a breaking change.
 

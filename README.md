@@ -29,6 +29,25 @@ Playwright and returns `passed`, `failed`, `flaky` or `error`.
 
 Design decisions are recorded in [docs/adr/](docs/adr/README.md); the vocabulary is in [CONTEXT.md](CONTEXT.md).
 
+## Status
+
+Latest release: [v0.1.0](https://github.com/connext-solutions/flowctl/releases/tag/v0.1.0) (pre-release).
+
+| Area | State |
+|---|---|
+| Model-free replay, CLI, evidence safe to share (ADR 0030) | done |
+| Exploration with System 1, escalations, save after a confirming replay, opt-in heal | done |
+| MCP server for coding agents and its playbook (ADR 0027) | done |
+| Trust store, hook consent, scope guard, production hosts unreachable (ADR 0021, 0024, 0025) | done |
+| Destructive-action guard for exploration: labels and the request layer | done |
+| Wall-clock budget per run (`budget_exceeded`) | done |
+| Demo videos of a replay with a step overlay (ADR 0032) | done |
+| Destructive-action guard for **replay** on shared envs, stored confirmations and the run ledger | open |
+| Read-only replay on production, computed System 1 cost | open |
+| Observe (crawler), Derive (test cases from specs), Reconcile (classify failures) | planned |
+
+Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
+
 ## Install
 
 Requires Node 22.12+. Releases are published on
@@ -161,8 +180,9 @@ Assertions: `network` (fetch/xhr only; `status`, `requestBody` subset, `absent`)
 
 ## Results
 
-Exit codes: `0` all passed · `1` failed or flaky · `2` error (setup, session, config, hooks without consent) ·
-`3` a trust refusal.
+Exit codes: `0` all passed · `1` failed or flaky · `2` error (setup, session, config, hooks without consent,
+a guard that stopped the run, the wall-clock budget) · `3` a trust refusal. Every `error` has a `kind` and a `hint`
+that says what to do; the kinds are listed in [CONTEXT.md](CONTEXT.md#error-kinds).
 
 Evidence per run is in `<flowsDir>/.runs/<runId>/`: `trace-<profile>.zip` (open with
 `npx playwright show-trace <file>`), `final.png`, `network.json`, `console.json`, `run.json`, and for runs that
