@@ -12,7 +12,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { type Browser, chromium } from 'playwright';
 import { createServer } from './server.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const SWEEP_MS = 60_000;
 
 const USAGE = `Usage: flowctl-mcp [--config <path>] [--headed]
