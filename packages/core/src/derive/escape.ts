@@ -1,5 +1,5 @@
 /**
- * Escaping of untrusted text (spec and page text) for the conflicts files (task T4.4).
+ * Escaping of untrusted text (spec and page text) for the conflicts files (task T4.4) and drafted steps (T4.2).
  */
 import { INVISIBLE_CLASS } from '../spec/index.js';
 
@@ -11,6 +11,21 @@ const MAX_SHOWN = 500;
 const marker = (c: string): string =>
   `⟨U+${(c.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}⟩`;
 
+/** `raw` cut at 500 code points (marked `…`), so no untrusted string fills a surface. */
+export function cutShown(raw: string): string {
+  const points = [...raw];
+  return points.length > MAX_SHOWN
+    ? `${points.slice(0, MAX_SHOWN).join('')}…`
+    : raw;
+}
+
+/**
+ * `raw` with every invisible, control (a line break included) and lone surrogate code point shown as `⟨U+XXXX⟩`, so
+ * no hidden, reordered or extra line of text reaches a reader.
+ */
+export const showInvisible = (raw: string): string =>
+  raw.replace(INVISIBLE, (c) => [...c].map(marker).join(''));
+
 /**
  * Untrusted text as one markdown code span: cut at 500 code points of the raw text (marked `…`), then invisible,
  * control and lone surrogate code points shown as `⟨U+XXXX⟩`, a leading `=`, `+`, `-` or `@` (or its fullwidth form)
@@ -21,10 +36,7 @@ const marker = (c: string): string =>
  *   the text still splits the cell, code span or not. Use it in paragraphs, list entries and headings only.
  */
 export function mdCode(raw: string): string {
-  const points = [...raw];
-  const cut =
-    points.length > MAX_SHOWN ? `${points.slice(0, MAX_SHOWN).join('')}…` : raw;
-  const visible = cut.replace(INVISIBLE, (c) => [...c].map(marker).join(''));
+  const visible = showInvisible(cutShown(raw));
   const safe = /^[=+\-@＝＋－＠]/u.test(visible) ? `'${visible}` : visible;
   const longest = Math.max(
     0,
