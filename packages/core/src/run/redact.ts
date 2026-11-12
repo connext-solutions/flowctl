@@ -22,7 +22,8 @@ const isCredential = (name: string): boolean => {
   return CREDENTIAL_WHOLE.has(n) || CREDENTIAL_END.test(n);
 };
 
-const MASK = '***';
+/** What a redacted value becomes in evidence, a crawl's map and orchestrator text. */
+export const MASK = '***';
 
 /**
  * A copy of a request or response body with secret values and every string or number under a credential name

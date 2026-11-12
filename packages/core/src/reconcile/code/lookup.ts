@@ -77,8 +77,13 @@ function byText<T extends { text: string }>(
   return map;
 }
 
-/** The path of a route query, or `undefined` when it is refused. */
-function queryPath(raw: string): string | undefined {
+/**
+ * The segments of a concrete path or URL as `findRoute` compares them with route patterns: query and fragment
+ * dropped, the path normalised as scope paths are (`normalisePath`) and put in NFC, empty segments dropped.
+ *
+ * @returns the segments, or `undefined` when the path is refused.
+ */
+export function routeQuerySegments(raw: string): string[] | undefined {
   let path = raw;
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) {
     try {
@@ -88,7 +93,10 @@ function queryPath(raw: string): string | undefined {
     }
   }
   path = path.split(/[?#]/)[0] ?? '';
-  return normalisePath(path)?.normalize('NFC');
+  return normalisePath(path)
+    ?.normalize('NFC')
+    .split('/')
+    .filter((s) => s !== '');
 }
 
 /** Compares two specificity vectors, higher first. */
@@ -130,9 +138,8 @@ export function createCodeIndex(parts: IndexParts): CodeIndex {
     findLabel: textLookup(labels),
     findMessage: textLookup(messages),
     findRoute(path: string): LookupResult<RouteRecord> {
-      const p = queryPath(path);
-      if (p === undefined) return refused('path refused');
-      const segs = p.split('/').filter((s) => s !== '');
+      const segs = routeQuerySegments(path);
+      if (segs === undefined) return refused('path refused');
       const hits = routes
         .filter((r) => matchRoute(r.segments, segs))
         .sort((a, b) => bySpecificity(a.rank, b.rank))
