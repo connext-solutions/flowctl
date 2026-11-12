@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { notFoundMessage } from '../../src/browser/index.js';
 import { CLASSIFY_LIMITS, classifyFailure } from '../../src/reconcile/index.js';
 import { appMap, operation, page } from '../derive/build.js';
 import {
@@ -19,7 +20,7 @@ describe('classifyFailure: label rules', () => {
 
   it('spec says X, code and page have a folded Y: spec drift, high, with file, line, pointer and spec ref', () => {
     const c = classifyFailure({
-      result: notFound('button "Gửi đơn"'),
+      result: notFound({ role: 'button', name: 'Gửi đơn' }),
       spec: spec('Gửi đơn'),
       code: fakeIndex({ labels: ['Gửi Đơn@src/i18n/vi.json:7'] }),
       map: appMap([page('/orders', 'Orders', ['button:Gửi Đơn'])]),
@@ -50,10 +51,45 @@ describe('classifyFailure: label rules', () => {
     ]);
   });
 
+  it('spec says X, code and page both have a contained Y: spec drift, medium', () => {
+    expect(
+      classes({
+        result: notFound({ role: 'button', name: 'Gửi' }),
+        spec: spec('Gửi'),
+        code: fakeIndex({ labels: ['Gửi đơn'] }),
+        map: appMap([page('/orders', 'Orders', ['button:Gửi đơn'])]),
+      }),
+    ).toEqual({
+      class: 'spec_drift',
+      confidence: 'medium',
+      rules: ['label-spec-drift'],
+    });
+  });
+
+  it('two rules of the same class at the top confidence are both the basis', () => {
+    const result = textFailed('Đã gửi đơn');
+    result.evidence.network.push('500 POST http://127.0.0.1:4000/api/orders');
+    const c = classifyFailure({
+      result,
+      spec: spec('Gửi'),
+      code: fakeIndex({ messages: ['Đã gửi đơn'] }),
+      origins: ['http://127.0.0.1:4000'],
+    });
+    expect(c).toMatchObject({
+      class: 'product_bug',
+      confidence: 'medium',
+      candidates: [],
+    });
+    expect(c.basis.map((h) => h.rule)).toEqual([
+      'server-error',
+      'label-product-bug',
+    ]);
+  });
+
   it('a near text found only by containment on one side is low', () => {
     expect(
       classes({
-        result: notFound('button "Gửi"'),
+        result: notFound({ role: 'button', name: 'Gửi' }),
         spec: spec('Gửi'),
         code: fakeIndex({ labels: ['Gửi đơn ngay'] }),
       }),
@@ -66,7 +102,7 @@ describe('classifyFailure: label rules', () => {
 
   it('the map compares only controls of the locator role', () => {
     const c = classifyFailure({
-      result: notFound('button "Gửi đơn"'),
+      result: notFound({ role: 'button', name: 'Gửi đơn' }),
       spec: spec('Gửi đơn'),
       map: appMap([page('/orders', 'Gửi Đơn', ['link:Gửi Đơn'])]),
     });
@@ -76,7 +112,7 @@ describe('classifyFailure: label rules', () => {
   it('the test has X, spec, code and page agree on a folded Y: stale test, high', () => {
     expect(
       classes({
-        result: notFound('button "Lưu Lại"'),
+        result: notFound({ role: 'button', name: 'Lưu Lại' }),
         spec: spec('Lưu lại'),
         code: fakeIndex({ labels: ['Lưu lại'] }),
         map: appMap([page('/a', 'A', ['button:Lưu lại'])]),
@@ -91,7 +127,7 @@ describe('classifyFailure: label rules', () => {
   it('without a spec, a contained near text on one side is stale test, low', () => {
     expect(
       classes({
-        result: notFound('button "Lưu"'),
+        result: notFound({ role: 'button', name: 'Lưu' }),
         code: fakeIndex({ labels: ['Lưu lại'] }),
       }),
     ).toEqual({
@@ -122,7 +158,7 @@ describe('classifyFailure: label rules', () => {
 
   it('no evidence anywhere is unknown, never a guess', () => {
     const c = classifyFailure({
-      result: notFound('button "Gửi"'),
+      result: notFound({ role: 'button', name: 'Gửi' }),
       spec: spec('Khác'),
       code: fakeIndex({ labels: ['Huỷ'] }),
       map: appMap([page('/a', 'A', ['button:Huỷ'])]),
@@ -151,7 +187,7 @@ describe('classifyFailure: label rules', () => {
   });
 
   it('a higher confidence wins over a lower one of another class', () => {
-    const result = notFound('button "Gửi đơn"');
+    const result = notFound({ role: 'button', name: 'Gửi đơn' });
     result.evidence.network.push('503 GET http://127.0.0.1:4000/api/x');
     const c = classifyFailure({
       result,
@@ -164,63 +200,5 @@ describe('classifyFailure: label rules', () => {
       'gateway-status',
       'label-spec-drift',
     ]);
-  });
-
-  it.each([
-    [
-      'a refused name',
-      notFound('button "Gửi\u200bđơn"'),
-      'locator name refused: invisible',
-    ],
-    [
-      'a testId locator',
-      notFound('testId=submit'),
-      'step failure not_found names no role locator',
-    ],
-    [
-      'an ambiguous step',
-      run({
-        failed: {
-          step: 1,
-          kind: 'ambiguous',
-          message: 'button "A" matched 2 elements',
-        },
-      }),
-      'step failure ambiguous names no role locator',
-    ],
-  ])('%s gives a note and no label rule', (_n, result, note) => {
-    const c = classifyFailure({
-      result,
-      code: fakeIndex({ labels: ['Gửi đơn'] }),
-    });
-    expect(c.class).toBe('unknown');
-    expect(c.notes).toContain(note);
-  });
-
-  it('cuts untrusted text in evidence and does not change its inputs', () => {
-    const long = `Gửi ${'x'.repeat(500)}`;
-    const code = fakeIndex({ labels: [long] });
-    const input = { result: notFound('button "Gửi"'), code };
-    const before = JSON.stringify(input.result);
-    const c = classifyFailure(input);
-    const text = c.basis[0]?.evidence[1]?.text ?? '';
-    expect([...text]).toHaveLength(CLASSIFY_LIMITS.maxEvidenceText);
-    expect(text.endsWith('…')).toBe(true);
-    expect(JSON.stringify(input.result)).toBe(before);
-    expect(classifyFailure(input)).toEqual(c);
-  });
-
-  it('bounds the near search on a hostile index: 20,000 labels of 1,000 code points that all contain the text', () => {
-    const labels = Array.from(
-      { length: 20_000 },
-      (_, i) => `${'a '.repeat(490)}${i}`,
-    );
-    const started = performance.now();
-    const c = classifyFailure({
-      result: notFound('button "a a"'),
-      code: fakeIndex({ labels }),
-    });
-    expect(performance.now() - started).toBeLessThan(3000);
-    expect(c.basis[0]?.evidence.length).toBe(1 + CLASSIFY_LIMITS.maxNear);
   });
 });

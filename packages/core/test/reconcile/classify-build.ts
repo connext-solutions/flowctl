@@ -8,6 +8,8 @@ import type {
   MessageRecord,
   RouteRecord,
 } from '../../src/reconcile/index.js';
+import { notFoundMessage } from '../../src/browser/index.js';
+import type { Loc } from '../../src/flow/index.js';
 import type { RunResult } from '../../src/result.js';
 
 /** A run result with defaults: a failed run of flow `f` on `local` with no failure detail. */
@@ -95,9 +97,11 @@ export function fakeIndex(o: {
   };
 }
 
-/** A failed run whose step `loc` (as `describeLoc` prints it) was not found. */
-export const notFound = (loc: string): RunResult =>
-  run({ failed: { step: 2, kind: 'not_found', message: `${loc} not found` } });
+/** A failed run whose step `loc` was not found, with the message the executor writes. */
+export const notFound = (loc: Loc): RunResult =>
+  run({
+    failed: { step: 2, kind: 'not_found', message: notFoundMessage(loc) },
+  });
 
 /** A failed run whose `text` assertion did not hold. */
 export const textFailed = (text: string): RunResult =>

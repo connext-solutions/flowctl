@@ -4,44 +4,59 @@ import type { FailedCall } from './subject.js';
 import type { ClassEvidence, ClassifyLimits, RuleHit } from './types.js';
 
 /**
- * Error kinds that say the run never measured the app: infrastructure (the app, the login, System 1, a setup hook,
- * the wall-clock budget) or this machine's set-up of flowctl (trust store, allowed envs, hook consent, a leftover
- * ledger file). The others (`flow_invalid`, `scope_violation`, `destructive_blocked`, `ledger_replay`,
- * `ledger_mismatch`, `ledger_overflow`, `internal`) are not classed: each can be the app, the flow or flowctl.
+ * How the `error-kind` rule classes each error kind; a `Record` over `ErrorKind`, so a new kind fails the typecheck
+ * until it is classed here.
+ *
+ * - `high`: the run never measured the app: infrastructure (the app, the login, System 1, a setup hook) or this
+ *   machine's set-up of flowctl (trust store, allowed envs, hook consent, a leftover ledger file).
+ * - `low`: `budget_exceeded`, the wall-clock budget ran out: often the environment, but a slow or hanging app is also
+ *   possible.
+ * - `null`: not classed, because each can be the app, the flow or flowctl.
  */
-export const ENVIRONMENT_KINDS: ReadonlySet<ErrorKind> = new Set<ErrorKind>([
-  'app_unreachable',
-  'profile_expired',
-  'setup_failed',
-  'system1_unreachable',
-  'system1_not_allowed',
-  'budget_exceeded',
-  'env_not_trusted',
-  'env_not_allowed',
-  'hooks_untrusted',
-  'ledger_exists',
-]);
+const KIND_CLASS: Record<ErrorKind, 'high' | 'low' | null> = {
+  app_unreachable: 'high',
+  profile_expired: 'high',
+  setup_failed: 'high',
+  system1_unreachable: 'high',
+  system1_not_allowed: 'high',
+  env_not_trusted: 'high',
+  env_not_allowed: 'high',
+  hooks_untrusted: 'high',
+  ledger_exists: 'high',
+  budget_exceeded: 'low',
+  flow_invalid: null,
+  scope_violation: null,
+  destructive_blocked: null,
+  ledger_replay: null,
+  ledger_mismatch: null,
+  ledger_overflow: null,
+  internal: null,
+};
 
 /** Statuses a gateway or proxy answers when the app behind it is down or slow. */
 const GATEWAY: ReadonlySet<number> = new Set([502, 503, 504]);
 
-/** Rule `error-kind`: an errored run whose kind is in {@link ENVIRONMENT_KINDS} is `environment`, high. */
+/**
+ * Rule `error-kind`: an errored run whose kind {@link KIND_CLASS} classes is `environment`, at that confidence.
+ */
 export function errorKindRule(
   result: RunResult,
   limits: ClassifyLimits,
 ): RuleHit | null {
   const e = result.error;
-  if (
-    result.status !== 'error' ||
-    e === undefined ||
-    !ENVIRONMENT_KINDS.has(e.kind)
-  )
-    return null;
+  if (result.status !== 'error' || e === undefined) return null;
+  const confidence = Object.hasOwn(KIND_CLASS, e.kind)
+    ? KIND_CLASS[e.kind]
+    : null;
+  if (confidence === null) return null;
   return {
     rule: 'error-kind',
     class: 'environment',
-    confidence: 'high',
-    why: 'the run ended with an infrastructure or set-up error kind, so it never measured the app',
+    confidence,
+    why:
+      confidence === 'high'
+        ? 'the run ended with an infrastructure or set-up error kind, so it never measured the app'
+        : 'the run ran out of its wall-clock budget: the environment was slow, or the app was slow or hanging',
     evidence: [
       { source: 'run', pointer: '/error/kind', text: e.kind },
       {

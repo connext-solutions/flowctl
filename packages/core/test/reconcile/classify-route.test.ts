@@ -63,6 +63,41 @@ describe('classifyFailure: route rules', () => {
     });
   });
 
+  it('the spec quoting the expected path, code and map both having the page path: spec drift, high', () => {
+    const spec = operation({ id: 'op', steps: ['Mở "/settings/teams"'] });
+    expect(
+      classes({
+        result: urlFailed('/settings/teams', got),
+        code: fakeIndex({ routes: ['/settings/team-list'] }),
+        map,
+        spec,
+      }),
+    ).toEqual({
+      class: 'spec_drift',
+      confidence: 'high',
+      rules: ['route-spec-drift'],
+    });
+  });
+
+  it('compares map and spec paths as findRoute does: a trailing slash or percent-encoding is the same path', () => {
+    const spec = operation({
+      id: 'op',
+      steps: ['Mở "/settings/team%2Dlist/"'],
+    });
+    expect(
+      classes({
+        result: urlFailed('/settings/teams', got),
+        code: fakeIndex({ routes: ['/settings/team-list'] }),
+        map: appMap([page('/settings/team-list/', 'Teams')]),
+        spec,
+      }),
+    ).toEqual({
+      class: 'stale_test',
+      confidence: 'high',
+      rules: ['route-stale'],
+    });
+  });
+
   it('spec and code both have the expected path: product bug, medium', () => {
     const spec = operation({ id: 'op', steps: ['Mở "/settings/teams"'] });
     expect(

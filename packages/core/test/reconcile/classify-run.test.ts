@@ -5,24 +5,45 @@ import { appMap } from '../derive/build.js';
 import { classes, run } from './classify-build.js';
 
 describe('classifyFailure: errored and passed runs', () => {
-  it.each<ErrorKind>([
-    'app_unreachable',
-    'profile_expired',
-    'budget_exceeded',
-    'setup_failed',
-  ])('%s is environment, high, citing run.json', (kind) => {
+  it.each<ErrorKind>(['app_unreachable', 'profile_expired', 'setup_failed'])(
+    '%s is environment, high, citing run.json',
+    (kind) => {
+      const c = classifyFailure({
+        result: run({
+          status: 'error',
+          error: { kind, hint: 'start the app' },
+        }),
+      });
+      expect(c).toMatchObject({
+        class: 'environment',
+        confidence: 'high',
+        candidates: [],
+      });
+      expect(c.basis[0]?.evidence).toEqual([
+        { source: 'run', pointer: '/error/kind', text: kind },
+        { source: 'run', pointer: '/error/hint', text: 'start the app' },
+      ]);
+    },
+  );
+
+  it('budget_exceeded is environment, low: a slow or hanging app is also possible', () => {
     const c = classifyFailure({
-      result: run({ status: 'error', error: { kind, hint: 'start the app' } }),
+      result: run({
+        status: 'error',
+        error: { kind: 'budget_exceeded', hint: 'raise the budget' },
+      }),
     });
     expect(c).toMatchObject({
       class: 'environment',
-      confidence: 'high',
-      candidates: [],
+      confidence: 'low',
+      notes: [],
     });
-    expect(c.basis[0]?.evidence).toEqual([
-      { source: 'run', pointer: '/error/kind', text: kind },
-      { source: 'run', pointer: '/error/hint', text: 'start the app' },
-    ]);
+    expect(c.basis.map((h) => h.rule)).toEqual(['error-kind']);
+    expect(c.basis[0]?.evidence[0]).toEqual({
+      source: 'run',
+      pointer: '/error/kind',
+      text: 'budget_exceeded',
+    });
   });
 
   it.each<ErrorKind>([

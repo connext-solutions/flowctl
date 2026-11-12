@@ -35,7 +35,8 @@ page text, spec text and code strings come from outside flowctl.
 
    | Rule | Fires when | Class | Confidence |
    |---|---|---|---|
-   | `error-kind` | the run errored with `app_unreachable`, `profile_expired`, `setup_failed`, `system1_unreachable`, `system1_not_allowed`, `budget_exceeded`, `env_not_trusted`, `env_not_allowed`, `hooks_untrusted` or `ledger_exists` | environment | high |
+   | `error-kind` | the run errored with `app_unreachable`, `profile_expired`, `setup_failed`, `system1_unreachable`, `system1_not_allowed`, `env_not_trusted`, `env_not_allowed`, `hooks_untrusted` or `ledger_exists` | environment | high |
+   | `error-kind` | the run errored with `budget_exceeded` (the wall-clock budget ran out; a slow or hanging app is also possible) | environment | low |
    | `gateway-status` | a failed call in `evidence.network` got 502, 503 or 504 | environment | medium |
    | `no-response` | a failed call got status 0 | environment | low |
    | `server-error` | a failed call to one of the app's origins got another 5xx | product_bug | medium (low when no origin is known) |
@@ -49,14 +50,17 @@ page text, spec text and code strings come from outside flowctl.
 
    The other error kinds (`flow_invalid`, `scope_violation`, `destructive_blocked`, `ledger_replay`,
    `ledger_mismatch`, `ledger_overflow`, `internal`) are not classed: each can come from the app, the flow or
-   flowctl. Step failures other than `not_found` on a role locator, and failed `value`, `network` and
+   flowctl. The classing of every error kind is one `Record` over `ErrorKind`, so a new kind does not typecheck
+   until it is classed. A gateway status is only medium because a 504 can also be one slow endpoint of the app; a
+   501 is not a gateway status and counts as a product bug (`server-error`). Step failures other than `not_found` on a role locator, and failed `value`, `network` and
    `noConsoleErrors` assertions, have no label or route rule; only the network rules can class them.
 4. **Choosing, and ties.** The class is the class of the hits with the highest confidence. When hits of two or more
    classes share that confidence, the class is `unknown`, `confidence` is `null` and those hits are `candidates`;
    nothing picks one. The only precedence is the one in rule 3: an errored run is judged by its error kind and
    nothing else, because it never measured the app. No hit gives `unknown` with a note; there is no default class.
 5. **What the rules compare.** The failing text `T` is the name of a role locator in a `not_found` step failure
-   (`run.json` `failed.message`, as `describeLoc` prints it: `button "Gửi" not found`) or the text of a failed
+   (`run.json` `failed.message`, as the browser's `notFoundMessage` writes it: `button "Gửi" not found`; a name may
+   hold `"`) or the text of a failed
    `text` assertion. The expected path `E` is the literal path of a failed `url` assertion: an origin or leading `*`
    and trailing `*` dropped, nothing left that is `*`, `?`, `#` or a template; `A` is the path of `failed.got`. All
    text goes through `spec/text.ts`: `normText`, then `refusal` (a refused or empty text, or one over 300 code
@@ -64,7 +68,8 @@ page text, spec text and code strings come from outside flowctl.
    item's `value`. The code index is asked through `findLabel`, `findMessage` and `findRoute`; the map is read as page
    titles (text assertions only) and the names of controls and form fields (for a locator, of its role only). A near
    text is `folded` when it equals `T` after the ADR 0034 case fold (`compareText`), else `contains` when one occurs
-   in the other at token boundaries (`occurrences`, both at least 2 code points); when any `folded` text exists the
+   in the other at token boundaries (`containsAtBoundaries`, the same answer as `occurrences` in linear time; both at
+   least 2 code points); when any `folded` text exists the
    `contains` ones are not searched. The app has a text when the code index or the map states it exactly; a spec
    states a near text only when a literal equals it.
 6. **Label scores.** `label-spec-drift`: 1, plus 1 when code and map both have `Y`, plus 1 when `Y` is `folded`.
@@ -73,15 +78,21 @@ page text, spec text and code strings come from outside flowctl.
 7. **Route rules need the code index**, because "no route for `E`" must come from the index, and the map only says
    what the crawl reached. `route-spec-drift`: 2, plus 1 when code and map both have `A`. `route-stale`: 1, plus 1
    when the spec quotes `A`, plus 1 when code and map both have `A`. A spec literal names a path when it starts with
-   `/`, cut at `?` or `#`.
+   `/`, cut at `?` or `#`. Paths of the map and the spec are compared after the normalisation `findRoute` applies
+   (percent-decoded, no trailing `/`), so `/x/` and `/x` agree. A catch-all route (a pattern with a rest segment:
+   `*`, `/*`, `:x*`, `**`) matches every path, so it never counts as the app having `E` or `A`; when one is left out
+   the classification notes `catch-all route ignored`.
 8. **Evidence.** Every hit cites what it used: a JSON Pointer into `run.json` (`/error/kind`, `/failed/message`,
    `/failed/assertion/url`, `/evidence/network/3`), a file and line of a code index record, a JSON Pointer into
    `appmap.json` (`/pages/2/controls/0/name`), or a JSON Pointer into the `Operation` with the item's `SpecRef` (a
    step cites the operation's document, `ref: null`).
 9. **Untrusted text is data.** Page, spec and code strings are only compared, never interpreted. A compared string
    has at most 1,000 code points; evidence text is cut to 200 code points (ending with `…`); each text keeps at most 5
-   evidence entries per source (code, map, spec, failed calls) and a failure at most 5 near texts; the `contains` search stops at the fifth distinct text, so a
-   hostile index of long labels costs one native substring scan per label.
+   evidence entries per source (code, map, spec, failed calls) and a failure at most 5 near texts. The `contains`
+   search stops at the fifth distinct text, or when the code points it has read (each compared string's plus the
+   failing text's) would pass 5,000,000 (`maxComparedPoints`), with the note `near search stopped at its budget`.
+   Each comparison is linear in the two lengths, so the search costs at most that budget in code points, whatever
+   the index holds.
 
 ## Options considered
 
@@ -108,7 +119,9 @@ page text, spec text and code strings come from outside flowctl.
   a key the index does not join to a label, a label in JSX text, and a computed route path are not in the index
   (ADR 0035), so "the app has no `E`" can be wrong; that is why the highest route and label scores need the map too.
   A spec item cannot say that a message must not appear (ADR 0023: the item carries no polarity), so "the page
-  shows a message the spec forbids" is not a rule. The step locator is read from the message text of `run.json`; a
-  change of `describeLoc` must change `subjectOf` with it (the tests pin the format).
+  shows a message the spec forbids" is not a rule. The step locator is read from the message text of `run.json`; the
+  executor and the classifier's tests build it with the same `notFoundMessage`, and a test pins its format. A locator
+  is compared only with page controls of its role, so a button that became a link gives no near text from the map.
 - **Revisit when:** the labelled corpus (T6.5) measures agreement with human labels below 80%, the
-  run result carries the page URL of a failed step or the code location of a label, or spec items gain polarity.
+  run result carries the page URL of a failed step or the code location of a label, or spec items gain polarity;
+  or triage shows control role changes (a button that became a link) are common enough to compare across roles.

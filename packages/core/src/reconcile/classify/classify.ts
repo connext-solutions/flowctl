@@ -39,10 +39,13 @@ function failedHits(
         input,
         limits,
       );
+      notes.push(...facts.notes);
       hits.push(...labelRules(subject, facts, limits));
     } else if (input.code === undefined)
       notes.push('no code index: route rules not run');
-    hits.push(...routeRules(subject, input, limits));
+    const routes = routeRules(subject, input, limits);
+    hits.push(...routes.hits);
+    notes.push(...routes.notes);
   }
   return { hits, notes };
 }
@@ -97,7 +100,7 @@ function decide(
  */
 export function classifyFailure(
   input: ClassifyInput,
-  limits: ClassifyLimits = CLASSIFY_LIMITS,
+  limits: Readonly<ClassifyLimits> = CLASSIFY_LIMITS,
 ): Classification {
   const { result } = input;
   if (result.status === 'passed')

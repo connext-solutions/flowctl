@@ -5,22 +5,7 @@
  * @see docs/adr/0036-failure-classifier.md
  */
 export { classifyFailure } from './classify.js';
-export {
-  type NearText,
-  nearness,
-  type Nearness,
-  type TextFacts,
-  textFacts,
-} from './near.js';
-export { ENVIRONMENT_KINDS } from './run-rules.js';
-export { confidenceOf } from './spec-rules.js';
-export {
-  type FailedCall,
-  failedCalls,
-  literalPath,
-  type Subject,
-  subjectOf,
-} from './subject.js';
+export { literalPath } from './subject.js';
 export {
   type ClassEvidence,
   type Classification,

@@ -9,6 +9,7 @@ const ROUTER = [
   "import { createBrowserRouter } from 'react-router-dom';",
   'export const router = createBrowserRouter([',
   "  { path: '/shop', children: [{ path: 'order-list' }] },",
+  "  { path: '*' },",
   ']);',
 ].join('\n');
 
@@ -71,6 +72,7 @@ describe('classifyFailure with a real code index', () => {
       map,
     });
     expect(c).toMatchObject({ class: 'stale_test', confidence: 'medium' });
+    expect(c.notes).toContain('catch-all route ignored');
     expect(c.basis[0]?.evidence).toContainEqual({
       source: 'code',
       record: 'route',
@@ -78,6 +80,23 @@ describe('classifyFailure with a real code index', () => {
       line: 3,
       text: '/shop/order-list',
     });
+  });
+
+  it('a catch-all route is not a route for the expected path: no product bug from it', () => {
+    const c = classifyFailure({
+      result: run({
+        failed: {
+          assertion: { url: '/shop/orders' },
+          got: 'http://127.0.0.1:4000/shop/order-list',
+        },
+      }),
+      code,
+      map,
+      spec: operation({ id: 'op', steps: ['Mở "/shop/orders"'] }),
+    });
+    expect(c).toMatchObject({ class: 'spec_drift', confidence: 'high' });
+    expect(c.hits.map((h) => h.rule)).toEqual(['route-spec-drift']);
+    expect(c.notes).toContain('catch-all route ignored');
   });
 
   it('a validator message the spec and the code state, not shown: product bug', () => {

@@ -105,17 +105,26 @@ export interface ClassifyLimits {
   maxCompared: number;
   /** Code points of `text` in one evidence entry; longer text is cut and ends with `…`. */
   maxEvidenceText: number;
+  /**
+   * Code points the `contains` near search may read in total (each compared string's plus the failing text's);
+   * past it the search stops with a note.
+   */
+  maxComparedPoints: number;
   /** Distinct near texts kept per failure. */
   maxNear: number;
   /** Evidence entries of one source kind for one text (the failing text, or one near text), or failed calls of one rule. */
   maxEvidencePerSource: number;
 }
 
-/** The default bounds: subject 300, compared 1,000, evidence text 200 code points, 5 near texts, 5 entries per source. */
-export const CLASSIFY_LIMITS: ClassifyLimits = {
+/**
+ * The default bounds: subject 300, compared 1,000, evidence text 200 code points, a near search budget of 5,000,000
+ * code points, 5 near texts, 5 entries per source. Frozen.
+ */
+export const CLASSIFY_LIMITS: Readonly<ClassifyLimits> = Object.freeze({
   maxSubject: 300,
   maxCompared: 1000,
   maxEvidenceText: 200,
+  maxComparedPoints: 5_000_000,
   maxNear: 5,
   maxEvidencePerSource: 5,
-};
+});

@@ -1,4 +1,5 @@
-import type { CodeIndex } from '../code/index.js';
+import { normalisePath } from '../../browser/index.js';
+import { type CodeIndex, parseRoutePattern } from '../code/index.js';
 import type { NearText, TextFacts } from './near.js';
 import { clip, specLiterals } from './strings.js';
 import type { Subject } from './subject.js';
@@ -98,22 +99,36 @@ export function labelRules(
 const literalAddress = (text: string): string | null =>
   text.startsWith('/') ? (text.split(/[?#]/)[0] ?? null) : null;
 
-/** Code routes matching `path`, cited. */
-const routesOf = (
+/**
+ * A path as `findRoute` compares it: percent-decoded, dot segments resolved, no empty segment or trailing `/`
+ * (except the root), NFC; `null` when it is refused.
+ */
+const pathKey = (path: string): string | null =>
+  normalisePath(path)?.normalize('NFC') ?? null;
+
+/** Whether a route pattern has a rest segment (`*`, `**`, `:x*`, `:x+`), so it matches every path below it. */
+const isCatchAll = (pattern: string): boolean =>
+  parseRoutePattern(pattern).some((s) => s.kind === 'rest');
+
+/** Code routes matching `path`, catch-all routes left out, cited; `dropped` when a catch-all route was left out. */
+function routesOf(
   code: CodeIndex,
   path: string,
   limits: ClassifyLimits,
-): ClassEvidence[] =>
-  code
-    .findRoute(path)
-    .matches.slice(0, limits.maxEvidencePerSource)
-    .map((r) => ({
+): { evidence: ClassEvidence[]; dropped: boolean } {
+  const all = code.findRoute(path).matches;
+  const kept = all.filter((r) => !isCatchAll(r.path));
+  return {
+    dropped: kept.length < all.length,
+    evidence: kept.slice(0, limits.maxEvidencePerSource).map((r) => ({
       source: 'code',
       record: 'route',
       file: clip(r.file, limits.maxEvidenceText),
       line: r.line,
       text: clip(r.path, limits.maxEvidenceText),
-    }));
+    })),
+  };
+}
 
 /**
  * The route rules for a failed `url` assertion with a literal expected path `E`, the page on path `A`; they need the
@@ -124,24 +139,35 @@ const routesOf = (
  * - `route-stale` (`stale_test`): the spec does not quote `E`, the app has no `E`, the app has `A`. Score 1, plus 1
  *   when the spec quotes `A`, plus 1 when code and map both have `A`.
  * - `route-product-bug` (`product_bug`, medium): the spec quotes `E` and the index has a route for it.
+ *
+ * A catch-all route (a pattern with a rest segment) matches every path, so it never says the app has `E` or `A`;
+ * when one was left out, the note `catch-all route ignored` says so. Paths of the map and the spec are compared
+ * after the normalisation `findRoute` applies, so `/x/` and `/x` agree.
  */
 export function routeRules(
   subject: Subject,
   input: ClassifyInput,
   limits: ClassifyLimits,
-): RuleHit[] {
+): { hits: RuleHit[]; notes: string[] } {
   const code = input.code;
-  if (subject.kind !== 'url' || code === undefined) return [];
+  if (subject.kind !== 'url' || code === undefined)
+    return { hits: [], notes: [] };
   const literals =
     input.spec === undefined ? [] : specLiterals(input.spec, limits);
-  const says = (p: string) =>
-    literals
-      .filter((l) => literalAddress(l.text) === p)
+  const says = (p: string) => {
+    const key = pathKey(p);
+    return literals
+      .filter((l) => {
+        const a = literalAddress(l.text);
+        return key !== null && a !== null && pathKey(a) === key;
+      })
       .map((l) => l.evidence)
       .slice(0, limits.maxEvidencePerSource);
-  const pages = (p: string): ClassEvidence[] =>
-    (input.map?.pages ?? []).flatMap((pg, i): ClassEvidence[] =>
-      pg.path === p
+  };
+  const pages = (p: string): ClassEvidence[] => {
+    const key = pathKey(p);
+    return (input.map?.pages ?? []).flatMap((pg, i): ClassEvidence[] =>
+      key !== null && pathKey(pg.path) === key
         ? [
             {
               source: 'map',
@@ -151,6 +177,7 @@ export function routeRules(
           ]
         : [],
     );
+  };
   const run: ClassEvidence[] = [
     {
       source: 'run',
@@ -163,16 +190,20 @@ export function routeRules(
       text: clip(subject.got, limits.maxEvidenceText),
     },
   ];
+  const routesE = routesOf(code, subject.expected, limits);
+  const routesA = routesOf(code, subject.got, limits);
   const [rE, mE, sE] = [
-    routesOf(code, subject.expected, limits),
+    routesE.evidence,
     pages(subject.expected),
     says(subject.expected),
   ];
   const [rA, mA, sA] = [
-    routesOf(code, subject.got, limits),
+    routesA.evidence,
     pages(subject.got),
     says(subject.got),
   ];
+  const notes =
+    routesE.dropped || routesA.dropped ? ['catch-all route ignored'] : [];
   const hits: RuleHit[] = [];
   const appHasA = rA.length > 0 || mA.length > 0;
   const bothA = rA.length > 0 && mA.length > 0 ? 1 : 0;
@@ -202,5 +233,5 @@ export function routeRules(
       why: 'the spec and the code both have the expected path, and the page was elsewhere',
       evidence: [...run, ...sE, ...rE],
     });
-  return hits;
+  return { hits, notes };
 }

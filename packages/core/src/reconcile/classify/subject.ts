@@ -71,7 +71,12 @@ function pathOf(url: string): string | null {
   }
 }
 
-/** The failure subject of a failed run, or `null` with a note saying why there is none. */
+/**
+ * The failure subject of a failed run, or `null` with a note saying why there is none.
+ *
+ * @remarks A step message longer than 4,000 UTF-16 units is not read. The locator name group is greedy and the
+ *   message is anchored at ` not found`, so a name holding `"` is read whole.
+ */
 export function subjectOf(
   result: RunResult,
   limits: ClassifyLimits,
@@ -83,10 +88,9 @@ export function subjectOf(
       notes: ['run.json has no failed step or assertion'],
     };
   if ('kind' in f) {
-    const m =
-      f.kind === 'not_found'
-        ? NOT_FOUND.exec(f.message.slice(0, MAX_LINE))
-        : null;
+    if (f.message.length > MAX_LINE)
+      return { subject: null, notes: ['step failure message is too long'] };
+    const m = f.kind === 'not_found' ? NOT_FOUND.exec(f.message) : null;
     if (m === null || !ROLES.has(m[1] ?? ''))
       return {
         subject: null,

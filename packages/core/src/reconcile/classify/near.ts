@@ -1,5 +1,5 @@
 import { compareText } from '../../derive/index.js';
-import { occurrences } from '../../spec/index.js';
+import { containsAtBoundaries } from '../../spec/index.js';
 import {
   type Cited,
   codeExact,
@@ -27,25 +27,33 @@ export interface NearText {
 
 /**
  * What the code index, the map and the spec say about one failing text: where each states it exactly, and the near
- * texts the app has instead. A list is empty when its input was not given.
+ * texts the app has instead. A list is empty when its input was not given. `notes` are fixed sentences about a
+ * search cut short.
  */
 export interface TextFacts {
   spec: ClassEvidence[];
   code: ClassEvidence[];
   map: ClassEvidence[];
   near: NearText[];
+  notes: string[];
 }
 
-/** How `s` is near `t`, or `null` when it is equal or not near. */
-export function nearness(t: string, s: string): Nearness | null {
-  if (s === t) return null;
-  if (compareText(t, s) === 'folded') return 'folded';
-  if ([...t].length < 2 || [...s].length < 2) return null;
-  const lt = t.toLowerCase();
+/** The failing text, its lower case and its length in code points, computed once per search. */
+interface Probe {
+  text: string;
+  lower: string;
+  points: number;
+}
+
+/**
+ * Whether `s` (of `points` code points) is a `contains` near text of the probe: both at least 2 code points, and one
+ * occurs in the other at token boundaries, case-insensitive. `s` is assumed not equal and not `folded`.
+ */
+function contains(p: Probe, s: string, points: number): boolean {
+  if (p.points < 2 || points < 2) return false;
   const ls = s.toLowerCase();
-  if (ls.includes(lt) && occurrences(s, t).length > 0) return 'contains';
-  if (lt.includes(ls) && occurrences(t, s).length > 0) return 'contains';
-  return null;
+  if (ls.includes(p.lower) && containsAtBoundaries(s, p.text)) return true;
+  return p.lower.includes(ls) && containsAtBoundaries(p.text, s);
 }
 
 const evidenceOf = (list: readonly Cited[], max: number): ClassEvidence[] =>
@@ -59,9 +67,11 @@ const byText = (list: readonly Cited[], text: string): Cited[] =>
  * locator), `null` takes titles too (a text assertion).
  *
  * @remarks When any near text is `folded`, the `contains` ones are not searched; otherwise the search stops at the
- *   first `maxNear` distinct `contains` texts in index order (code labels, code messages, then the map), which bounds
- *   the work on a hostile index. Near texts are sorted by UTF-16 code units and cut to `maxNear`. Spec literals are compared exactly, never by nearness: a near text counts as stated
- *   by the spec only when a literal equals it.
+ *   first `maxNear` distinct `contains` texts in index order (code labels, code messages, then the map), or when the
+ *   code points it has read (each string's plus the failing text's) would pass `maxComparedPoints`, with the note
+ *   `near search stopped at its budget`. Near texts are sorted by UTF-16 code units and cut to `maxNear`. Spec
+ *   literals are compared exactly, never by nearness: a near text counts as stated by the spec only when a literal
+ *   equals it.
  */
 export function textFacts(
   t: string,
@@ -75,12 +85,28 @@ export function textFacts(
     input.map === undefined ? [] : mapStrings(input.map, role, limits);
   const app = [...code, ...map];
   const folded = new Set(
-    app.filter((c) => nearness(t, c.text) === 'folded').map((c) => c.text),
+    app
+      .filter((c) => c.text !== t && compareText(t, c.text) === 'folded')
+      .map((c) => c.text),
   );
+  const probe: Probe = {
+    text: t,
+    lower: t.toLowerCase(),
+    points: [...t].length,
+  };
   const contained = new Set<string>();
+  const notes: string[] = [];
+  let read = 0;
   for (const c of folded.size > 0 ? [] : app) {
     if (contained.size >= limits.maxNear) break;
-    if (nearness(t, c.text) === 'contains') contained.add(c.text);
+    if (c.text === t || contained.has(c.text)) continue;
+    const points = [...c.text].length;
+    read += points + probe.points;
+    if (read > limits.maxComparedPoints) {
+      notes.push('near search stopped at its budget');
+      break;
+    }
+    if (contains(probe, c.text, points)) contained.add(c.text);
   }
   const rule: Nearness = folded.size > 0 ? 'folded' : 'contains';
   const near = [...(folded.size > 0 ? folded : contained)]
@@ -104,5 +130,6 @@ export function textFacts(
           ),
     map: evidenceOf(byText(map, t), limits.maxEvidencePerSource),
     near,
+    notes,
   };
 }
