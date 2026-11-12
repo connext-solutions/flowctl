@@ -1,11 +1,13 @@
-import { ConfigError } from '../../foundation/index.js';
-import { cutShown, showInvisible } from '../escape.js';
+import { ConfigError, NAME_PATTERN } from '../../foundation/index.js';
+import { INVISIBLE_CLASS } from '../../spec/index.js';
+import { cutShown, marker, showInvisible } from '../escape.js';
 import type { CaseDraft, DraftStep } from './types.js';
 
 /**
  * The phrases a step is written with, one per action (`openVia` for an `open` with a menu path), and the separator
  * between menu path labels. A phrase names its values by placeholder: `{actor}`, `{target}`, `{input}`, `{page}`,
- * `{via}`.
+ * `{via}`. Every phrase and the separator are one line of visible text; the separator holds no placeholder, quote
+ * mark (`"`, `“`, `”`) or backslash, so it cannot open or close a menu label's quote.
  */
 export interface PhraseTable {
   open: string;
@@ -51,28 +53,54 @@ export const EN_PHRASES: PhraseTable = {
 
 const PLACEHOLDER = /\{([A-Za-z]+)\}/g;
 const HAS_PLACEHOLDER = /\{[A-Za-z]+\}/;
-const BREAK = /[\p{Cc}\p{Zl}\p{Zp}]/u;
+const INVISIBLE = new RegExp(`[${INVISIBLE_CLASS}]`, 'u');
+/** The code points that open or close a quote for `quotedSpans`, and the backslash. */
+const QUOTE_MARKS = /["“”\\]/g;
 
 /**
  * Untrusted text (spec, page or caller) as one quoted value on one line: cut at 500 code points, invisible and control
- * code points (line breaks included) shown as `⟨U+XXXX⟩`, then `\` and `"` escaped with `\`, inside `"…"`. So a value
- * can neither close its quote, start a new step line, hide or reorder text, nor be read as a placeholder.
+ * code points (line breaks included) shown as `⟨U+XXXX⟩`, and so are `"`, `“`, `”` and `\` (no backslash escaping),
+ * inside `"…"`. So a value can neither close its quote (for a reader or for `quotedSpans`), start a new step line,
+ * hide or reorder text, nor be read as a placeholder.
  *
  * @see docs/adr/0023-spec-provider-seam.md
  */
 export const quoteValue = (raw: string): string =>
-  `"${showInvisible(cutShown(raw)).replace(/[\\"]/g, '\\$&')}"`;
+  `"${showInvisible(cutShown(raw)).replace(QUOTE_MARKS, marker)}"`;
 
-/** @throws {ConfigError} when a phrase misses a placeholder it needs, names another one, or holds a line break. */
+/** The input reference of a step as `⟨input-1⟩`. @throws {ConfigError} when it is no flow name (it may be a value). */
+function inputRef(input: string | undefined): string {
+  if (input === undefined || !NAME_PATTERN.test(input))
+    throw new ConfigError(
+      'renderSteps: a `fill` or `select` step needs an input reference that is a flow name (input-1)',
+    );
+  return `⟨${input}⟩`;
+}
+
+/** The actor bare when it is a plain name (a flow name such as `staff`), else quoted with {@link quoteValue}. */
+const actorText = (actor: string): string =>
+  NAME_PATTERN.test(actor) ? actor : quoteValue(actor);
+
+/**
+ * @throws {ConfigError} when a phrase misses a placeholder it needs, names another one, or holds an invisible code
+ *   point (a line break included), or when the separator is not plain visible text without quote marks.
+ */
 function checkTable(t: PhraseTable): void {
   const bad = (what: string): never => {
     throw new ConfigError(`phrase table: ${what}`);
   };
-  if (BREAK.test(t.viaSeparator) || HAS_PLACEHOLDER.test(t.viaSeparator))
-    bad('`viaSeparator` must be plain text on one line');
+  if (
+    INVISIBLE.test(t.viaSeparator) ||
+    HAS_PLACEHOLDER.test(t.viaSeparator) ||
+    /["“”\\]/.test(t.viaSeparator)
+  )
+    bad(
+      '`viaSeparator` must be visible text on one line, with no placeholder, quote mark or backslash',
+    );
   for (const key of PHRASES) {
     const phrase = t[key];
-    if (BREAK.test(phrase)) bad(`\`${key}\` must be one line`);
+    if (INVISIBLE.test(phrase))
+      bad(`\`${key}\` must be one line of visible text`);
     const used = [...phrase.matchAll(PLACEHOLDER)].map((m) => m[1] ?? '');
     const allowed: readonly string[] = SLOTS[key];
     for (const u of used)
@@ -87,16 +115,17 @@ function line(s: DraftStep, t: PhraseTable): string {
   const via = s.via ?? [];
   const key: Phrase =
     s.action === 'open' ? (via.length > 0 ? 'openVia' : 'open') : s.action;
-  const values = new Map<string, string>([
-    ['actor', quoteValue(s.actor)],
-    ['target', quoteValue(s.target?.name ?? '')],
-    ['input', quoteValue(s.input ?? '')],
-    ['page', quoteValue(s.page ?? '')],
-    ['via', via.map(quoteValue).join(t.viaSeparator)],
-  ]);
-  const phrase = t[key].replace(
-    PLACEHOLDER,
-    (whole, name: string) => values.get(name) ?? whole,
+  const values: Readonly<Record<Slot, () => string>> = {
+    actor: () => actorText(s.actor),
+    target: () => quoteValue(s.target?.name ?? ''),
+    input: () => inputRef(s.input),
+    page: () => quoteValue(s.page ?? ''),
+    via: () => via.map(quoteValue).join(t.viaSeparator),
+  };
+  const isSlot = (name: string): name is Slot =>
+    SLOTS[key].some((x) => x === name);
+  const phrase = t[key].replace(PLACEHOLDER, (whole, name: string) =>
+    isSlot(name) ? values[name]() : whole,
   );
   return `${s.n}. ${phrase}`;
 }
@@ -105,10 +134,13 @@ function line(s: DraftStep, t: PhraseTable): string {
  * Writes a draft's steps as numbered lines (`1. …`), one per step, joined with `\n`, from a phrase table: the English
  * one by default, or a caller's in another language.
  *
- * @remarks Every value (actor, control name, input reference, page, menu label) enters the line only through
- *   {@link quoteValue}, in one pass, so provider and page text stays quoted data (ADR 0023): a placeholder inside a
- *   value is never expanded. The output is plain text; a caller writing markdown escapes it for that surface.
- * @throws {ConfigError} when the table is malformed (see {@link PhraseTable}).
+ * @remarks Every value enters the line in one replacement pass, so a placeholder inside a value is never expanded:
+ *   a control name, page and menu label through {@link quoteValue}, so provider and page text stays quoted data (ADR
+ *   0023); the actor bare when it is a plain flow name, else through {@link quoteValue}; the input reference as
+ *   `⟨input-1⟩`, only when it is a flow name. The output is plain text; a caller writing markdown escapes it for that
+ *   surface.
+ * @throws {ConfigError} when the table is malformed (see {@link PhraseTable}), or a `fill` or `select` step has no
+ *   input reference that is a flow name.
  * @see docs/adr/0038-case-drafter.md
  */
 export function renderSteps(

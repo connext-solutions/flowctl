@@ -3,41 +3,9 @@ import {
   draftCase,
   lintSteps,
   matchOperations,
-  type VerbRules,
 } from '../../src/derive/index.js';
-import type { Operation } from '../../src/spec/index.js';
-import type { AppMap } from '../../src/observe/index.js';
 import { appMap, at, operation, page } from './build.js';
-
-/** A small Vietnamese verb table: product data of the test, as a caller in another language would pass it. */
-const VI: VerbRules = {
-  open: ['mở', 'vào'],
-  click: ['bấm'],
-  fill: ['nhập'],
-  select: ['chọn'],
-  check: ['tích'],
-  observe: ['xem', 'kiểm tra'],
-};
-
-const requests = page(
-  '/requests',
-  'Đơn từ',
-  ['link:Đơn từ', 'link:Phê duyệt', 'button:Gửi', 'button:Lưu', 'button:Lưu'],
-  ['textbox:Lý do *', 'textbox:Số tiền', 'combobox:Nhân viên'],
-);
-const approvals = page('/approvals', 'Phê duyệt', [
-  'link:Đơn từ',
-  'link:Phê duyệt',
-  'button:Duyệt',
-]);
-const map = appMap([approvals, requests]);
-
-function draft(op: Operation, m: AppMap = map, actor?: string) {
-  const report = matchOperations([op], m);
-  const entry = report.operations[0];
-  if (entry === undefined) throw new Error('no entry');
-  return draftCase(op, entry, m, { actor, verbs: VI });
-}
+import { draft, map } from './draft-fixture.js';
 
 const submit = operation({
   id: 'submit',
@@ -45,7 +13,8 @@ const submit = operation({
   headings: ['Đơn từ'],
   steps: [
     'Mở màn Đơn từ.',
-    'Nhập "Lý do", "Số tiền" và chọn "Nhân viên".',
+    'Nhập "Lý do".',
+    'Nhập "Số tiền" và chọn "Nhân viên".',
     'Bấm "Gửi". Xem ô "Lý do".',
   ],
 });
@@ -259,7 +228,7 @@ describe('draftCase (T4.2)', () => {
     const d = draft(op, map, 'staff');
     expect(d.steps).toEqual([]);
     expect(d.gaps.map((g) => [g.step, g.reason])).toEqual([
-      [0, 'label_not_found'],
+      [0, 'quoted_value'],
       [1, 'label_not_found'],
       [2, 'refused'],
       [3, 'label_not_found'],

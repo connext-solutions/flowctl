@@ -26,8 +26,10 @@ export interface DraftTarget {
 }
 
 /**
- * One drafted step: its number, who acts (a profile or role name), one action and what it acts on.
+ * One drafted step: its number, who acts, one action and what it acts on.
  *
+ * - `actor`: display text from the spec (or the caller), normalised. A caller that runs the step maps it to a profile
+ *   through its own table; it never uses the actor as a profile name, a file name or a path;
  * - `target`: the control, for `click`, `fill`, `select` and `check`;
  * - `input`: for `fill` and `select`, the name of a step input (a flow name, `input-1`), never the value itself
  *   (ADR 0006: values come from the orchestrator);
@@ -51,7 +53,10 @@ export interface DraftStep {
  * - `no_actor`: neither the caller nor the operation names an actor, or the name is refused (ADR 0020 section d);
  * - `no_screen`: the match report has no single screen for the operation;
  * - `no_verb`: a quoted label, or the whole step, follows no verb of the table;
+ * - `negated`: a negation word of the table (`do not`, `never`) comes before an action verb, after the verb before it;
  * - `unquoted`: an action verb with no quoted label to act on (and, for `open`, no page named);
+ * - `quoted_value`: a second quote after a `fill` or `select` verb, which takes exactly one label: a value, which the
+ *   draft never stores (the gap keeps its span);
  * - `label_not_found`: a quoted label equals no element of the map;
  * - `label_not_on_screen`: it equals elements of other pages only;
  * - `role_mismatch`: it equals elements of the screen whose role cannot take the action;
@@ -62,7 +67,9 @@ export type GapReason =
   | 'no_actor'
   | 'no_screen'
   | 'no_verb'
+  | 'negated'
   | 'unquoted'
+  | 'quoted_value'
   | 'label_not_found'
   | 'label_not_on_screen'
   | 'role_mismatch'
@@ -91,13 +98,14 @@ export interface CaseDraft {
 }
 
 /**
- * The fixed verb rules: per action, and for observing, the words that introduce it in spec text. A word matches at
- * token boundaries, case-insensitive (ADR 0020 amendment 2026-11-12, section 2); where two words start at the same
- * place, the longer one wins (`check that` over `check`).
+ * The fixed verb rules: per action, and for observing, the words that introduce it in spec text, and optionally the
+ * words that negate an action (`negate`). A word matches at token boundaries, case-insensitive (ADR 0020 amendment
+ * 2026-11-12, section 2), outside quoted labels; where two words start at the same place, the longer one wins
+ * (`check that` over `check`).
  */
 export type VerbRules = Readonly<
   Record<DraftAction | 'observe', readonly string[]>
->;
+> & { readonly negate?: readonly string[] };
 
 /** The English verb rules, the default. A caller drafting from spec text in another language passes its own. */
 export const EN_VERBS: VerbRules = {
@@ -114,9 +122,13 @@ export const EN_VERBS: VerbRules = {
     'look at',
     'confirm that',
   ],
+  negate: ['do not', "don't", 'never', 'not'],
 };
 
-/** The roles that can take each action other than `open`. */
+/**
+ * The roles that can take each action other than `open`. A `select` verb whose label is a `radio` or an `option`
+ * (picking one choice, no value to give) is drafted as a `click` on it.
+ */
 export const ACTION_ROLES: Readonly<
   Record<Exclude<DraftAction, 'open'>, readonly string[]>
 > = {
@@ -134,7 +146,7 @@ export const ACTION_ROLES: Readonly<
     'switch',
   ],
   fill: ['textbox', 'searchbox', 'spinbutton', 'combobox'],
-  select: ['combobox', 'listbox', 'radio', 'option'],
+  select: ['combobox', 'listbox'],
   check: ['checkbox', 'radio', 'switch', 'menuitemcheckbox'],
 };
 

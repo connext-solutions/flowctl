@@ -8,7 +8,8 @@ const INVISIBLE = new RegExp(`[${INVISIBLE_CLASS}]`, 'gu');
 const HIDDEN_IN_JSON = new RegExp(`(?!\\n)[${INVISIBLE_CLASS}]`, 'gu');
 const MAX_SHOWN = 500;
 
-const marker = (c: string): string =>
+/** The `⟨U+XXXX⟩` marker of a code point. */
+export const marker = (c: string): string =>
   `⟨U+${(c.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}⟩`;
 
 /** `raw` cut at 500 code points (marked `…`), so no untrusted string fills a surface. */

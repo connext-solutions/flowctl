@@ -2,13 +2,7 @@ import type { AppMap } from '../../observe/index.js';
 import { normText } from '../../spec/index.js';
 import { compareText, type LiteralMatch } from '../match/index.js';
 import { elementAt, pointerOf } from './pointer.js';
-import {
-  ACTION_ROLES,
-  type DraftAction,
-  type DraftTarget,
-  type GapReason,
-  NAV_ROLES,
-} from './types.js';
+import { type DraftTarget, type GapReason, NAV_ROLES } from './types.js';
 
 /** A grounded value, or the reason it could not be grounded. */
 export type Grounded<T> = { ok: T } | { gap: GapReason };
@@ -25,6 +19,9 @@ const sameName = (a: Actionable, b: Actionable): boolean =>
 /**
  * How many distinct elements `found` holds: every control, plus every field whose role and name no control of the list
  * has (a crawl lists a form field among the page's controls too, so the pair is one element).
+ *
+ * @remarks Fields and controls are paired by role and name only: two same-named fields in two forms of the page, with
+ *   the one control a crawl lists for that name, count as one element, so the label is not `ambiguous` there.
  */
 function distinct(found: readonly Actionable[]): number {
   const controls = found.filter((e) => e.kind === 'control');
@@ -42,12 +39,13 @@ function missReason(l: LiteralMatch, onScreen: readonly Element[]): GapReason {
 }
 
 /**
- * The control a quoted label names for `action` on `screen`: the one element of the screen, of a role that can take
- * the action, that the literal equals; its name and role are the map's, at a pointer that resolves in `map`.
+ * The control a quoted label names on `screen` for an action its `roles` can take (`ACTION_ROLES[action]`): the one
+ * element of the screen, of one of those roles, that the literal equals; its name and role are the map's, at a
+ * pointer that resolves in `map`.
  */
 export function groundTarget(
   l: LiteralMatch,
-  action: Exclude<DraftAction, 'open'>,
+  roles: readonly string[],
   screen: string,
   map: AppMap,
 ): Grounded<DraftTarget> {
@@ -56,9 +54,7 @@ export function groundTarget(
   const onScreen = l.elements
     .map((e) => e.element)
     .filter((e) => e.page === screen);
-  const fit = onScreen
-    .filter(actionable)
-    .filter((e) => ACTION_ROLES[action].includes(e.role));
+  const fit = onScreen.filter(actionable).filter((e) => roles.includes(e.role));
   const first = fit[0];
   if (first === undefined) return { gap: missReason(l, onScreen) };
   if (distinct(fit) > 1) return { gap: 'ambiguous' };

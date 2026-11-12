@@ -81,11 +81,19 @@ export function page(
   };
 }
 
-function roleOf(s: string): 'button' | 'textbox' | 'combobox' | 'link' {
+const ROLES = [
+  'textbox',
+  'combobox',
+  'listbox',
+  'link',
+  'radio',
+  'option',
+  'checkbox',
+] as const;
+
+function roleOf(s: string): (typeof ROLES)[number] | 'button' {
   const role = s.split(':')[0];
-  return role === 'textbox' || role === 'combobox' || role === 'link'
-    ? role
-    : 'button';
+  return ROLES.find((r) => r === role) ?? 'button';
 }
 
 /** A map of `pages` on a fixed origin. */

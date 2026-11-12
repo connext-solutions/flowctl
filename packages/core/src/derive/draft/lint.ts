@@ -35,10 +35,14 @@ export interface LintStep {
  * - `role_mismatch`: the control's role cannot take the action;
  * - `ungrounded_via`: a menu path label is no navigation control of the map;
  * - `ungrounded_page`: the page is not in the map;
- * - `input_literal`: the input is not a reference (a flow name such as `input-1`), so it may be a value;
+ * - `input_literal`: the input is not a flow name (`input-1`), so it may be a value. It catches only values that are
+ *   not flow names: a value such as `yes` or `2024` passes, which is why a draft never takes an input from the spec;
  * - `missing_input`: a `fill` or `select` with no input;
  * - `unexpected_input`: an input on an action that takes none;
- * - `duplicate_step`: the same actor, action, target, input, menu path and page as the step before it.
+ * - `misplaced_field`: a menu path (`via`) or a `page` on a step that does not open, or a `target` on one that does;
+ * - `duplicate_step`: the same actor, action, target, input, menu path and page as the step right before it. A hint
+ *   that compares consecutive steps only; two drafted `fill` or `select` steps are never duplicates, since each gets
+ *   a fresh input reference.
  */
 export type LintKind =
   | 'numbering'
@@ -53,6 +57,7 @@ export type LintKind =
   | 'input_literal'
   | 'missing_input'
   | 'unexpected_input'
+  | 'misplaced_field'
   | 'duplicate_step';
 
 /** One problem: its kind and the index of the step in the list. */
@@ -126,6 +131,11 @@ function stepProblems(
   if (!isAction(s.action)) return [...out, 'unknown_action'];
   out.push(...targetProblems(s, s.action, map, nav));
   out.push(...inputProblems(s, s.action));
+  const misplaced =
+    s.action === 'open'
+      ? s.target !== undefined
+      : s.via !== undefined || s.page !== undefined;
+  if (misplaced) out.push('misplaced_field');
   if (sameAs(s, prev)) out.push('duplicate_step');
   return out;
 }
@@ -133,7 +143,7 @@ function stepProblems(
 /**
  * Lints drafted (or hand-edited) steps against the map: numbering, an actor on every step, one known action that is
  * not just looking, every control and menu label grounded in the map with a role that fits, inputs that are
- * references and not values, no step repeated right after itself.
+ * references and not values, each field only on the action that uses it, no step repeated right after itself.
  *
  * @remarks Pure. The problems come in step order, then in the order of {@link LintKind}. An empty list means the steps
  *   meet the template's mechanical rules, not that the case is right: a person still reviews it.

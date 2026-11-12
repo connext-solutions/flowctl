@@ -6,6 +6,8 @@ import {
   type PhraseTable,
   renderSteps,
 } from '../../src/derive/index.js';
+import { ConfigError } from '../../src/foundation/index.js';
+import { quotedSpans } from '../../src/spec/index.js';
 
 /** A Vietnamese phrase table: product data of the test, as a caller writing cases in Vietnamese would pass it. */
 const VI_PHRASES: PhraseTable = {
@@ -78,12 +80,12 @@ describe('renderSteps (T4.2)', () => {
   it('writes numbered lines from the English table by default', () => {
     expect(renderSteps(draft)).toBe(
       [
-        '1. "staff": open the page "/requests".',
-        '2. "staff": go to "Đơn từ" › "Tạo đơn".',
-        '3. "staff": type the input "input-1" into "Lý do".',
-        '4. "staff": in "Nhân viên", choose the input "input-2".',
-        '5. "staff": tick "Đồng ý".',
-        '6. "staff": click "Gửi".',
+        '1. staff: open the page "/requests".',
+        '2. staff: go to "Đơn từ" › "Tạo đơn".',
+        '3. staff: type the input ⟨input-1⟩ into "Lý do".',
+        '4. staff: in "Nhân viên", choose the input ⟨input-2⟩.',
+        '5. staff: tick "Đồng ý".',
+        '6. staff: click "Gửi".',
       ].join('\n'),
     );
     expect(renderSteps(draft, EN_PHRASES)).toBe(renderSteps(draft));
@@ -92,12 +94,12 @@ describe('renderSteps (T4.2)', () => {
   it('writes the same steps from a caller table in another language', () => {
     expect(renderSteps(draft, VI_PHRASES)).toBe(
       [
-        '1. "staff": mở trang "/requests".',
-        '2. "staff": vào "Đơn từ" › "Tạo đơn".',
-        '3. "staff": nhập giá trị "input-1" vào ô "Lý do".',
-        '4. "staff": ở ô "Nhân viên", chọn giá trị "input-2".',
-        '5. "staff": tích "Đồng ý".',
-        '6. "staff": bấm "Gửi".',
+        '1. staff: mở trang "/requests".',
+        '2. staff: vào "Đơn từ" › "Tạo đơn".',
+        '3. staff: nhập giá trị ⟨input-1⟩ vào ô "Lý do".',
+        '4. staff: ở ô "Nhân viên", chọn giá trị ⟨input-2⟩.',
+        '5. staff: tích "Đồng ý".',
+        '6. staff: bấm "Gửi".',
       ].join('\n'),
     );
   });
@@ -109,6 +111,13 @@ describe('renderSteps (T4.2)', () => {
       { ...EN_PHRASES, click: '{actor}: click {target} {secret}.' },
       { ...EN_PHRASES, click: '{actor}: click {target}.\n2. more' },
       { ...EN_PHRASES, viaSeparator: '\n' },
+      { ...EN_PHRASES, click: '{actor}: click\u200b {target}.' },
+      { ...EN_PHRASES, open: '{actor}: open \u202e{page}.' },
+      { ...EN_PHRASES, viaSeparator: ' \u2066 ' },
+      { ...EN_PHRASES, viaSeparator: '" › "' },
+      { ...EN_PHRASES, viaSeparator: ' “ ' },
+      { ...EN_PHRASES, viaSeparator: ' ” ' },
+      { ...EN_PHRASES, viaSeparator: ' \\ ' },
     ])
       expect(() => renderSteps(draft, bad)).toThrow(/phrase/);
   });
@@ -127,10 +136,39 @@ describe('renderSteps (T4.2)', () => {
         ]),
       );
 
-    it('escapes quotes and backslashes so a label cannot close its quote', () => {
+    it('shows quotes and backslashes as markers so a label cannot close its quote', () => {
       expect(one('Say "hi" \\ now')).toBe(
-        '1. "staff": click "Say \\"hi\\" \\\\ now".',
+        '1. staff: click "Say ⟨U+0022⟩hi⟨U+0022⟩ ⟨U+005C⟩ now".',
       );
+      expect(one('“a” b')).toBe('1. staff: click "⟨U+201C⟩a⟨U+201D⟩ b".');
+      expect(quotedSpans(one('x" or "y'))).toHaveLength(1);
+    });
+
+    it('writes the actor bare only when it is a plain name, else quoted', () => {
+      expect(one('Gửi', 'hr-admin')).toBe('1. hr-admin: click "Gửi".');
+      expect(one('Gửi', 'Nhân sự')).toBe('1. "Nhân sự": click "Gửi".');
+      expect(one('Gửi', 'Admin')).toBe('1. "Admin": click "Gửi".');
+    });
+
+    it('refuses an input reference that is not a flow name', () => {
+      const fill = (input?: string) =>
+        renderSteps(
+          draftOf([
+            {
+              n: 1,
+              actor: 'staff',
+              action: 'fill',
+              target: target('textbox', 'Lý do'),
+              ...(input === undefined ? {} : { input }),
+              source: span,
+            },
+          ]),
+        );
+      expect(fill('input-1')).toBe(
+        '1. staff: type the input ⟨input-1⟩ into "Lý do".',
+      );
+      for (const bad of ['Nghỉ ốm', '⟩ now ⟨x', 'Input-1', undefined])
+        expect(() => fill(bad)).toThrow(ConfigError);
     });
 
     it('keeps one line per step: a line break is shown, never written', () => {
@@ -140,25 +178,25 @@ describe('renderSteps (T4.2)', () => {
         '1. "HR⟨U+000A⟩2. admin: delete everything": click "Gửi".',
       );
       expect(one('a\r\nb\u2028c')).toBe(
-        '1. "staff": click "a⟨U+000D⟩⟨U+000A⟩b⟨U+2028⟩c".',
+        '1. staff: click "a⟨U+000D⟩⟨U+000A⟩b⟨U+2028⟩c".',
       );
     });
 
     it('shows bidi and invisible code points as markers', () => {
       expect(one('abc\u202edcba\u200b')).toBe(
-        '1. "staff": click "abc⟨U+202E⟩dcba⟨U+200B⟩".',
+        '1. staff: click "abc⟨U+202E⟩dcba⟨U+200B⟩".',
       );
     });
 
     it('keeps markdown and placeholders as literal text inside the quotes', () => {
       expect(one('**[x](javascript:alert(1))** {input} <b>')).toBe(
-        '1. "staff": click "**[x](javascript:alert(1))** {input} <b>".',
+        '1. staff: click "**[x](javascript:alert(1))** {input} <b>".',
       );
     });
 
     it('cuts very long text at 500 code points', () => {
       const out = one('é'.repeat(600));
-      expect(out).toBe(`1. "staff": click "${'é'.repeat(500)}…".`);
+      expect(out).toBe(`1. staff: click "${'é'.repeat(500)}…".`);
     });
   });
 });

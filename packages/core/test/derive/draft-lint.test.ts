@@ -174,6 +174,50 @@ describe('lintSteps (T4.2)', () => {
     ]);
   });
 
+  it('misplaced_field: a menu path or page on a step that does not open, a target on one that does', () => {
+    expect(
+      kinds([
+        click(1, { via: ['Đơn từ'] }),
+        click(2, { page: '/requests' }),
+        {
+          n: 3,
+          actor: 'staff',
+          action: 'open',
+          page: '/requests',
+          target: {
+            role: 'button',
+            name: 'Gửi',
+            pointer: '/pages/0/controls/1',
+          },
+        },
+      ]),
+    ).toEqual([
+      [0, 'misplaced_field'],
+      [1, 'misplaced_field'],
+      [2, 'misplaced_field'],
+    ]);
+  });
+
+  it('role_mismatch: select takes a combobox or listbox, not a radio', () => {
+    const radio = appMap([
+      page('/leave', 'Nghỉ', [], ['radio:Cả ngày', 'combobox:Loại']),
+    ]);
+    const select = (name: string, role: string, i: number): DraftStep => ({
+      n: i + 1,
+      actor: 'staff',
+      action: 'select',
+      target: { role, name, pointer: `/pages/0/forms/0/fields/${i}` },
+      input: `input-${i + 1}`,
+      source: span,
+    });
+    expect(
+      lintSteps(
+        [select('Cả ngày', 'radio', 0), select('Loại', 'combobox', 1)],
+        radio,
+      ).map((p) => [p.step, p.kind]),
+    ).toEqual([[0, 'role_mismatch']]);
+  });
+
   it('duplicate_step: the same action as the step before it', () => {
     expect(kinds([click(1), click(2), fill(3), click(4)])).toEqual([
       [1, 'duplicate_step'],
