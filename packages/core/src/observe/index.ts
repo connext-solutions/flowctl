@@ -13,7 +13,7 @@ export {
   type FreeChecks,
 } from './checks/index.js';
 export { observe, type Observation, type ObserveOptions } from './crawl.js';
-export { appMapPath, writeAppMap } from './output.js';
+export { appMapPath, refuseReservedOut, writeAppMap } from './output.js';
 export { observeSummary, type ObserveSummary } from './summary.js';
 export {
   loginPath,

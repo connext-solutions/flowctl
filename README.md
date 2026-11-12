@@ -48,8 +48,9 @@ Latest release: [v0.2.0](https://github.com/connext-solutions/flowctl/releases/t
 | Stored destructive confirmations and the run ledger (CRUD flows on shared envs, `flowctl cleanup`) | done, first version |
 | Read-only replay on production, computed System 1 cost | open |
 | Observe: read-only crawler, `AppMap` and free checks (`flowctl observe`, ADR 0033) | early |
-| Derive: spec-to-map matcher and conflicts file (ADR 0034); Reconcile: read-only code index (ADR 0035); inside core, not exported yet | early |
-| Derive: drafting test cases and assertions; Reconcile: classifying failures | planned |
+| Derive: spec-to-map matcher and conflicts file (ADR 0034); inside core, not exported yet | early |
+| Reconcile: classifying a failed run and coverage gaps from a code index, a crawl and the spec (`flowctl reconcile`, ADR 0035, 0036, 0037) | early |
+| Derive: drafting test cases and assertions | planned |
 
 Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
 

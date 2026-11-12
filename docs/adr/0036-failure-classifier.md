@@ -125,3 +125,57 @@ page text, spec text and code strings come from outside flowctl.
 - **Revisit when:** the labelled corpus (T6.5) measures agreement with human labels below 80%, the
   run result carries the page URL of a failed step or the code location of a label, or spec items gain polarity;
   or triage shows control role changes (a button that became a link) are common enough to compare across roles.
+
+## Amendment 2026-11-12: `flowctl reconcile <run id>` (task T6.6)
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+Decision 1 kept the classifier inside core. It now has a caller: `flowctl reconcile`, through the core entry point
+`reconcileRun(cfg, runId, { code?, appmap?, spec? })` (`core/src/reconcile/project/`), exported from the package
+with `reconcileGaps` (ADR 0037, amendment of the same date). The CLI parses, calls it and formats.
+
+1. **Contract.** `flowctl reconcile <run id> [--code <dir>] [--appmap <file>] [--spec <dir>] [--json] [--config <path>]`.
+   It prints the run, the class and the confidence, each `basis` hit (or each `candidates` hit on a tie) with its
+   rule, class, confidence, `why` and evidence pointers (`run.json /failed/message`, `code <file>:<line>`,
+   `appmap.json /pages/2/controls/0/name`, `spec <operation> <pointer> (<doc> line <n>)`), the other hits by name,
+   the notes, and the file it wrote. Every string from the run, the code, the map or the spec goes through the CLI's
+   `terminalSafe`. `--json` prints the core `Classification` unchanged, as written to the file.
+2. **Exit codes.** `0` whenever it ran, whatever the class (a classification is advice, never a verdict, ADR 0004);
+   `2` for a usage or configuration error (both or neither of a run id and `--gaps`, `--out` without `--gaps`, a run
+   id that is not `r_` and 1 to 32 lowercase letters or digits, a missing or malformed `run.json`, a source outside
+   its root, a file that is not an `AppMap`, a containment refusal from the code index or the spec provider); `3` for
+   a trust refusal. Never `1`. The command is guarded (ADR 0025 section 3): it writes into the project's runs
+   directory.
+3. **Reading the run.** `run.json` is read from `<flowsDir>/.runs/<run id>/`, with no symlink on the way (the runs
+   directory, the run directory, the file), at most 16 MiB, and parsed by a schema of the fields the classifier
+   reads; a file whose `runId` is not the one named is refused. The run id is checked with the ledger's
+   `RUN_ID_PATTERN` before it becomes a path.
+4. **Writing.** The answer is written as `classification.json` into that run directory by `addRunArtefact`
+   (`core/src/run/`), the only writer of a run directory besides `Evidence` and only for a finished run: the
+   directory must exist and stay inside the flows directory, no component may be a symlink, and the file is written
+   through a temporary file and a rename. Invisible and control code points are written as `\u` escapes, as
+   `gaps.json` is (ADR 0037), so `--json` prints the same text. `classification.json` only copies text already in
+   `run.json` (redacted when the run was written), an `appmap.json` from the flows directory, and code and spec text
+   of the repository, so it adds no new secret; `--appmap` can copy page text from another run's map into this run
+   directory.
+5. **Roots.** `--code` opens a root of purpose `repos` and `--spec` one of purpose `specs` (ADR 0025 section 2). The
+   store schema has `roots` entries of those purposes, but no command registers one yet (`trust add root` is
+   reserved and refuses), so today the only containing root is the project root the store registers: a directory
+   whose real path is outside it is refused (exit 2) and never read. When `trust add root` exists, a registered root
+   of the matching purpose will be accepted too. The readers never enter dot folders (`.git`, `.flows`, `.auth`),
+   and a directory with a dot-prefixed component below the project root (`.flows/.runs`, `.flows/.auth`, `.git`) is
+   refused (exit 2). Every reader names a fixed reason or an error code in its errors (`not valid JSON`, `ENOENT`),
+   never the file's text or the file system's message, and opens the file `O_NOFOLLOW` and reads it from the
+   descriptor.
+6. **The spec operation.** A run records no link to a spec. The classifier gets the markdown operation whose `id`
+   equals the run's flow name exactly, and only when exactly one does; with none or several, it runs without spec
+   and a note says so. No title, path or text similarity picks one. Spec documents the provider left out are counted
+   in a note.
+7. **The map and the origins.** A map is used only when `--appmap` names one (a file inside the flows directory, not
+   under `.auth`, no symlink); none is picked by default, because a crawl of another env would change which origins
+   count as the app's. The app's origins (decision 1, `origins`) are the origin of the run env's `baseUrl` in the
+   config, plus the map's origin when a map is given, so `server-error` reaches medium without a map.
+
+**Consequences.** A person can class a run from the terminal and attach `classification.json` to a triage note. A
+code or spec folder outside the checkout cannot be used until `trust add root` exists. A flow named differently
+from its spec operation is classified without spec.

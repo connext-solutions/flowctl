@@ -1,4 +1,5 @@
 export { Evidence, type DecisionLogEntry } from './evidence.js';
+export { addRunArtefact, type LateArtefact } from './late-artefact.js';
 export { system1Metrics } from './metrics.js';
 export { fmtNet, redactEntry, type NetEntry } from './net-entry.js';
 export {

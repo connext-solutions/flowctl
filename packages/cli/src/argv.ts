@@ -33,6 +33,10 @@ export const OPTIONS = {
   profile: { type: 'string' },
   start: { type: 'string' },
   out: { type: 'string' },
+  gaps: { type: 'boolean', default: false },
+  code: { type: 'string' },
+  appmap: { type: 'string' },
+  spec: { type: 'string' },
 } as const;
 
 /** The parsed values of {@link OPTIONS}. */
@@ -91,6 +95,7 @@ export const ARITY: Record<Runnable, (n: number) => boolean> = {
   login: (n) => n === 1,
   cleanup: (n) => n === 1,
   observe: (n) => n === 0,
+  reconcile: (n) => n <= 1,
   'trust init': (n) => n === 0,
   'trust hook': (n) => n > 0,
   'trust add env': (n) => n === 1,
