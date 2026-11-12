@@ -7,9 +7,16 @@ import type { RunResult } from '../../src/result.js';
 import { outcomeOf, RunSession, type NetEntry } from '../../src/run/index.js';
 import { fixtureConfig, seedProfiles, writeFlow } from '../helpers.js';
 import { allowEnvVars, testStore } from '../trust-fixture.js';
-import { SECRET_ENV, echoFlow, withSecret } from './echo-flow.js';
+import { CHECK, SECRET_ENV, echoFlow, withSecret } from './echo-flow.js';
 import { freshSecret } from './find-secret.js';
-import { decodePng, isConsoleEvent, leaksIn, runFiles } from './scan.js';
+import {
+  consoleUrls,
+  decodePng,
+  leaksIn,
+  runFiles,
+  scrubTraceLine,
+  type Png,
+} from './scan.js';
 
 /**
  * A known secret never leaves a replay (T1.5, invariant 4, ADR 0030). A fresh secret with non-ASCII characters is
@@ -18,8 +25,9 @@ import { decodePng, isConsoleEvent, leaksIn, runFiles } from './scan.js';
  * trace zip entry unpacked) and the returned result are scanned for every form `findSecret` knows.
  *
  * @remarks Scope today: the automated form login (T1.4) is not built, so no login form is typed; a secret reaches
- *   the page only as a flow input. The trace's console events keep the URL of a failed call, query included (ADR
- *   0030 "Not covered"): that one case is marked `it.fails`.
+ *   the page only as a flow input. Two known leaks are marked `it.fails` (ADR 0030 "Not covered"): the trace's
+ *   console events keep the URL of a failed call, query included, and `final.png` shows the secret the page renders
+ *   as text.
  */
 let fixture: Fixture;
 let browser: Browser;
@@ -27,7 +35,14 @@ const secret = freshSecret();
 let result: RunResult;
 let sent: NetEntry | undefined;
 let shown: number | undefined;
-let boxes: { x: number; y: number; width: number; height: number }[] = [];
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+const boxes: Box[] = [];
+let echoBox: Box | null = null;
 
 beforeAll(async () => {
   fixture = await startFixture();
@@ -45,6 +60,12 @@ beforeAll(async () => {
       const box = await r.page.locator(sel).boundingBox();
       if (box !== null) boxes.push(box);
     }
+    echoBox = await r.page.evaluate(() => {
+      const e = document.getElementById('echo')?.getBoundingClientRect();
+      return e === undefined
+        ? null
+        : { x: e.x, y: e.y, width: e.width, height: e.height };
+    });
     sent = r.evidence.network.find((e) => e.method === 'POST');
     shown = await r.page.evaluate(() => {
       const t = document.getElementById('echo')?.textContent ?? '';
@@ -61,10 +82,11 @@ afterAll(async () => {
 
 const files = (): Map<string, Buffer> => runFiles(result.evidence.dir);
 const inTrace = (name: string): boolean => name.includes('.zip');
-const traceLines = (): string[] =>
+const traceText = (): string =>
   [...files()]
     .filter(([name]) => name.endsWith(':trace.trace'))
-    .flatMap(([, data]) => data.toString('utf8').split('\n'));
+    .map(([, data]) => data.toString('utf8'))
+    .join('\n');
 const otherTraceEntries = (): [string, Buffer][] =>
   [...files()].filter(
     ([name]) => inTrace(name) && !name.endsWith(':trace.trace'),
@@ -101,8 +123,33 @@ describe('a replay with a secret input (T1.5)', () => {
     expect(leaksIn([['result', JSON.stringify(result)]], secret)).toEqual([]);
   });
 
-  it('leaves no form of the secret in the trace outside its console events: no element preview, no evaluated result', () => {
-    const trace = traceLines().filter((l) => !isConsoleEvent(l));
+  it('unpacked the trace: a recorded action names the button the flow clicks', () => {
+    const before = traceText()
+      .split('\n')
+      .flatMap((l): unknown[] => {
+        try {
+          return [JSON.parse(l)];
+        } catch {
+          return [];
+        }
+      })
+      .filter(
+        (v) =>
+          typeof v === 'object' &&
+          v !== null &&
+          'type' in v &&
+          v.type === 'before' &&
+          'params' in v &&
+          typeof v.params === 'object' &&
+          v.params !== null &&
+          'selector' in v.params &&
+          String(v.params.selector).includes(CHECK.name),
+      );
+    expect(before.length).toBeGreaterThan(0);
+  });
+
+  it('leaves no form of the secret in the trace but a console source URL: no element preview, no evaluated result', () => {
+    const trace = traceText().split('\n').map(scrubTraceLine);
     expect(trace.length).toBeGreaterThan(0);
     expect(
       leaksIn(
@@ -120,22 +167,45 @@ describe('a replay with a secret input (T1.5)', () => {
    *
    * @see the T1.5 report, issue draft "A safe trace keeps a secret that the app puts in a URL"
    */
-  it.fails('leaves no form of the secret in the console events of the trace', () => {
-    const lines = traceLines().filter(isConsoleEvent);
+  it.fails('leaves no form of the secret in the source URLs of the trace console events', () => {
+    const urls = consoleUrls(traceText());
+    expect(urls.length).toBeGreaterThan(0);
     expect(
       leaksIn(
-        lines.map((l, i) => [`console line ${i}`, l]),
+        urls.map((u, i) => [`console source URL ${i}`, u]),
         secret,
       ),
     ).toEqual([]);
   });
 
-  it('paints the mask over the password fields and the field holding the secret in final.png', () => {
+  it('paints the mask colour on every pixel of the password fields and the field holding the secret in final.png', () => {
     const png = decodePng(readFileSync(join(result.evidence.dir, 'final.png')));
     expect(boxes).toHaveLength(3);
-    for (const b of boxes) {
-      const [r, g, bl] = png.rgb(b.x + b.width / 2, b.y + b.height / 2);
-      expect({ r, g, b: bl }).toEqual({ r: 255, g: 0, b: 255 });
-    }
+    for (const b of boxes) expect(unmasked(png, b)).toEqual([]);
+  });
+
+  /**
+   * Known gap: `final.png` masks fields only, so the secret the page shows as text ("Đã nhận: …" in `#echo`) is in
+   * the picture (ADR 0030 "Not covered", "Elsewhere": a secret the app renders as text outside a field). The box is
+   * read with `page.evaluate`, which returns only numbers: `locator.boundingBox` would log a preview of the element,
+   * secret included, into the trace the scans above read.
+   */
+  it.fails('masks the secret the page renders as text', () => {
+    const png = decodePng(readFileSync(join(result.evidence.dir, 'final.png')));
+    expect(echoBox).not.toBeNull();
+    if (echoBox !== null) expect(unmasked(png, echoBox)).toEqual([]);
   });
 });
+
+/** The mask colour flowctl paints over fields in `final.png`. */
+const MASK = [255, 0, 255].join();
+
+/** Up to 10 pixels of `b`, inset by 2 px against anti-aliased edges, whose colour is not the mask colour. */
+function unmasked(png: Png, b: Box): string[] {
+  const out: string[] = [];
+  for (let y = Math.ceil(b.y + 2); y < Math.floor(b.y + b.height - 2); y++)
+    for (let x = Math.ceil(b.x + 2); x < Math.floor(b.x + b.width - 2); x++)
+      if (png.rgb(x, y).join() !== MASK && out.length < 10)
+        out.push(`${x},${y}`);
+  return out;
+}

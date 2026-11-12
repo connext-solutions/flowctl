@@ -69,7 +69,7 @@ superseded_by: "0007"  # only when status: superseded
 | [0027](0027-mcp-server-package.md) | The MCP server is its own package on the v2 MCP SDK; every tool is guarded | accepted |
 | [0028](0028-test-tiers-and-ci.md) | Four test tiers; local gates and CI run the same verify; the contract tier stays manual | accepted |
 | [0029](0029-public-upstream-private-overlay.md) | flowctl is an Apache-2.0 public repo; company-specific tools live in a private overlay | proposed |
-| [0030](0030-evidence-safe-to-share.md) | Evidence is safe to share by default; a full trace is an explicit opt-in | proposed |
+| [0030](0030-evidence-safe-to-share.md) | Evidence is safe to share by default; a full trace is an explicit opt-in (amended 2026-11-12: a safe trace records `page`/`frame.evaluate` and `evaluateAll` results and `locator.evaluate` element previews; page text is read through CDP or compared in the page) | proposed |
 | [0031](0031-github-release-tarballs.md) | Releases are GitHub Releases with npm tarballs; no npm registry | accepted |
 | [0032](0032-demo-video.md) | Demo videos: an opt-in replay recording with a step overlay that assertions cannot see | accepted |
 | [0033](0033-read-only-crawl.md) | Observe crawls read-only and breadth-first; a page is a path; a refused request is an observation (amended 2026-11-12: free checks, exit 1) | accepted |

@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import { startFixture } from '../src/index.js';
 
@@ -60,6 +61,48 @@ describe('fixture app', () => {
       });
       expect(r.status).toBe(200);
       expect(await r.text()).toContain('Lưu nháp');
+    } finally {
+      await f.close();
+    }
+  });
+
+  it('echoes a body whose character is split across chunks, and answers 400 to a body that is not JSON', async () => {
+    const f = await startFixture();
+    try {
+      const u = new URL(`${f.url}/api/echo?q=x`);
+      const send = (
+        parts: Buffer[],
+      ): Promise<{ status: number; body: string }> =>
+        new Promise((resolve, reject) => {
+          const req = request(
+            u,
+            { method: 'POST', headers: { cookie: 'role=employee' } },
+            (res) => {
+              const chunks: Buffer[] = [];
+              res.on('data', (c: Buffer) => chunks.push(c));
+              res.on('end', () =>
+                resolve({
+                  status: res.statusCode ?? 0,
+                  body: Buffer.concat(chunks).toString('utf8'),
+                }),
+              );
+            },
+          );
+          req.on('error', reject);
+          req.write(parts[0]);
+          setTimeout(() => req.end(parts[1]), 20);
+        });
+      const bytes = Buffer.from(JSON.stringify({ matKhau: 'Đ€', ghiChu: 'a' }));
+      const cut = bytes.indexOf(Buffer.from('€')) + 1;
+      const echoed = await send([bytes.subarray(0, cut), bytes.subarray(cut)]);
+      expect(echoed.status).toBe(422);
+      expect(JSON.parse(echoed.body)).toEqual({
+        daNhan: 'Đ€',
+        ghiChu: 'a',
+        q: 'x',
+      });
+      const bad = await send([Buffer.from('{"matKhau":'), Buffer.from('')]);
+      expect(bad.status).toBe(400);
     } finally {
       await f.close();
     }

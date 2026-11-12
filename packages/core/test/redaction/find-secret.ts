@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 /**
  * Finding a secret in output bytes, in every form a leak can take (T1.5): as typed, inside base64 at each of the
  * three byte offsets (standard and URL-safe alphabets), URL-encoded, JSON-escaped, HTML-escaped, as hex, and cut
- * to a prefix or a suffix. The redaction suite runs it over every file, request body and line a run produces.
+ * to a prefix or a suffix, the prefix's ASCII part also as hex and base64. The redaction suite runs it over every file, request body and line a run produces.
  */
 
 /** The shortest prefix or suffix of the secret that counts as a leak. */
@@ -55,9 +55,19 @@ function htmlEscape(secret: string, escape: (ch: string) => string): string {
     .join('');
 }
 
+/** The leading printable-ASCII characters of `chars`, up to the first other one. */
+function asciiPrefix(chars: string[]): string {
+  const stop = chars.findIndex((c) => !/^[\x20-\x7e]$/.test(c));
+  return chars.slice(0, stop === -1 ? chars.length : stop).join('');
+}
+
 /**
  * The byte strings that reveal `secret`, by form name. Forms the secret makes equal (`json` and `plain` when it has
  * nothing to escape) are each still listed, so a hit names every form it matches.
+ *
+ * @remarks The prefix is also listed as hex and base64 (`prefix-hex`, `prefix-base64+N`, ...) when its leading ASCII
+ *   part has at least {@link MIN_PART} characters: a value cut before it is encoded leaves no full-secret form. Only
+ *   the ASCII part, whose bytes are the same in every common encoding of the text.
  */
 export function secretForms(secret: string): Map<string, Buffer> {
   const bytes = utf8(secret);
@@ -80,12 +90,24 @@ export function secretForms(secret: string): Map<string, Buffer> {
     ['prefix', chars.slice(0, part).join('')],
     ['suffix', chars.slice(-part).join('')],
   ];
-  for (const offset of [0, 1, 2]) {
-    const core = base64Core(bytes, offset);
+  const encoded = (name: string, b: Buffer): void => {
+    for (const offset of [0, 1, 2]) {
+      const core = base64Core(b, offset);
+      forms.push(
+        [`${name}base64+${offset}`, core],
+        [`${name}base64url+${offset}`, toUrlSafe(core)],
+      );
+    }
+  };
+  encoded('', bytes);
+  const ascii = asciiPrefix(chars.slice(0, part));
+  if (ascii.length >= MIN_PART) {
+    const b = utf8(ascii);
     forms.push(
-      [`base64+${offset}`, core],
-      [`base64url+${offset}`, toUrlSafe(core)],
+      ['prefix-hex', b.toString('hex')],
+      ['prefix-hex-upper', b.toString('hex').toUpperCase()],
     );
+    encoded('prefix-', b);
   }
   return new Map(forms.map(([name, form]) => [name, utf8(form)]));
 }

@@ -60,14 +60,57 @@ export function runFiles(dir: string): Map<string, Buffer> {
   return out;
 }
 
-/** Whether a line of a trace's `trace.trace` is a console event (with the source location of the message). */
-export const isConsoleEvent = (line: string): boolean =>
-  line.includes('"type":"console"');
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** A trace line as JSON, or `undefined` when it is not a JSON object. */
+function parseLine(line: string): Record<string, unknown> | undefined {
+  try {
+    const v: unknown = JSON.parse(line);
+    return isRecord(v) ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The `location` object of a console event line, or `undefined` for any other line. */
+function consoleLocation(
+  v: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const loc = v?.['type'] === 'console' ? v['location'] : undefined;
+  return isRecord(loc) ? loc : undefined;
+}
 
 /**
- * Every file under `dir` as {@link runFiles} lists it, with each `trace.trace` split into lines and its console
- * events left out: Playwright records them with their source URL, which holds a secret the app put in a query
- * (the `it.fails` case of `replay.browser.test.ts`, ADR 0030 "Not covered").
+ * A line of a trace's `trace.trace` as the suite scans it: a console event without its `location.url`, every other
+ * line (an unparsable one included) as it is.
+ *
+ * @remarks The one known leak of a safe trace: Playwright records each console message with its source location,
+ *   and a browser "Failed to load resource" message is located at the call's URL, query included (ADR 0030 "Not
+ *   covered"). The `it.fails` case of `replay.browser.test.ts` scans exactly those URLs ({@link consoleUrls}); the
+ *   rest of the console event, its text included, is scanned like any other line.
+ */
+export function scrubTraceLine(line: string): string {
+  const v = parseLine(line);
+  const loc = consoleLocation(v);
+  if (loc === undefined || !('url' in loc)) return line;
+  const rest = Object.fromEntries(
+    Object.entries(loc).filter(([k]) => k !== 'url'),
+  );
+  return JSON.stringify({ ...v, location: rest });
+}
+
+/** The `location.url` of every console event of a `trace.trace` text. */
+export function consoleUrls(trace: string): string[] {
+  return trace.split('\n').flatMap((l) => {
+    const url = consoleLocation(parseLine(l))?.['url'];
+    return typeof url === 'string' ? [url] : [];
+  });
+}
+
+/**
+ * Every file under `dir` as {@link runFiles} lists it, with each `trace.trace` split into lines, each scrubbed by
+ * {@link scrubTraceLine}.
  */
 export function runOutputs(dir: string): [string, Uint8Array | string][] {
   return [...runFiles(dir)].flatMap(
@@ -76,8 +119,7 @@ export function runOutputs(dir: string): [string, Uint8Array | string][] {
         ? data
             .toString('utf8')
             .split('\n')
-            .filter((l) => !isConsoleEvent(l))
-            .map((l, i) => [`${name} line ${i}`, l])
+            .map((l, i) => [`${name} line ${i}`, scrubTraceLine(l)])
         : [[name, data]],
   );
 }

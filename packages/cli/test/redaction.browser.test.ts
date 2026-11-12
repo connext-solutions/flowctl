@@ -24,8 +24,8 @@ import { fixtureProject } from './helpers.js';
  * summary quotes it, and lists the refused call. Captured stdout and stderr of the text and `--json` summaries, and
  * every file the runs wrote, are scanned with `findSecret` (core's `test/redaction/`).
  *
- * @remarks Scope today: no automated form login (T1.4). Trace console events are left out of the file scan (the
- *   `it.fails` case in core's `test/redaction/replay.browser.test.ts`).
+ * @remarks Scope today: no automated form login (T1.4). Trace lines are scanned as `scrubTraceLine` in core's
+ *   `test/redaction/scan.ts` leaves them, which says what it leaves out and why.
  */
 let fixture: Fixture;
 let file: string;

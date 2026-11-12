@@ -11,7 +11,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
  *   the status region.
  * - `POST /api/echo` answers 422 with `{ "daNhan": <matKhau>, "ghiChu": <ghiChu>, "q": <q> }`, every non-ASCII
  *   character written as a `\u` escape, as a server that escapes non-ASCII output does. A refusal that quotes the
- *   input back is the answer whose body a run keeps (only answers of 400 and above are read).
+ *   input back is the answer whose body a run keeps (only answers of 400 and above are read). A body that is not
+ *   JSON answers 400.
  *
  * No field name is a credential name, so only matching the typed value itself can mask it.
  */
@@ -63,9 +64,17 @@ export async function echoRoute(
     return true;
   }
   if (req.method !== 'POST' || url.pathname !== '/api/echo') return false;
-  let data = '';
-  for await (const chunk of req) data += String(chunk);
-  const parsed: unknown = data === '' ? {} : JSON.parse(data);
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  const data = Buffer.concat(chunks).toString('utf8');
+  let parsed: unknown;
+  try {
+    parsed = data === '' ? {} : JSON.parse(data);
+  } catch {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end('{"message":"not JSON"}');
+    return true;
+  }
   const body = new Map(
     typeof parsed === 'object' && parsed !== null ? Object.entries(parsed) : [],
   );

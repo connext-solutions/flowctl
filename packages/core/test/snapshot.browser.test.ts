@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -8,6 +11,7 @@ import {
 } from '../src/browser/index.js';
 import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { openAs } from './helpers.js';
+import { unzip } from './redaction/scan.js';
 
 let fixture: Fixture;
 let browser: Browser;
@@ -24,6 +28,31 @@ const find = (s: PageSnapshot, name: string) =>
   s.controls.find((c) => c.name === name);
 
 describe('takeSnapshot', () => {
+  it('names the exception when the snapshot script throws', async () => {
+    const page = await browser.newPage();
+    await page.setContent('<button>Gửi</button>');
+    await expect(takeSnapshot(page, ['[[['])).rejects.toThrow(
+      /snapshot failed: SyntaxError: .*not a valid selector/,
+    );
+    await page.close();
+  });
+
+  it('reads through one CDP session per page, across navigations', async () => {
+    const context = await browser.newContext();
+    await context.tracing.start({ screenshots: false, snapshots: false });
+    const page = await context.newPage();
+    await page.setContent('<button>Gửi</button>');
+    expect(find(await takeSnapshot(page), 'Gửi')).toBeDefined();
+    await page.goto(`${fixture.url}/login`);
+    await takeSnapshot(page);
+    await page.setContent('<button>Lưu</button>');
+    expect(find(await takeSnapshot(page), 'Lưu')).toBeDefined();
+    const zip = join(mkdtempSync(join(tmpdir(), 'flowctl-snap-')), 't.zip');
+    await context.tracing.stop({ path: zip });
+    await context.close();
+    const trace = unzip(readFileSync(zip)).get('trace.trace')?.toString();
+    expect(trace?.match(/"method":"newCDPSession"/g)).toHaveLength(1);
+  });
   it('lists visible controls with the operations they allow', async () => {
     const page = await openAs(browser, fixture.url, '/requests');
     const s = await takeSnapshot(page);

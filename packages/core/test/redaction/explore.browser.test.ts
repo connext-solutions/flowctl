@@ -29,11 +29,11 @@ import { leaksIn, runOutputs } from './scan.js';
  * ADR 0006, ADR 0030). The orchestrator types the secret input into the password field "Mật khẩu" (password
  * fields never reach a snapshot, so System 1 cannot pick them); the fake System 1 has it typed into "Ghi chú" by its
  * key, then sends the form, so the page shows the secret, its URL holds it and a call carries it. Every file of both
- * run directories, the saved flow, the results and every request body the fake System 1 received are scanned.
+ * run directories, the saved flow, the results and every request the fake System 1 received (URL, headers and body
+ * as they arrived) are scanned.
  *
- * @remarks Scope today: no automated form login (T1.4); a secret reaches the page only as a flow input. The trace's
- *   console events keep a failed call's URL (ADR 0030 "Not covered", the `it.fails` case of `replay.browser.test.ts`),
- *   so trace entries are scanned outside console events here.
+ * @remarks Scope today: no automated form login (T1.4); a secret reaches the page only as a flow input. Trace lines
+ *   are scanned as `scrubTraceLine` in `scan.ts` leaves them, which says what it leaves out and why.
  */
 let fixture: Fixture;
 let browser: Browser;
@@ -90,17 +90,17 @@ describe('an exploration with a secret input, and its save (T1.5)', () => {
     expect(JSON.stringify(s1.requests)).toContain('***');
   });
 
-  it('sends System 1 no form of the secret in any request body', () => {
-    const bodies = s1.requests.map((b, i): [string, string] => [
+  it('sends System 1 no form of the secret in any request, URL and headers included', () => {
+    expect(s1.raw).toHaveLength(s1.requests.length);
+    const sent = s1.raw.map((r, i): [string, string] => [
       `System 1 request ${i}`,
-      JSON.stringify(b),
+      r,
     ]);
-    expect(leaksIn(bodies, secret)).toEqual([]);
+    expect(leaksIn(sent, secret)).toEqual([]);
   });
 
   it('never shows System 1 a password field or its value, not even one the run did not type', () => {
-    for (const body of s1.requests) {
-      const text = JSON.stringify(body);
+    for (const text of s1.raw) {
       expect(findSecret(text, ECHO_PREFILL)).toEqual([]);
       expect(text).not.toContain(`] ${PASSWORD.name}`);
       expect(text).not.toContain('] Mã cũ');

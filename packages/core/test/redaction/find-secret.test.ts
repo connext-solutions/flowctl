@@ -46,6 +46,39 @@ describe('findSecret', () => {
     },
   );
 
+  it.each([0, 1, 2])(
+    'finds the ASCII prefix inside base64 when it starts %i bytes into the encoded stream, in both alphabets',
+    (offset) => {
+      const blob = Buffer.concat([
+        Buffer.from([0xfb, 0xff, 0xfe].slice(0, offset)),
+        Buffer.from(`${SECRET.slice(0, 12)}#cut#`),
+      ]);
+      const b64 = blob.toString('base64');
+      const url = b64.replaceAll('+', '-').replaceAll('/', '_');
+      expect(findSecret(b64, SECRET)).toContain(`prefix-base64+${offset}`);
+      expect(findSecret(url, SECRET)).toContain(`prefix-base64url+${offset}`);
+      expect(findSecret(b64, SECRET).some((f) => f.startsWith('base64'))).toBe(
+        false,
+      );
+    },
+  );
+
+  it('finds the ASCII prefix as hex, in either case', () => {
+    const hex = Buffer.from(`${SECRET.slice(0, 12)}#cut#`).toString('hex');
+    expect(findSecret(embed(hex), SECRET)).toContain('prefix-hex');
+    expect(findSecret(embed(hex.toUpperCase()), SECRET)).toContain(
+      'prefix-hex-upper',
+    );
+    expect(findSecret(embed(hex), SECRET)).not.toContain('hex');
+  });
+
+  it('lists no encoded prefix forms when the prefix has fewer than eight ASCII characters', () => {
+    const forms = secretForms('Đ€Đ€Đ€Đ€Đ€-abcdefgh-ĐĐĐĐĐĐ');
+    expect([...forms.keys()].filter((k) => k.startsWith('prefix-'))).toEqual(
+      [],
+    );
+  });
+
   it('finds the form and JSON escapes of a secret with spaces and HTML-special characters', () => {
     const sent = new URLSearchParams({ a: SPACED }).toString();
     expect(findSecret(sent, SPACED)).toContain('url-form');
@@ -71,6 +104,8 @@ describe('findSecret', () => {
       maskSecrets(embed(SECRET), [SECRET]),
       Buffer.from('S3cr3t-a1b2X3d4-e5f6-Đ€').toString('base64'),
       Buffer.from('S3cr3t-a1b2').toString('hex'),
+      Buffer.from('S3cr3t-a1b2').toString('base64'),
+      Buffer.from('S3cr3t-a1b2X').toString('base64'),
     ];
     for (const d of decoys) expect(findSecret(d, SECRET), d).toEqual([]);
   });
@@ -79,6 +114,9 @@ describe('findSecret', () => {
     const forms = secretForms(freshSecret());
     expect(
       [...forms.keys()].filter((k) => k.startsWith('base64')),
+    ).toHaveLength(6);
+    expect(
+      [...forms.keys()].filter((k) => k.startsWith('prefix-base64')),
     ).toHaveLength(6);
     for (const name of ['prefix', 'suffix'])
       expect(forms.get(name)?.toString('utf8').length).toBeGreaterThanOrEqual(

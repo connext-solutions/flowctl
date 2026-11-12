@@ -93,14 +93,49 @@ const describeHits = (hits: NetEntry[], all: readonly NetEntry[]): string =>
         'network.json',
       ).join('; ');
 
+/** How long a `text` check waits for the page to answer one read before it counts as not holding. */
+export const TEXT_READ_MS = 1000;
+
+/** What the page answers to one `text` check: how many elements the region matched, and of the first one. */
+interface TextRead {
+  n: number;
+  ok: boolean;
+  chars: number;
+}
+
+/**
+ * Runs `read`, giving up after {@link TEXT_READ_MS}; `undefined` when it failed or timed out.
+ *
+ * @remarks A read that times out keeps running in the page; its late answer or error is dropped.
+ */
+async function readWithin(
+  read: Promise<TextRead>,
+): Promise<TextRead | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      read.catch(() => undefined),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), TEXT_READ_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Whether the visible text of the page, or of the one visible element `within` names, contains `text`.
  *
  * @remarks `within` must match exactly one visible element, like a step's locator; none or several fail with the
- *   count, so a region that is not there never passes by accident. The page compares its own text and returns only
- *   whether it holds `text` and its length: a Playwright trace records an `evaluateAll` call's argument (the
- *   assertion's text, from the flow) and result, never the page text, and unlike `evaluate` it logs no preview of
- *   the resolved element with its text, so the page's text stays out of a safe trace (ADR 0030, T1.5).
+ *   count, so a region that is not there never passes by accident. The count and the comparison are one
+ *   `evaluateAll`, so they see the same document, and the read gives up after {@link TEXT_READ_MS} (a page whose
+ *   script holds the main thread fails the check instead of stalling the run). The comparison runs in the page with
+ *   the page's built-ins (`innerText`, `String.prototype.includes`), which a page script can replace. The page
+ *   returns only the count, whether the region holds `text` and its length: a Playwright trace records an
+ *   `evaluateAll` call's argument (the assertion's text, from the flow) and result, never the page text, and unlike
+ *   `evaluate` it logs no preview of the resolved element with its text, so the page's text stays out of a safe
+ *   trace (ADR 0030 and its amendment 2026-11-12, T1.5).
  */
 async function checkText(
   text: string,
@@ -111,23 +146,25 @@ async function checkText(
     within === undefined
       ? ctx.page.locator('body')
       : visibleOnly(toPlaywright(ctx.page, within, ctx.testIdAttribute));
-  if (within !== undefined) {
-    const n = await region.count();
-    if (n !== 1)
-      return {
-        ok: false,
-        got: `<${describeLoc(within)} matched ${n} elements>`,
-      };
-  }
-  const shown = await region
-    .evaluateAll((els, want) => {
-      const e = els[0];
-      const t = e instanceof HTMLElement ? e.innerText : '';
-      return { ok: t.includes(want), chars: t.length };
-    }, text)
-    .catch(() => ({ ok: false, chars: 0 }));
   const where =
     within === undefined ? 'visible page text' : describeLoc(within);
+  const shown = await readWithin(
+    region.evaluateAll((els, want) => {
+      const e = els[0];
+      const t = e instanceof HTMLElement ? e.innerText : '';
+      return { n: els.length, ok: t.includes(want), chars: t.length };
+    }, text),
+  );
+  if (shown === undefined)
+    return {
+      ok: false,
+      got: `<${where} could not be read in ${TEXT_READ_MS} ms>`,
+    };
+  if (within !== undefined && shown.n !== 1)
+    return {
+      ok: false,
+      got: `<${describeLoc(within)} matched ${shown.n} elements>`,
+    };
   return {
     ok: shown.ok,
     got: `${where} does not contain it (${shown.chars} chars)`,

@@ -1,3 +1,4 @@
+import { request } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   FAKE_TARGET_WAITS,
@@ -102,5 +103,37 @@ describe('fake System 1', () => {
     s1 = await startFakeSystem1([{ op: 'DONE' }], { status: 503 });
     expect((await post(s1.url, body(['DONE'], {}))).status).toBe(503);
     expect((await post(s1.url, body(['DONE'], {}), '')).status).toBe(401);
+  });
+
+  it('keeps each request raw (URL, headers, body text), a character split across chunks included', async () => {
+    s1 = await startFakeSystem1([{ op: 'DONE' }]);
+    const text = JSON.stringify(body(['DONE'], { 1: 'Đ€ Gửi' }));
+    const bytes = Buffer.from(text);
+    const cut = bytes.indexOf(Buffer.from('€')) + 1;
+    const u = new URL(`${s1.url}/v1/systemone`);
+    await new Promise<void>((resolve, reject) => {
+      const req = request(
+        u,
+        {
+          method: 'POST',
+          headers: { authorization: 'Bearer k' },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', resolve);
+        },
+      );
+      req.on('error', reject);
+      req.write(bytes.subarray(0, cut));
+      setTimeout(() => req.end(bytes.subarray(cut)), 20);
+    });
+    expect(s1.raw).toHaveLength(1);
+    const raw: unknown = JSON.parse(s1.raw[0] ?? '');
+    expect(raw).toMatchObject({
+      url: '/v1/systemone',
+      headers: { authorization: 'Bearer k' },
+      body: text,
+    });
+    expect(s1.requests).toEqual([JSON.parse(text)]);
   });
 });
