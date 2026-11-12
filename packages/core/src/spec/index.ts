@@ -27,6 +27,7 @@ export {
   SpecDocError,
 } from './markdown/index.js';
 export {
+  containsAtBoundaries,
   INVISIBLE_CLASS,
   normText,
   occurrences,

@@ -20,3 +20,10 @@ export const describeLoc = (loc: Loc): string =>
   loc.testId !== undefined
     ? `testId=${loc.testId}`
     : `${loc.role ?? '?'} "${loc.name ?? ''}"`;
+
+/**
+ * The message of a `not_found` step failure in `run.json`: `button "Gửi" not found`. The failure classifier reads the
+ * role and name back from it (ADR 0036), so this format is pinned by its tests.
+ */
+export const notFoundMessage = (loc: Loc): string =>
+  `${describeLoc(loc)} not found`;
