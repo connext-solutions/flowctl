@@ -77,3 +77,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0035](0035-code-index.md) | The code index walks contained files with a lexer; it never runs git | accepted |
 | [0036](0036-failure-classifier.md) | The failure classifier applies fixed rules with cited evidence, and reports a tie instead of breaking it | accepted |
 | [0037](0037-coverage-gaps.md) | Coverage gaps join code routes, crawled pages and spec operations by fixed rules, and say what may explain each gap | accepted |
+| [0038](0038-case-drafter.md) | The case drafter writes only grounded steps from fixed verb rules; the rest is a gap | accepted |
