@@ -34,6 +34,7 @@ import {
 } from './argv.js';
 import { waitForLogin } from './login-wait.js';
 import { observeCmd } from './observe-cmd.js';
+import { reconcileCmd } from './reconcile-cmd.js';
 import {
   formatCleanup,
   formatSummary,
@@ -165,6 +166,7 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
   },
   observe: ({ cfg, values, trusted }) =>
     observeCmd(cfg, values, trusted?.store, write),
+  reconcile: ({ cfg, args, values }) => reconcileCmd(cfg, args, values, write),
   'trust init': ({ cfg, values }) => {
     (values.replace ? trustReplace : trustInit)(
       cfg,

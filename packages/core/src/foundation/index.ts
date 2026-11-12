@@ -21,6 +21,8 @@ export {
 export {
   assertNotSymlink,
   ensureDirInside,
+  NoFollowReadError,
+  readFileNoFollow,
   writeFileNoFollow,
 } from './safe-fs.js';
 export { isPrivateHost } from './hosts.js';

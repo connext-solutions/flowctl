@@ -140,5 +140,20 @@ export {
   type ObserveSummary,
 } from './observe/index.js';
 export { saveExploration, type SaveOptions, type SaveResult } from './save.js';
+export {
+  type ClassEvidence,
+  type Classification,
+  type CoverageGap,
+  type CoverageGaps,
+  type FailureClass,
+  GAP_KINDS,
+  type GapKind,
+  type GapsReconciled,
+  reconcileGaps,
+  reconcileRun,
+  type ReconcileSources,
+  type RuleHit,
+  type RunReconciled,
+} from './reconcile/index.js';
 export { StepError, perform } from './browser/index.js';
 export { TRUST_SUBCOMMANDS } from './foundation/index.js';

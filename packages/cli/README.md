@@ -8,6 +8,8 @@ flowctl replay [name...] [--tag <tag>] [--env <env>] [--repeat <n>] [--heal [--a
 flowctl login <profile> [--env <env>] [--config <path>]
 flowctl cleanup <run id> [--json] [--config <path>]
 flowctl observe [--env <env>] [--profile <profile>] [--start <path>] [--json] [--out <file.json>] [--config <path>]
+flowctl reconcile <run id> [--code <dir>] [--appmap <file>] [--spec <dir>] [--json] [--config <path>]
+flowctl reconcile --gaps [--code <dir>] [--appmap <file>] [--spec <dir>] [--out <dir>] [--json] [--config <path>]
 flowctl trust init [--replace] [--anchor-dir <abs dir>] [--config <path>]
 flowctl trust hook <name...> [--hook-env NAME] [--pin NAME=VALUE] [--config <path>]
 flowctl trust add env <env> [--config <path>]
@@ -26,7 +28,7 @@ exits `3` with `trust_missing` before touching any file. The list lives in `COMM
 | Exit code | Meaning |
 |---|---|
 | `0` | every run passed, or usage was requested with `--help` / `-h` as the first argument |
-| `1` | a run failed or a flow is flaky; for `observe`, a free check failed |
+| `1` | a run failed or a flow is flaky; for `observe`, a free check failed; never for `reconcile` |
 | `2` | an infrastructure error (config, app unreachable, expired profile, System 1 unreachable, hooks without consent, a `ledger_*` error), a run that left records it created on a shared env (`cleanup_incomplete`), or a usage error |
 | `3` | a trust refusal: no store or project not registered (`trust_missing`), no terminal, tampered store, wrong passphrase, refused env name or class |
 
@@ -59,6 +61,19 @@ most 20 pages with no answer, a 4xx/5xx or a refused request, `checks`: status, 
 file, `budget`, `file`, `out`). It has no top-level `status`, since a map is not a verdict; the checks are. It exits
 `0` when the crawl finished and every check passed, `1` when a free check failed, and `2` when the run ended in an
 error (no checks are run then; ADR 0033, amendment).
+
+`flowctl reconcile <run id>` (early) classes a failed or errored run of this project as `product_bug`,
+`spec_drift`, `stale_test`, `environment` or `unknown` (ADR 0036): it reads `.runs/<run id>/run.json` (the id is checked
+before it becomes a path; no symlink is followed), and optionally a code index of `--code <dir>`, an `AppMap`
+(`--appmap <file>`, inside the flows directory) and a markdown spec folder (`--spec <dir>`, whose operation with the
+flow's name as its `id` is used, or none, with a note). `--code` and `--spec` must be inside the project root until
+`trust add root` exists. It prints the class, the confidence, each hit it stands on with its reason and evidence
+pointers (escaped), and writes `classification.json` into the run directory; `--json` prints the core
+`Classification`. `flowctl reconcile --gaps` writes the coverage gaps between the code, one crawl (`--appmap`, or the
+latest run's `appmap.json`) and the spec as `gaps.json` and `gaps.md` into `--out <dir>` (default `<flows>/gaps`,
+contained like `observe --out`, never over a file that is not a gaps report), and prints a count per checked kind and
+the kinds not checked (ADR 0037). Both are advice, never a verdict: they exit `0` whenever they ran and `2` on a usage,
+config or containment error (ADR 0036 and 0037, amendments 2026-11-12).
 
 `flowctl login` opens a headed browser; finish with Enter in a terminal or by closing the window (the
 only way without a TTY). It refuses to save a session that never left the login page.

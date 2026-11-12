@@ -31,6 +31,7 @@ const ARGV: Record<Guarded, string[]> = {
   login: ['login', 'manager'],
   cleanup: ['cleanup', 'r_lq3k2a1b9f0e'],
   observe: ['observe'],
+  reconcile: ['reconcile', 'r_lq3k2a1b9f0e'],
   'trust hook': ['trust', 'hook', 'leave-approve'],
   'trust add env': ['trust', 'add', 'env', 'local'],
   'trust add profile': [
