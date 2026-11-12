@@ -154,12 +154,19 @@ with `reconcileGaps` (ADR 0037, amendment of the same date). The CLI parses, cal
    (`core/src/run/`), the only writer of a run directory besides `Evidence` and only for a finished run: the
    directory must exist and stay inside the flows directory, no component may be a symlink, and the file is written
    through a temporary file and a rename. Invisible and control code points are written as `\u` escapes, as
-   `gaps.json` is (ADR 0037), so `--json` prints the same text.
+   `gaps.json` is (ADR 0037), so `--json` prints the same text. `classification.json` only copies text already in
+   `run.json` (redacted when the run was written), an `appmap.json` from the flows directory, and code and spec text
+   of the repository, so it adds no new secret; `--appmap` can copy page text from another run's map into this run
+   directory.
 5. **Roots.** `--code` opens a root of purpose `repos` and `--spec` one of purpose `specs` (ADR 0025 section 2). The
    store schema has `roots` entries of those purposes, but no command registers one yet (`trust add root` is
    reserved and refuses), so today the only containing root is the project root the store registers: a directory
    whose real path is outside it is refused (exit 2) and never read. When `trust add root` exists, a registered root
-   of the matching purpose will be accepted too. The readers never enter dot folders (`.git`, `.flows`, `.auth`).
+   of the matching purpose will be accepted too. The readers never enter dot folders (`.git`, `.flows`, `.auth`),
+   and a directory with a dot-prefixed component below the project root (`.flows/.runs`, `.flows/.auth`, `.git`) is
+   refused (exit 2). Every reader names a fixed reason or an error code in its errors (`not valid JSON`, `ENOENT`),
+   never the file's text or the file system's message, and opens the file `O_NOFOLLOW` and reads it from the
+   descriptor.
 6. **The spec operation.** A run records no link to a spec. The classifier gets the markdown operation whose `id`
    equals the run's flow name exactly, and only when exactly one does; with none or several, it runs without spec
    and a note says so. No title, path or text similarity picks one. Spec documents the provider left out are counted

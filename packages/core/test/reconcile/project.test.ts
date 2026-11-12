@@ -8,7 +8,13 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { type LoadedConfig, parseConfig, runsPath } from '../../src/config.js';
+import {
+  ConfigError,
+  type LoadedConfig,
+  parseConfig,
+  runsPath,
+} from '../../src/config.js';
+import { addRunArtefact } from '../../src/run/index.js';
 import type { AppMap } from '../../src/observe/index.js';
 import {
   CoverageGapsSchema,
@@ -204,6 +210,22 @@ describe('reconcileGaps', () => {
     expect(existsSync(r.files.markdown)).toBe(true);
   });
 
+  it('refuses an --appmap with a ConfigError when the flows directory does not exist', async () => {
+    const root = tmp();
+    const cfg = parseConfig(
+      {
+        defaultEnv: 'local',
+        envs: { local: { baseUrl: 'http://127.0.0.1:9', loginUrl: '/login' } },
+        profiles: { employee: {} },
+      },
+      root,
+    );
+    const file = put(root, 'map.json', JSON.stringify(map(['/'])));
+    await expect(reconcileGaps(cfg, { appmap: file })).rejects.toThrow(
+      ConfigError,
+    );
+  });
+
   it('needs an app map, and refuses --out under .runs, .auth or .git, outside the flows directory, or over a file that is not a gaps report', async () => {
     const { cfg } = project();
     await expect(reconcileGaps(cfg)).rejects.toThrow(/needs an app map/);
@@ -228,6 +250,25 @@ describe('reconcileGaps', () => {
     ).rejects.toThrow(/not a gaps report/);
     expect(readFileSync(join(flows, 'notes', 'gaps.json'), 'utf8')).toBe(
       '{"keep": true}',
+    );
+  });
+});
+
+describe('addRunArtefact', () => {
+  it('never creates the runs directory, and needs the run directory to hold a run.json', () => {
+    const { cfg } = project();
+    const flows = cfg.flowsPath;
+    const missing = join(flows, 'nope', '.runs');
+    expect(() =>
+      addRunArtefact(missing, flows, 'r_m1', 'classification.json', '{}'),
+    ).toThrow(ConfigError);
+    expect(existsSync(join(flows, 'nope'))).toBe(false);
+    mkdirSync(join(runsPath(cfg), 'r_m2'));
+    expect(() =>
+      addRunArtefact(runsPath(cfg), flows, 'r_m2', 'classification.json', '{}'),
+    ).toThrow(/run\.json/);
+    expect(existsSync(join(runsPath(cfg), 'r_m2', 'classification.json'))).toBe(
+      false,
     );
   });
 });

@@ -5,7 +5,8 @@ import type { AppMap } from '../../observe/index.js';
 import type { RunStatus } from '../../result.js';
 import type { Operation } from '../../spec/index.js';
 import { type Classification, classifyFailure } from '../classify/index.js';
-import { buildCodeIndex, type CodeIndex } from '../code/index.js';
+import { buildCodeIndex } from '../code/index.js';
+import type { ContainedRoot } from '../../trust/index.js';
 import {
   type CoverageGaps,
   coverageGaps,
@@ -63,20 +64,22 @@ const skippedNote = (n: number): string[] =>
         `${n} spec ${n === 1 ? 'document was' : 'documents were'} skipped (not a valid operation)`,
       ];
 
-/** The code index of `--code`, built over the whole directory. */
-const codeIndex = (cfg: LoadedConfig, dir?: string): CodeIndex | undefined =>
-  dir === undefined
-    ? undefined
-    : buildCodeIndex(projectRoot(cfg, dir, 'repos'));
-
-/** The operations of `--spec`, or `undefined` without one. */
-async function operations(
+/** The roots of `--code` and `--spec`, opened and checked first, before anything is read or a directory is made. */
+const roots = (
   cfg: LoadedConfig,
-  dir?: string,
+  src: ReconcileSources,
+): { code?: ContainedRoot; spec?: ContainedRoot } => ({
+  code:
+    src.code === undefined ? undefined : projectRoot(cfg, src.code, 'repos'),
+  spec:
+    src.spec === undefined ? undefined : projectRoot(cfg, src.spec, 'specs'),
+});
+
+/** The operations of the `--spec` root, or `undefined` without one. */
+async function operations(
+  root?: ContainedRoot,
 ): Promise<{ operations: Operation[]; skipped: number } | undefined> {
-  return dir === undefined
-    ? undefined
-    : specOperations(projectRoot(cfg, dir, 'specs'));
+  return root === undefined ? undefined : specOperations(root);
 }
 
 /** The origin of the env's `baseUrl` in the config, or `undefined` when the config no longer has that env. */
@@ -104,10 +107,11 @@ export async function reconcileRun(
   src: ReconcileSources = {},
 ): Promise<RunReconciled> {
   const { result } = readRunJson(cfg, runId);
+  const open = roots(cfg, src);
   const map: AppMap | undefined =
     src.appmap === undefined ? undefined : readAppMapFile(cfg, src.appmap);
-  const code = codeIndex(cfg, src.code);
-  const spec = await operations(cfg, src.spec);
+  const code = open.code === undefined ? undefined : buildCodeIndex(open.code);
+  const spec = await operations(open.spec);
   const linked = spec?.operations.filter((o) => o.id === result.flow) ?? [];
   const op = linked.length === 1 ? linked[0] : undefined;
   const origins = [envOrigin(cfg, result.env), map?.origin].filter(
@@ -156,10 +160,15 @@ export async function reconcileGaps(
     throw new ConfigError(
       'reconcile --gaps needs an app map: run flowctl observe first, or name one with --appmap <file>',
     );
-  const map = readAppMapFile(cfg, appmap);
+  const open = roots(cfg, src);
+  const map = readAppMapFile(
+    cfg,
+    appmap,
+    src.appmap === undefined ? "the latest run's appmap.json" : undefined,
+  );
   const dir = gapsOutDir(cfg, src.out);
-  const index = codeIndex(cfg, src.code);
-  const spec = await operations(cfg, src.spec);
+  const index = open.code === undefined ? undefined : buildCodeIndex(open.code);
+  const spec = await operations(open.spec);
   const gaps = coverageGaps({ index, map, operations: spec?.operations });
   return {
     gaps,

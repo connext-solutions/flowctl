@@ -1,4 +1,3 @@
-import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { type LoadedConfig, runsPath } from '../../config.js';
@@ -7,6 +6,8 @@ import {
   assertNotSymlink,
   ConfigError,
   type ErrorKind,
+  NoFollowReadError,
+  readFileNoFollow,
 } from '../../foundation/index.js';
 import type { RunResult } from '../../result.js';
 import { RUN_ID_PATTERN } from '../../trust/index.js';
@@ -38,8 +39,8 @@ export const MAX_RUN_JSON_BYTES = 16 * 1024 * 1024;
 /**
  * The fields of `run.json` the classifier reads, checked; other fields (`heals`, `cleanup`, `system1`) are dropped.
  * A run's directory is local evidence, but it is a file anyone with the checkout can edit, so it is parsed, never
- * trusted. The env name is read beside the schema (`envName`), as `readRecordedRun` reads it: a schema key named
- * `env` is reserved for env inputs (`scripts/check-arch.mjs`).
+ * trusted. The env name is read beside the schema (`field('env')`), as `readRecordedRun` reads it: a schema key
+ * named `env` is reserved for env inputs (`scripts/check-arch.mjs`).
  */
 const RunJsonSchema = z.object({
   runId: z.string().regex(RUN_ID_PATTERN),
@@ -79,14 +80,7 @@ const RunJsonSchema = z.object({
   ms: z.number(),
 });
 
-const Fields = z.record(z.string(), z.unknown());
-
-/** The run's env name, a string field of `run.json`, or `undefined`. */
-function envName(raw: unknown): string | undefined {
-  const r = Fields.safeParse(raw);
-  const v = r.success ? r.data['env'] : undefined;
-  return typeof v === 'string' ? v : undefined;
-}
+const RunJson = z.record(z.string(), z.unknown());
 
 /**
  * Reads the `run.json` of the run `runId` under the project's runs directory (`<flowsDir>/.runs/<run id>/`), with
@@ -95,7 +89,8 @@ function envName(raw: unknown): string | undefined {
  * @returns the run directory and the result.
  * @throws {ConfigError} when `runId` is not a run id (`r_` and 1 to 32 lowercase letters or digits), the runs
  *   directory, the run directory or `run.json` is a symlink, missing or too large, or the file is not a flowctl run
- *   of that id.
+ *   of that id. The message names a fixed reason (`not valid JSON`) or an error code (`ENOENT`), never the file's
+ *   text: a `JSON.parse` message quotes the file's bytes, and the CLI prints a `ConfigError` as it is.
  */
 export function readRunJson(
   cfg: LoadedConfig,
@@ -110,20 +105,22 @@ export function readRunJson(
   const path = join(dir, 'run.json');
   assertNotSymlink(runs);
   assertNotSymlink(dir);
-  assertNotSymlink(path);
   let raw: unknown;
   try {
-    const st = lstatSync(path);
-    if (!st.isFile() || st.size > MAX_RUN_JSON_BYTES)
-      throw new Error('not a regular file of at most 16 MiB');
-    raw = JSON.parse(readFileSync(path, 'utf8'));
+    raw = JSON.parse(readFileNoFollow(path, MAX_RUN_JSON_BYTES));
   } catch (e) {
+    const why = e instanceof NoFollowReadError ? e.message : 'not valid JSON';
     throw new ConfigError(
-      `Cannot read ${path} (${e instanceof Error ? e.message : String(e)}); name a run of this project, as in ${runs}/<run id>.`,
+      `Cannot read ${path} (${why}); name a run of this project, as in ${runs}/<run id>.`,
     );
   }
   const parsed = RunJsonSchema.safeParse(raw);
-  const env = envName(raw);
+  const run = RunJson.safeParse(raw);
+  const field = (k: string): string | undefined => {
+    const v = run.success ? run.data[k] : undefined;
+    return typeof v === 'string' ? v : undefined;
+  };
+  const env = field('env');
   if (!parsed.success || parsed.data.runId !== runId || env === undefined)
     throw new ConfigError(`${path} is not a flowctl run of ${runId}.`);
   return { dir, result: { ...parsed.data, env } };

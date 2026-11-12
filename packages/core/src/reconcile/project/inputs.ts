@@ -1,10 +1,4 @@
-import {
-  lstatSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  type Stats,
-} from 'node:fs';
+import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import {
   basename,
   dirname,
@@ -14,7 +8,11 @@ import {
   resolve,
 } from 'node:path';
 import { type LoadedConfig, runsPath } from '../../config.js';
-import { ConfigError } from '../../foundation/index.js';
+import {
+  ConfigError,
+  NoFollowReadError,
+  readFileNoFollow,
+} from '../../foundation/index.js';
 import { type AppMap, AppMapSchema } from '../../observe/index.js';
 import {
   markdownSpecProvider,
@@ -38,14 +36,15 @@ const within = (inner: string, outer: string): boolean => {
 
 /**
  * Opens `dir` as a root of `purpose` (`repos` for `--code`, `specs` for `--spec`) when its real path is the project
- * root or below it.
+ * root or below it, and not in a dot folder of it.
  *
  * @remarks The trust store's `roots` can hold `repos` and `specs` entries (ADR 0025 section 2), but no command
  *   registers one yet (`trust add root` is reserved), so the project root, which the store does register, is the
  *   containing root: a directory outside it is refused, never read (ADR 0036, amendment 2026-11-12). Dot folders
- *   (`.git`, `.flows`) are never entered by the readers below a root.
+ *   (`.git`, `.flows`, `.flows/.runs`, `.flows/.auth`) are never entered by the readers below a root, and a root
+ *   inside one is refused for the same reason: it would read sessions, run evidence or git metadata.
  * @throws {ContainmentError} when `dir` is missing or not a directory.
- * @throws {ConfigError} when its real path is outside the project root.
+ * @throws {ConfigError} when its real path is outside the project root or has a dot-prefixed component below it.
  */
 export function projectRoot(
   cfg: LoadedConfig,
@@ -54,9 +53,18 @@ export function projectRoot(
 ): ContainedRoot {
   const flag = purpose === 'repos' ? '--code' : '--spec';
   const root = openRoot(resolve(dir), purpose);
-  if (!within(root.path, realpathSync(cfg.root)))
+  const project = realpathSync(cfg.root);
+  if (!within(root.path, project))
     throw new ConfigError(
       `${flag} ${dir} is not inside the project root ${cfg.root}; registering another root in the trust store is not available yet.`,
+    );
+  if (
+    relative(project, root.path)
+      .split(/[\\/]/)
+      .some((p) => p.startsWith('.'))
+  )
+    throw new ConfigError(
+      `${flag} ${dir} is in a dot folder of the project root (such as .git, .flows, .runs or .auth); name a folder outside them.`,
     );
   return root;
 }
@@ -64,38 +72,58 @@ export function projectRoot(
 /**
  * Reads and checks an `AppMap` file inside the flows directory (a run's `appmap.json`, or an `observe --out` copy):
  * a regular `.json` file, no link at the end and none on the way out of the flows directory, never under `.auth`.
+ * The file is opened `O_NOFOLLOW` and checked and read from the descriptor.
  *
- * @throws {ConfigError} for a path these rules refuse, a file that cannot be read, or one that is not an `AppMap`.
+ * @param label how errors name the file: `--appmap <file>` by default.
+ * @throws {ConfigError} for a path these rules refuse, a file that cannot be read, or one that is not an `AppMap`;
+ *   the message names a fixed reason or an error code, never the file's text.
  */
-export function readAppMapFile(cfg: LoadedConfig, file: string): AppMap {
+export function readAppMapFile(
+  cfg: LoadedConfig,
+  file: string,
+  label = `--appmap ${file}`,
+): AppMap {
   const target = resolve(file);
   let real: string;
-  let st: Stats;
   try {
     real = join(realpathSync(dirname(target)), basename(target));
-    st = lstatSync(real);
   } catch {
-    throw new ConfigError(`--appmap ${file} does not exist`);
+    throw new ConfigError(`${label} does not exist`);
   }
-  const flows = realpathSync(cfg.flowsPath);
+  let flows: string;
+  try {
+    flows = realpathSync(cfg.flowsPath);
+  } catch {
+    throw new ConfigError(
+      `the flows directory ${cfg.flowsPath} does not exist; ${label} must be inside it`,
+    );
+  }
   const parts = relative(flows, real).toLowerCase().split(/[\\/]/);
-  if (!within(real, flows) || st.isSymbolicLink() || parts.includes('.auth'))
+  if (!within(real, flows) || parts.includes('.auth'))
     throw new ConfigError(
-      `--appmap ${file} is not inside the flows directory ${cfg.flowsPath} (no symlink, not under .auth)`,
+      `${label} is not inside the flows directory ${cfg.flowsPath} (no symlink, not under .auth)`,
     );
-  if (!real.endsWith('.json') || !st.isFile() || st.size > MAX_APPMAP_BYTES)
+  if (!real.endsWith('.json'))
+    throw new ConfigError(`${label} must be a .json file of at most 32 MiB`);
+  let text: string;
+  try {
+    text = readFileNoFollow(real, MAX_APPMAP_BYTES);
+  } catch (e) {
+    const why = e instanceof NoFollowReadError ? e.message : 'unreadable';
     throw new ConfigError(
-      `--appmap ${file} must be a .json file of at most 32 MiB`,
+      why === 'ENOENT'
+        ? `${label} does not exist`
+        : `${label} cannot be read (${why}): it must be a regular .json file of at most 32 MiB, no symlink`,
     );
+  }
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(real, 'utf8'));
+    raw = JSON.parse(text);
   } catch {
     raw = undefined;
   }
   const parsed = AppMapSchema.safeParse(raw);
-  if (!parsed.success)
-    throw new ConfigError(`--appmap ${file} is not an AppMap`);
+  if (!parsed.success) throw new ConfigError(`${label} is not an AppMap`);
   return parsed.data;
 }
 

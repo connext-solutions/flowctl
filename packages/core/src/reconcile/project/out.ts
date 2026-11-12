@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { type LoadedConfig, runsPath } from '../../config.js';
 import { addRunArtefact } from '../../run/index.js';
@@ -7,6 +7,7 @@ import {
   assertNotSymlink,
   ConfigError,
   ensureDirInside,
+  readFileNoFollow,
 } from '../../foundation/index.js';
 import { refuseReservedOut } from '../../observe/index.js';
 import type { Classification } from '../classify/index.js';
@@ -35,11 +36,18 @@ export const writeClassification = (
     classificationJson(c),
   );
 
-/** Whether `path` holds a coverage gaps report, so replacing it loses only an older report. */
+/** The largest existing `gaps.json` read to check it is a gaps report, in bytes. */
+export const MAX_GAPS_BYTES = 32 * 1024 * 1024;
+
+/**
+ * Whether `path` holds a coverage gaps report, so replacing it loses only an older report: a regular file (opened
+ * `O_NOFOLLOW`, read from the descriptor) of at most {@link MAX_GAPS_BYTES}. Its text never reaches an error.
+ */
 function holdsGaps(path: string): boolean {
   try {
-    return CoverageGapsSchema.safeParse(JSON.parse(readFileSync(path, 'utf8')))
-      .success;
+    return CoverageGapsSchema.safeParse(
+      JSON.parse(readFileNoFollow(path, MAX_GAPS_BYTES)),
+    ).success;
   } catch {
     return false;
   }

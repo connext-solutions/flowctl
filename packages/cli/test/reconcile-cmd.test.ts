@@ -1,80 +1,17 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig, type TrustStore } from '@flowctl/core';
-import { gitRepo, testStore } from '@flowctl/core-testing';
-import { runCli } from '../src/main.js';
+import { describe, expect, it } from 'vitest';
+import {
+  captureOutput,
+  controls,
+  io,
+  project,
+  reconcile,
+  saveRun,
+} from './reconcile-helpers.js';
 
 /** `flowctl reconcile` (T6.6) on hand-written run directories: output, exit codes and terminal safety. */
-let out: string[];
-let err: string[];
-beforeEach(() => {
-  out = [];
-  err = [];
-  vi.spyOn(process.stdout, 'write').mockImplementation((s) => {
-    out.push(String(s));
-    return true;
-  });
-  vi.spyOn(process.stderr, 'write').mockImplementation((s) => {
-    err.push(String(s));
-    return true;
-  });
-});
-afterEach(() => vi.restoreAllMocks());
-
-interface Project {
-  file: string;
-  runs: string;
-  store: TrustStore;
-}
-
-function project(): Project {
-  const root = mkdtempSync(join(tmpdir(), 'flowctl-reconcile-'));
-  mkdirSync(join(root, '.flows', '.runs'), { recursive: true });
-  const file = join(root, 'flowctl.config.yaml');
-  writeFileSync(
-    file,
-    'defaultEnv: local\nenvs:\n  local: { baseUrl: "http://127.0.0.1:9", loginUrl: /login }\nprofiles:\n  employee: {}\n',
-  );
-  gitRepo(root);
-  return {
-    file,
-    runs: join(root, '.flows', '.runs'),
-    store: testStore(loadConfig(file)),
-  };
-}
-
-function saveRun(p: Project, runId: string, over: object = {}): void {
-  mkdirSync(join(p.runs, runId));
-  writeFileSync(
-    join(p.runs, runId, 'run.json'),
-    JSON.stringify({
-      runId,
-      flow: 'submit',
-      env: 'local',
-      status: 'failed',
-      steps: 2,
-      healed: [],
-      teardownFailed: false,
-      weakLocators: [],
-      evidence: { dir: 'x', traces: [], network: [], console: [] },
-      ms: 5,
-      ...over,
-    }),
-  );
-}
-
-const reconcile = (p: Project, ...argv: string[]): Promise<number> =>
-  runCli(['reconcile', ...argv, '--config', p.file], {
-    openStore: () => p.store,
-  });
-
-const controls = (text: string): string[] =>
-  [...text].filter((c) => {
-    const n = c.codePointAt(0) ?? 0;
-    return c !== '\n' && (n < 0x20 || (n >= 0x7f && n <= 0x9f));
-  });
+captureOutput();
 
 describe('flowctl reconcile <run id>', () => {
   it('prints the class, the confidence and each basis hit with its evidence, escaped, and exits 0', async () => {
@@ -89,14 +26,14 @@ describe('flowctl reconcile <run id>', () => {
       },
     });
     expect(await reconcile(p, 'r_t1')).toBe(0);
-    const text = out.join('');
+    const text = io.out.join('');
     expect(text).toMatch(
       /^Run r_t1 \(flow sub\\u\{001B\}\]0;pwned\\u\{0007\}mit, failed\): environment, confidence medium$/m,
     );
     expect(text).toContain('gateway-status (environment, medium):');
     expect(text).toContain('run.json /evidence/network/0: 503 GET');
     expect(text).toContain('/api/\\u{001B}[2J\\u{009B}31m');
-    expect(controls(out.join(''))).toEqual([]);
+    expect(controls(io.out.join(''))).toEqual([]);
     expect(controls(text)).toEqual([]);
     expect(text).toMatch(/^Classification file: .+classification\.json$/m);
   });
@@ -112,9 +49,9 @@ describe('flowctl reconcile <run id>', () => {
       },
     });
     expect(await reconcile(p, 'r_t2', '--json')).toBe(0);
-    expect(controls(out.join(''))).toEqual([]);
-    expect(out.join('')).not.toContain('\u202e');
-    const c: Record<string, unknown> = JSON.parse(out.join(''));
+    expect(controls(io.out.join(''))).toEqual([]);
+    expect(io.out.join('')).not.toContain('\u202e');
+    const c: Record<string, unknown> = JSON.parse(io.out.join(''));
     expect(Object.keys(c).sort()).toEqual([
       'basis',
       'candidates',
@@ -125,7 +62,7 @@ describe('flowctl reconcile <run id>', () => {
       'runId',
     ]);
     expect(c).toMatchObject({ runId: 'r_t2', class: 'environment' });
-    expect(out.join('').toLowerCase()).toContain('/a\\u009b31m\\u202eb');
+    expect(io.out.join('').toLowerCase()).toContain('/a\\u009b31m\\u202eb');
     expect(
       JSON.parse(
         readFileSync(join(p.runs, 'r_t2', 'classification.json'), 'utf8'),
@@ -145,7 +82,7 @@ describe('flowctl reconcile <run id>', () => {
     const p = project();
     saveRun(p, 'r_t3');
     expect(await reconcile(p, ...argv)).toBe(2);
-    expect(out.join('')).toBe('');
+    expect(io.out.join('')).toBe('');
   });
 });
 
@@ -153,6 +90,6 @@ describe('flowctl reconcile --gaps', () => {
   it('exits 2 when there is no app map to read', async () => {
     const p = project();
     expect(await reconcile(p, '--gaps')).toBe(2);
-    expect(err.join('')).toContain('needs an app map');
+    expect(io.err.join('')).toContain('needs an app map');
   });
 });
