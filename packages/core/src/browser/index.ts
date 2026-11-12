@@ -25,6 +25,7 @@ export {
   type ControlOp,
   type PageSnapshot,
 } from './snapshot.js';
+export { frameTexts } from './page-text.js';
 export { parseAriaLine, recordLoc } from './recorder.js';
 export {
   DESTRUCTIVE_WORDS,

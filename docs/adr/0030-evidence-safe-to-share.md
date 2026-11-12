@@ -68,3 +68,23 @@ inputs show as `***` and no cookie or storage state is written there. Three thin
   decisions sent to System 1 (issue #13, task T5.1).
 - **Revisit when:** Playwright offers a trace option without network or with redaction, or a zip post-processor
   becomes cheap to own.
+
+## Amendment 2026-11-12: what a safe trace records of evaluations
+
+Decided under the owner's delegation of 2026-11-11.
+
+Decision 1 said the trace does not keep an `evaluate` result. On Playwright 1.63 that holds only for the call that
+is not the first protocol call of its API call. The trace records the parameters and the result of every
+non-internal call made on the context, and inside one API call only the first protocol call is non-internal.
+`page.evaluate` and `frame.evaluate` are that first call, so their argument and result (page text, field values)
+are recorded. `locator.evaluate` first sends `Frame.waitForSelector`, whose log keeps a preview of the resolved
+element with its text; its evaluation is internal. `locator.evaluateAll` is a single recorded call, so its
+argument and result are both recorded. Calls on a CDP session are not attributed to the context and are not
+recorded.
+
+So: the verifier's `text` assertion compares in the page with `evaluateAll`, passing the assertion text and
+returning only whether it matched and the text length. The exploration snapshot and the ledger's page-text scan run
+through CDP `Runtime.evaluate`. The `value` assertion reads with `locator.evaluate`, whose preview is the element's
+attributes and not its current value. Decision 1's sentence about `evaluate` and the Context's sentence
+"set by `evaluate` with the value as an argument, is not recorded" are read with this amendment. The redaction
+suite (`packages/core/test/redaction/`) checks these properties on every Playwright upgrade.

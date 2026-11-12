@@ -36,6 +36,11 @@ export interface FakeSystem1 {
   url: string;
   /** Bodies of every request received, in order, including refused ones. */
   requests: unknown[];
+  /**
+   * Every request received with a key, in order, as the JSON text of `{ url, headers, body }` with the body as the
+   * text it arrived as (UTF-8), so a test can scan all of it, not only what parsed.
+   */
+  raw: string[];
   close(): Promise<void>;
 }
 
@@ -156,6 +161,7 @@ export async function startFakeSystem1(
   opts: { status?: number } = {},
 ): Promise<FakeSystem1> {
   const requests: unknown[] = [];
+  const raw: string[] = [];
   let cursor = 0;
   let waits = 0;
 
@@ -167,8 +173,12 @@ export async function startFakeSystem1(
       return reply(res, 404, { message: 'not found' });
     if (!(req.headers.authorization ?? '').startsWith('Bearer '))
       return reply(res, 401, { message: 'missing key' });
-    let data = '';
-    for await (const chunk of req) data += String(chunk);
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const data = Buffer.concat(chunks).toString('utf8');
+    raw.push(
+      JSON.stringify({ url: req.url, headers: req.headers, body: data }),
+    );
     const body: unknown = JSON.parse(data);
     requests.push(body);
     if (opts.status !== undefined)
@@ -203,6 +213,7 @@ export async function startFakeSystem1(
   return {
     url: `http://127.0.0.1:${address.port}`,
     requests,
+    raw,
     close: () =>
       new Promise<void>((resolve) => {
         server.closeAllConnections();

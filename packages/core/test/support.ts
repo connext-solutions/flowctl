@@ -5,6 +5,7 @@
  * the internal `TrustStore.open(dir)` seam.
  */
 export {
+  allowEnvVars,
   consentHooks,
   gitRepo,
   localAnswers,
@@ -12,3 +13,6 @@ export {
   testStore,
 } from './trust-fixture.js';
 export { exploreConfig, fixtureConfig, seedProfiles, VARS } from './helpers.js';
+export { SECRET_ENV, echoFlow, withSecret } from './redaction/echo-flow.js';
+export { findSecret, freshSecret } from './redaction/find-secret.js';
+export { leaksIn, runOutputs } from './redaction/scan.js';

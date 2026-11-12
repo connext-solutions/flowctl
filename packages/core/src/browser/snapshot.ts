@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Page } from 'playwright';
 import { z } from 'zod';
+import { withPageSession } from './cdp.js';
 import { OVERLAY_TAG } from './overlay.js';
 import { snapshotScript } from './snapshot-script.js';
 
@@ -47,10 +48,29 @@ export interface PageSnapshot extends z.infer<typeof RawSnapshotSchema> {
   fingerprint: string;
 }
 
+/**
+ * Runs the snapshot script through CDP `Runtime.evaluate` in the page's main world, as `page.evaluate` would: a
+ * Playwright trace records a `page.evaluate` result (the page text, every field value, the URL) and no CDP call, so
+ * what System 1 is shown stays out of a safe trace (ADR 0030 amendment 2026-11-12, T1.5).
+ *
+ * @remarks Chromium only (CDP). The safety depends on Playwright not attributing calls on a CDP session to the
+ *   context; the redaction suite (`test/redaction/`) guards it on every Playwright upgrade. The session is the
+ *   page's cached one ({@link withPageSession}): one per page, not one per snapshot.
+ * @throws {Error} when the script throws (with the exception's description) or the page context goes away
+ *   mid-evaluation (the caller retries once).
+ */
 async function evaluateSnapshot(page: Page, ignore: string[]) {
-  return RawSnapshotSchema.parse(
-    await page.evaluate(snapshotScript([...DEV_OVERLAYS, ...ignore])),
+  const r = await withPageSession(page, (cdp) =>
+    cdp.send('Runtime.evaluate', {
+      expression: snapshotScript([...DEV_OVERLAYS, ...ignore]),
+      returnByValue: true,
+    }),
   );
+  if (r.exceptionDetails !== undefined)
+    throw new Error(
+      `snapshot failed: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`,
+    );
+  return RawSnapshotSchema.parse(r.result.value);
 }
 
 const SETTLE_POLL_MS = 200;

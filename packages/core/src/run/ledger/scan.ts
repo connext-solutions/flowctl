@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { frameTexts } from '../../browser/index.js';
 import { RunError } from '../../foundation/index.js';
 import { MAX_TEXT_BYTES, SeenSet } from './seen.js';
 
@@ -71,15 +72,17 @@ export class LedgerScans {
   /**
    * Scans the text of every frame of every page in `pages` (every open page of the run), then waits for every response
    * scan in flight. A page or frame that closed meanwhile adds nothing.
+   *
+   * @remarks The text is read through CDP ({@link frameTexts}), never with `frame.evaluate`, whose result a safe trace
+   *   records (ADR 0030 amendment 2026-11-12).
    */
   async scanPages(pages: readonly Page[]): Promise<void> {
     if (this.seen === undefined) return;
-    for (const f of pages.flatMap((p) => p.frames())) {
-      const text = await f
-        .evaluate(() => document.body?.innerText ?? '')
-        .catch(() => '');
-      this.guarded(() => this.seen?.add(text, 'the page text', MAX_TEXT_BYTES));
-    }
+    for (const p of pages)
+      for (const text of await frameTexts(p))
+        this.guarded(() =>
+          this.seen?.add(text, 'the page text', MAX_TEXT_BYTES),
+        );
     await this.settle();
   }
 

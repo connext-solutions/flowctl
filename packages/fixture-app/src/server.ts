@@ -16,6 +16,7 @@ import { validateLeaveRequest } from './validator.js';
 import { crawlRoute, type CrawlBugMode } from './crawl.js';
 import { guardRoute } from './guard-pages.js';
 import { itemsApp } from './items.js';
+import { echoRoute } from './echo.js';
 
 /**
  * Seeded bugs: each mode is a defect a correct flowctl run must report as `failed`.
@@ -205,6 +206,7 @@ export async function startFixture(
       if (role === undefined)
         return send(res, 401, { message: 'unauthorized' });
       if (await items.handle(req, res, url)) return;
+      if (await echoRoute(req, res, url)) return;
       return api(req, res, url, role);
     }
     if (role === undefined) {
@@ -213,6 +215,7 @@ export async function startFixture(
       return;
     }
     if (await items.handle(req, res, url)) return;
+    if (await echoRoute(req, res, url)) return;
     const html = PAGES[url.pathname];
     if (html === undefined) {
       const crawl =

@@ -3,7 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Evidence, MAX_CONSOLE_ERRORS, verify } from '../src/run/index.js';
+import type { Assertion } from '../src/flow/index.js';
+import {
+  Evidence,
+  MAX_CONSOLE_ERRORS,
+  TEXT_READ_MS,
+  verify,
+} from '../src/run/index.js';
 
 let browser: Browser;
 let page: Page;
@@ -142,6 +148,24 @@ describe('verify', () => {
     expect((await verify([{ text: 'Đã duyệt' }], ctx(), 3000)).passed).toBe(
       true,
     );
+  });
+
+  it('gives up reading text after TEXT_READ_MS when the page does not answer, with or without a region', async () => {
+    await page.setContent(
+      '<p role="status">Đã duyệt</p><script>setTimeout(() => { const t = Date.now(); while (Date.now() - t < 6000); }, 100)</script>',
+    );
+    await page.waitForTimeout(300);
+    const checks: Assertion[] = [
+      { text: 'Đã duyệt' },
+      { text: 'Đã duyệt', within: { role: 'status' } },
+    ];
+    for (const a of checks) {
+      const started = Date.now();
+      const v = await verify([a], ctx(), 0);
+      expect(v.passed).toBe(false);
+      expect(Date.now() - started).toBeLessThan(TEXT_READ_MS + 1000);
+      expect(v.failed?.got).toMatch(/could not be read/);
+    }
   });
 
   it('is case-sensitive on text', async () => {

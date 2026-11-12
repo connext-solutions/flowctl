@@ -11,6 +11,7 @@ export {
   globToRegExp,
   isOnce,
   isSubset,
+  TEXT_READ_MS,
   verify,
   type Verdict,
   type VerifyContext,
