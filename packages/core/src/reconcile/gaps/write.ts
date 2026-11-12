@@ -1,6 +1,10 @@
 import { join } from 'node:path';
 import { hideInvisible, mdCode } from '../../derive/index.js';
-import { ensureDirInside, writeFileNoFollow } from '../../foundation/index.js';
+import {
+  assertNotSymlink,
+  ensureDirInside,
+  writeFileNoFollow,
+} from '../../foundation/index.js';
 import {
   type CoverageGap,
   type CoverageGaps,
@@ -70,14 +74,15 @@ export function gapsMarkdown(gaps: CoverageGaps): string {
     gaps.origin === null
       ? 'No app map.'
       : `App map of ${mdCode(gaps.origin)}, observed ${mdCode(gaps.observedAt ?? '')}.`;
-  const lines = ['# Coverage gaps', '', `${crawl} ${gaps.gaps.length} gaps.`];
+  const count = `${gaps.gaps.length} ${gaps.gaps.length === 1 ? 'gap' : 'gaps'}.`;
+  const lines = ['# Coverage gaps', '', `${crawl} ${count}`];
   if (gaps.truncated)
     lines.push(
       'The crawl stopped early, so a route or screen reported missing may only be past the page budget.',
     );
   if (gaps.redactedPages > 0)
     lines.push(
-      `${gaps.redactedPages} page paths hold the redaction mask (\`***\`), which can hide the segment a route names.`,
+      `${gaps.redactedPages === 1 ? '1 page path holds' : `${gaps.redactedPages} page paths hold`} the redaction mask (\`***\`), which can hide the segment a route names.`,
     );
   const skipped = GAP_KINDS.filter((k) => !gaps.checked.includes(k));
   if (skipped.length > 0)
@@ -103,7 +108,8 @@ export function gapsJson(gaps: CoverageGaps): string {
  *
  * @remarks The pair is not atomic: the JSON goes first since tools read it; regenerate both after an error.
  * @throws {ZodError} when `gaps` does not fit the schema; nothing is written.
- * @throws {ConfigError} when `dir` is not inside `root` or a component on the way is a symlink or a file.
+ * @throws {ConfigError} when `dir` is not inside `root`, a component on the way is a symlink or a file, or
+ *   `gaps.json` or `gaps.md` is already a symlink; nothing is written.
  * @throws {NodeJS.ErrnoException} when the file system refuses the write (`EACCES`, `ENOSPC`), unchanged.
  */
 export function writeGaps(
@@ -115,6 +121,8 @@ export function writeGaps(
   const real = ensureDirInside(dir, root);
   const markdown = join(real, 'gaps.md');
   const json = join(real, 'gaps.json');
+  assertNotSymlink(json);
+  assertNotSymlink(markdown);
   writeFileNoFollow(json, gapsJson(valid));
   writeFileNoFollow(markdown, gapsMarkdown(valid));
   return { markdown, json };

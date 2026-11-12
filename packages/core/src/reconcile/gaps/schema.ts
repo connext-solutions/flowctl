@@ -114,7 +114,8 @@ export const CoverageGapSchema = z.discriminatedUnion('kind', [
 /**
  * What `coverageGaps` found: the crawl it read (`origin`, `observedAt` and `truncated` of the map or report, `null`
  * without either), how many page paths hold the mask, the kinds its inputs let it check, and the gaps, by kind in
- * {@link GAP_KINDS} order. A kind missing from `checked` was not looked at, which is not the same as no gap.
+ * {@link GAP_KINDS} order. A kind missing from `checked` was not looked at, which is not the same as no gap, so
+ * `checked` holds each kind at most once and every gap's kind.
  */
 export const CoverageGapsSchema = z
   .object({
@@ -126,7 +127,24 @@ export const CoverageGapsSchema = z
     checked: z.array(z.enum(GAP_KINDS)),
     gaps: z.array(CoverageGapSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((g, ctx) => {
+    const checked = new Set(g.checked);
+    if (checked.size !== g.checked.length)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['checked'],
+        message: 'checked lists a kind twice',
+      });
+    g.gaps.forEach((gap, i) => {
+      if (!checked.has(gap.kind))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['gaps', i, 'kind'],
+          message: `a ${gap.kind} gap, but checked does not list ${gap.kind}`,
+        });
+    });
+  });
 
 export type GapRoute = z.infer<typeof GapRouteSchema>;
 export type GapPage = z.infer<typeof GapPageSchema>;

@@ -22,14 +22,14 @@ than of the app.
 1. **A pure function.** `coverageGaps({ index?, map?, operations?, report? })` (`core/src/reconcile/gaps/`) has no
    model and no I/O. A kind of gap is checked only when its inputs are given, and the result lists the kinds it
    checked (`checked`): a kind not checked is not "no gap". Given `operations` and a map, it runs the matcher itself;
-   given both `operations` and a `report`, or a report of another crawl (origin or time) than the map, it refuses
-   (`ConfigError`).
+   given both `operations` and a `report`, or a report that does not fit the map, it refuses (`ConfigError`): another
+   crawl (origin or time), another `truncated`, or a screen or tied page the map does not hold.
 2. **What counts as a gap**, reported in this order:
    - `route_unvisited` (index and map): a route record that no page path of the map matches. Each declaration is
      its own gap, with file, line, pattern and extractor;
    - `page_no_route` (index and map): a served page (document status 200 to 399) that no route matches, ignoring
      routes made only of rest segments (`*`, `/:slug*`): a catch-all is the app's "not found" page, not a
-     declaration of that page;
+     declaration of that page. The root route `/` has no segment at all and is not a catch-all: it declares `/`;
    - `operation_no_ui` (report): an operation whose screen verdict is `none`;
    - `operation_ambiguous` (report): an operation whose screen verdict is `ambiguous`, with the tied pages;
    - `page_no_spec` (report and map): a served page that no operation's verdict names, as its screen or as one of a
@@ -39,23 +39,37 @@ than of the app.
 3. **Matching reuses the code index's rules.** A page path is turned into segments by the same function
    `findRoute` uses (`routeQuerySegments`: scope-path normalisation, NFC) and compared with each route's parsed
    pattern by `matchRoute` (parameters `:id`, Next.js `[id]` and Remix `$id` are already `:id` in the index,
-   splats are rest segments, optional segments may be absent). Every route is compared with every page, so a
-   route is never missed because a page matched more than 20 routes; the cost is bounded by the index and map caps
-   (each `matchRoute` is linear in pattern and path length). No fuzzy or prefix match.
+   splats are rest segments, optional segments may be absent). No fuzzy or prefix match. Every route that could
+   match a page is tested against it, so a route is never missed because a page matched more than 20 routes, but
+   not every pair is tried: declarations sharing a path are matched once and share the result, which serves both
+   route kinds; a pattern is tested only against pages whose segment count it fits (its required segments to all
+   of them, or more with a rest segment) and, when every segment before its first literal is a required
+   parameter, only against pages holding that literal at that position. Measured on one laptop (Node 22, routes
+   `/s<k>/r<i>` with seven suffixes, 1,000 pages): 10,000 routes took 14.5 s before this narrowing and 0.13 s
+   after (about 124,000 `matchRoute` calls instead of over 10 million), 100,000 routes (the index's record cap)
+   144 s before and 1.2 s after; a `/:org` prefix on every route and page changes neither the call count nor the
+   time. A pattern with no fixed literal (`/:a/:b`) is still tested against every page of a fitting length.
 4. **Caveats instead of silence.** A gap carries `crawl_truncated` when the map is truncated and the gap could be
    one only because the crawl stopped (`route_unvisited`, `operation_no_ui`, `operation_ambiguous`: an unvisited
    page could have matched the route or out-scored the tie). It carries `paths_redacted` when a page path holds the
-   redaction mask `***`, which can hide the literal segment a route or a quoted address names (`route_unvisited`
-   when any page path is masked; a page gap when its own path is). Paths are used as the map holds them, never
-   unmasked: a masked segment matches only a parameter.
+   redaction mask `***`, which can hide the literal segment a route or a quoted address names (`route_unvisited`,
+   `operation_no_ui` and `operation_ambiguous` when any page path of the map is masked, since the matcher scores a
+   screen by path literals and doc segments too; a page gap when its own path is). From a report alone, with no
+   map, the page paths are unknown, so the operation gaps cannot carry this caveat even when a path was masked.
+   Paths are used as the map holds them, never unmasked: a masked segment matches only a parameter. When masking
+   makes two pages share a path, a gap cites the first (lowest `/pages/N`).
 5. **Deterministic.** Gaps are ordered by kind as above; routes by path, file, line and extractor; pages by path;
    operations in report order (by id, provider and ref, ADR 0034 rule 9). Strings compare by UTF-16 code units.
 6. **Files.** `writeGaps(dir, root, gaps)` checks the gaps against `CoverageGapsSchema` and writes `gaps.json` and
-   `gaps.md` inside `root` (`ensureDirInside`, no symlinks), as `writeConflicts` does. The JSON escapes invisible
+   `gaps.md` inside `root` (`ensureDirInside`, no symlinks; a `gaps.json` or `gaps.md` that is already a symlink is
+   refused before either file is written). The schema also holds `checked` to each kind once and to every gap's
+   kind. The JSON escapes invisible
    and control code points (`hideInvisible`); in the markdown every string from the code, the map or the spec is
    one code span (`mdCode`, ADR 0034 rule 10), in list entries, never table cells.
 
-**What is not a gap.** A page with an error or no document status (a free-check finding, ADR 0033); a page whose
+**What is not a gap.** A page with an error or no document status (a free-check finding, ADR 0033); a route whose
+only matching page answered an error status (the crawl reached the route, and the error is a free-check finding);
+a page whose
 path the normalisation refuses (it cannot be compared); a catch-all route once any page was crawled (every path
 matches it); an operation matched to one screen, however weakly; a step or label the screen lacks (a conflict,
 ADR 0034, not a coverage gap).

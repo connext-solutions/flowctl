@@ -31,25 +31,105 @@ export interface CoverageInputs {
   report?: MatchReport;
 }
 
-/** A route of the index with its parsed pattern. */
-interface ParsedRoute {
-  record: RouteRecord;
-  pattern: RouteSegment[];
+/** A pattern made only of rest segments (`*`, `/:slug*`): the app's "not found" page. The root `/` is not one. */
+const catchAll = (p: readonly RouteSegment[]): boolean =>
+  p.length > 0 && p.every((s) => s.kind === 'rest');
+
+/**
+ * Pages with a comparable path by segment count, and, built on first use, by the segment at one position: the
+ * candidates a pattern needs, so a route is not tested against every page.
+ */
+class PageBuckets {
+  private readonly byLength = new Map<number, MapPage[]>();
+  private readonly byValue = new Map<string, Map<string, MapPage[]>>();
+
+  constructor(pages: readonly MapPage[]) {
+    for (const p of pages) {
+      if (p.segments === undefined) continue;
+      const list = this.byLength.get(p.segments.length);
+      if (list === undefined) this.byLength.set(p.segments.length, [p]);
+      else list.push(p);
+    }
+  }
+
+  /**
+   * The pages a pattern could match: those whose segment count fits it (its required segments up to all of them,
+   * or any count from the required ones with a rest segment), narrowed to the pages holding its first literal
+   * when every segment before that literal is required, so the literal's position is fixed.
+   */
+  candidates(pattern: readonly RouteSegment[]): MapPage[] {
+    const rest = pattern.some((s) => s.kind === 'rest');
+    const required = pattern.filter(
+      (s) => s.kind !== 'rest' && !s.optional,
+    ).length;
+    const most = rest ? Number.POSITIVE_INFINITY : pattern.length;
+    const at = pattern.findIndex((s) => s.kind !== 'param' || s.optional);
+    const fixed = at === -1 ? undefined : pattern[at];
+    const literal =
+      fixed?.kind === 'literal' && !fixed.optional ? fixed.value : undefined;
+    const out: MapPage[] = [];
+    for (const [length, all] of this.byLength) {
+      if (length < required || length > most) continue;
+      out.push(...(literal === undefined ? all : this.at(length, at, literal)));
+    }
+    return out;
+  }
+
+  /** The pages of `length` segments whose segment at `position` is `value`. */
+  private at(length: number, position: number, value: string): MapPage[] {
+    const key = `${length}/${position}`;
+    let index = this.byValue.get(key);
+    if (index === undefined) {
+      index = new Map();
+      for (const p of this.byLength.get(length) ?? []) {
+        const seg = p.segments?.[position];
+        if (seg === undefined) continue;
+        const list = index.get(seg);
+        if (list === undefined) index.set(seg, [p]);
+        else list.push(p);
+      }
+      this.byValue.set(key, index);
+    }
+    return index.get(value) ?? [];
+  }
 }
 
-const matches = (r: ParsedRoute, p: MapPage): boolean =>
-  p.segments !== undefined && matchRoute(r.pattern, p.segments);
+/**
+ * For each distinct route path, the pages whose path it matches, in `pages` order. Declarations that share a path
+ * share one entry; a page is only tested against a pattern its segment count and first fixed literal allow
+ * (`PageBuckets`), so the number of `match` calls is far below routes × pages on a real app.
+ *
+ * @param match the matcher, `matchRoute` unless a test counts its calls.
+ */
+export function matchedPages(
+  routes: readonly RouteRecord[],
+  pages: readonly MapPage[],
+  match: typeof matchRoute = matchRoute,
+): Map<string, Set<MapPage>> {
+  const buckets = new PageBuckets(pages);
+  const order = new Map(pages.map((p, i) => [p, i]));
+  const found = new Map<string, Set<MapPage>>();
+  for (const { path } of routes) {
+    if (found.has(path)) continue;
+    const pattern = parseRoutePattern(path);
+    const hits = buckets
+      .candidates(pattern)
+      .filter((p) => p.segments !== undefined && match(pattern, p.segments))
+      .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+    found.set(path, new Set(hits));
+  }
+  return found;
+}
 
 /** Routes no page matches, by path, file, line and extractor. */
 function unvisitedRoutes(
-  routes: readonly ParsedRoute[],
-  pages: readonly MapPage[],
+  routes: readonly RouteRecord[],
+  found: ReadonlyMap<string, ReadonlySet<MapPage>>,
   truncated: boolean,
   redacted: boolean,
 ): CoverageGap[] {
   return routes
-    .filter((r) => !pages.some((p) => matches(r, p)))
-    .map((r) => r.record)
+    .filter((r) => (found.get(r.path)?.size ?? 0) === 0)
     .sort(
       (a, b) =>
         byCode(a.path, b.path) ||
@@ -69,20 +149,33 @@ function unvisitedRoutes(
 
 /** Served pages with a comparable path that no route matches, a route made only of rest segments aside. */
 function undeclaredPages(
-  routes: readonly ParsedRoute[],
   pages: readonly MapPage[],
+  found: ReadonlyMap<string, ReadonlySet<MapPage>>,
 ): CoverageGap[] {
-  const declaring = routes.filter((r) =>
-    r.pattern.some((s) => s.kind !== 'rest'),
-  );
+  const declared = new Set<MapPage>();
+  for (const [path, hits] of found)
+    if (!catchAll(parseRoutePattern(path)))
+      for (const p of hits) declared.add(p);
   return pages
-    .filter((p) => served(p.page) && p.segments !== undefined)
-    .filter((p) => !declaring.some((r) => matches(r, p)))
+    .filter(
+      (p) => served(p.page) && p.segments !== undefined && !declared.has(p),
+    )
     .map((p) => ({
       kind: 'page_no_route',
       page: gapPage(p),
       caveats: caveats(['paths_redacted', p.redacted]),
     }));
+}
+
+/**
+ * Each page path with the pointer of its first page in the map. Masking can make two pages share a path (`/u/***`);
+ * the first, lowest `/pages/N`, is the one cited.
+ */
+export function pointersByPath(pages: readonly MapPage[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const p of pages)
+    if (!out.has(p.page.path)) out.set(p.page.path, p.pointer);
+  return out;
 }
 
 /**
@@ -96,7 +189,8 @@ function undeclaredPages(
  *   gap the crawl's page budget may explain carries `crawl_truncated`; one a mask may explain, `paths_redacted`.
  *   Gaps are ordered by kind (`GAP_KINDS`), routes by path, file, line and extractor, pages by path in UTF-16
  *   code units, operations in report order.
- * @throws {ConfigError} when both `operations` and `report` are given, or the report is of another crawl than `map`.
+ * @throws {ConfigError} when both `operations` and `report` are given, or the report does not fit `map` (another
+ *   crawl, another truncation, or a screen the map does not hold).
  * @see docs/adr/0037-coverage-gaps.md
  */
 export function coverageGaps(input: CoverageInputs): CoverageGaps {
@@ -109,20 +203,18 @@ export function coverageGaps(input: CoverageInputs): CoverageGaps {
   const checked: GapKind[] = [];
   const gaps: CoverageGap[] = [];
   if (index !== undefined && map !== undefined) {
-    const routes = index.routes.map((record) => ({
-      record,
-      pattern: parseRoutePattern(record.path),
-    }));
+    const found = matchedPages(index.routes, pages);
     checked.push('route_unvisited', 'page_no_route');
     gaps.push(
-      ...unvisitedRoutes(routes, pages, truncated, redactedPages > 0),
-      ...undeclaredPages(routes, pages),
+      ...unvisitedRoutes(index.routes, found, truncated, redactedPages > 0),
+      ...undeclaredPages(pages, found),
     );
   }
   if (report !== undefined) {
-    const pointers = new Map(pages.map((p) => [p.page.path, p.pointer]));
     checked.push('operation_no_ui', 'operation_ambiguous');
-    gaps.push(...operationGaps(report, pointers));
+    gaps.push(
+      ...operationGaps(report, pointersByPath(pages), redactedPages > 0),
+    );
     if (map !== undefined) {
       checked.push('page_no_spec');
       gaps.push(...unclaimedPages(report, pages));

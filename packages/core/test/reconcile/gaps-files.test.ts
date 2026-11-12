@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, statSync, symlinkSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -95,6 +103,41 @@ describe('coverage gap files (T6.4)', () => {
     );
   });
 
+  it('refuses a gaps.json symlink already inside the root, and writes neither file', () => {
+    const root = mkdtempSync(join(tmpdir(), 'flowctl-gaps-'));
+    const outside = join(mkdtempSync(join(tmpdir(), 'flowctl-gaps-out-')), 't');
+    writeFileSync(outside, 'keep');
+    symlinkSync(outside, join(root, 'gaps.json'));
+    expect(() => writeGaps(root, root, hostile)).toThrow(ConfigError);
+    expect(readFileSync(outside, 'utf8')).toBe('keep');
+    expect(lstatSync(join(root, 'gaps.json')).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(root, 'gaps.md'))).toBe(false);
+  });
+
+  it('says "1 gap." for a single gap', () => {
+    const one = coverageGaps({
+      index: routesIndex([route('/r', 'r.tsx', 1)]),
+      map: appMap([]),
+    });
+    expect(gapsMarkdown(one)).toContain(' 1 gap.\n');
+    expect(gapsMarkdown(hostile)).toMatch(/ \d+ gaps\./);
+  });
+
+  it('refuses gaps whose checked kinds repeat or miss the kind of a gap', () => {
+    expect(() =>
+      CoverageGapsSchema.parse({
+        ...hostile,
+        checked: [...hostile.checked, 'route_unvisited'],
+      }),
+    ).toThrow(/checked/);
+    expect(() =>
+      CoverageGapsSchema.parse({
+        ...hostile,
+        checked: hostile.checked.filter((k) => k !== 'page_no_route'),
+      }),
+    ).toThrow(/page_no_route/);
+  });
+
   it('refuses to write gaps that do not fit the schema', () => {
     const root = mkdtempSync(join(tmpdir(), 'flowctl-gaps-'));
     expect(() =>
@@ -117,10 +160,12 @@ describe('coverage gaps over a real code index (T6.4)', () => {
         ']);',
       ].join('\n'),
     );
+    put(dir, 'app/page.tsx', 'export default () => null;');
     put(dir, 'app/items/[id]/page.tsx', 'export default () => null;');
     put(dir, 'app/routes/docs.$.tsx', 'export default () => null;');
     const index = buildCodeIndex(openRoot(dir, 'repos'));
     const map = appMap([
+      page('/', 'Trang chủ'),
       page('/shop/orders', 'Đơn hàng'),
       page('/shop/orders/9', 'Đơn 9'),
       page('/items/abc', 'Mục'),
@@ -144,7 +189,7 @@ describe('coverage gaps over a real code index (T6.4)', () => {
         4,
         'route-objects',
       ],
-      ['page_no_route', '/help', '/pages/4'],
+      ['page_no_route', '/help', '/pages/5'],
     ]);
   });
 });

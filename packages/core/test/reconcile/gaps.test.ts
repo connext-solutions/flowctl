@@ -192,6 +192,43 @@ describe('coverageGaps: spec and map (T6.4)', () => {
       coverageGaps({ map: SPEC_MAP, operations: [form], report }),
     ).toThrow(ConfigError);
   });
+
+  it('refuses a report whose truncation differs from the map', () => {
+    const report = matchOperations([form], SPEC_MAP);
+    expect(() =>
+      coverageGaps({ map: { ...SPEC_MAP, truncated: true }, report }),
+    ).toThrow(/truncat/);
+  });
+
+  it('refuses a report that names a screen or a tied page the map does not hold', () => {
+    const report = matchOperations([form, twin], SPEC_MAP);
+    const without = (path: string) => ({
+      ...SPEC_MAP,
+      pages: SPEC_MAP.pages.filter((p) => p.path !== path),
+    });
+    expect(() => coverageGaps({ map: without('/requests'), report })).toThrow(
+      ConfigError,
+    );
+    expect(() => coverageGaps({ map: without('/t2'), report })).toThrow(
+      ConfigError,
+    );
+  });
+
+  it('cites the first page of the map when two pages share a path', () => {
+    const map = {
+      ...SPEC_MAP,
+      pages: [...SPEC_MAP.pages, page('/t1', 'Trùng')],
+    };
+    const gaps = coverageGaps({
+      map,
+      report: matchOperations([twin], SPEC_MAP),
+    });
+    const tie = gaps.gaps.find((g) => g.kind === 'operation_ambiguous');
+    expect(tie?.kind === 'operation_ambiguous' && tie.pages).toEqual([
+      { path: '/t1', pointer: '/pages/1' },
+      { path: '/t2', pointer: '/pages/2' },
+    ]);
+  });
 });
 
 describe('coverageGaps: truncated crawls and redacted paths (T6.4)', () => {
@@ -236,5 +273,24 @@ describe('coverageGaps: truncated crawls and redacted paths (T6.4)', () => {
       ['page_no_spec', '/users/***', '/pages/0', ['paths_redacted']],
       ['page_no_spec', '/x/***/edit', '/pages/1', ['paths_redacted']],
     ]);
+  });
+
+  it('labels operation gaps when any page path of the map is masked', () => {
+    const map = appMap([
+      page('/t1', 'Trùng'),
+      page('/t2', 'Trùng'),
+      page('/u/***', 'Người dùng'),
+    ]);
+    const gaps = coverageGaps({ map, operations: [lost, twin] });
+    expect(
+      gaps.gaps
+        .filter((g) => g.kind.startsWith('operation_'))
+        .map((g) => [g.kind, g.caveats]),
+    ).toEqual([
+      ['operation_no_ui', ['paths_redacted']],
+      ['operation_ambiguous', ['paths_redacted']],
+    ]);
+    const plain = coverageGaps({ report: matchOperations([lost], map) });
+    expect(plain.gaps.map((g) => g.caveats)).toEqual([[]]);
   });
 });
