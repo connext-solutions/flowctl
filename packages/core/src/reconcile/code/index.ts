@@ -15,7 +15,7 @@ export {
 export { MAX_JSON_DEPTH, type JsonEntry, parseJsonEntries } from './json.js';
 export { labelsInJson, localeFileOf } from './labels.js';
 export { lex, type Token } from './lexer.js';
-export { type CodeIndex } from './lookup.js';
+export { type CodeIndex, routeQuerySegments } from './lookup.js';
 export { messagesInSource } from './messages.js';
 export {
   joinRoute,

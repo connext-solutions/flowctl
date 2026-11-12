@@ -76,3 +76,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0034](0034-spec-to-map-matching.md) | Derive matches spec operations to the AppMap by fixed text rules, with evidence, and never breaks a tie | accepted |
 | [0035](0035-code-index.md) | The code index walks contained files with a lexer; it never runs git | accepted |
 | [0036](0036-failure-classifier.md) | The failure classifier applies fixed rules with cited evidence, and reports a tie instead of breaking it | accepted |
+| [0037](0037-coverage-gaps.md) | Coverage gaps join code routes, crawled pages and spec operations by fixed rules, and say what may explain each gap | accepted |
