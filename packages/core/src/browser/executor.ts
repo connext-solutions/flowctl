@@ -1,7 +1,7 @@
 import type { Locator, Page } from 'playwright';
 import type { Loc, Step, TemplatedValue } from '../flow/index.js';
 import { FlowError, StepError, readFixture } from '../foundation/index.js';
-import { describeLoc, toPlaywright } from './locator.js';
+import { describeLoc, notFoundMessage, toPlaywright } from './locator.js';
 import { FILL_SETTLE_MS, fillSecret } from './secret-fill.js';
 
 export { StepError } from '../foundation/index.js';
@@ -51,7 +51,7 @@ export async function unique(
   try {
     await l.first().waitFor({ state: 'visible', timeout: o.timeout });
   } catch {
-    throw new StepError('not_found', `${describeLoc(loc)} not found`);
+    throw new StepError('not_found', notFoundMessage(loc));
   }
   const n = await l.count();
   if (n > 1)

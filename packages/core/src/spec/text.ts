@@ -105,6 +105,35 @@ export function occurrences(text: string, value: string): Occurrence[] {
   return found;
 }
 
+/**
+ * Whether `value` occurs in `text` at token boundaries: the same answer as `occurrences(text, value).length > 0`,
+ * found in time linear in both lengths (a KMP scan over the per-code-point lower case, stopping at the first hit at
+ * boundaries), so a hostile text with many hits that are not at boundaries costs no more than one pass.
+ */
+export function containsAtBoundaries(text: string, value: string): boolean {
+  const v = [...value];
+  if (v.length === 0) return false;
+  const t = [...text];
+  if (v.length > t.length) return false;
+  const lv = v.map((c) => c.toLowerCase());
+  const fail: number[] = [0];
+  for (let i = 1, k = 0; i < lv.length; i++) {
+    while (k > 0 && lv[i] !== lv[k]) k = fail[k - 1] ?? 0;
+    if (lv[i] === lv[k]) k++;
+    fail.push(k);
+  }
+  for (let i = 0, k = 0; i < t.length; i++) {
+    const c = t[i]?.toLowerCase();
+    while (k > 0 && c !== lv[k]) k = fail[k - 1] ?? 0;
+    if (c === lv[k]) k++;
+    if (k === lv.length) {
+      if (atBoundaries(t, v, i + 1 - k)) return true;
+      k = fail[k - 1] ?? 0;
+    }
+  }
+  return false;
+}
+
 /** A quoted literal: the UTF-16 offsets of its inner text (without the quotes) and that text. */
 export interface Quoted {
   start: number;

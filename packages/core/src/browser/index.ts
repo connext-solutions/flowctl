@@ -8,7 +8,7 @@ export {
   type Performable,
   type StepErrorKind,
 } from './executor.js';
-export { describeLoc, toPlaywright } from './locator.js';
+export { describeLoc, notFoundMessage, toPlaywright } from './locator.js';
 export {
   OVERLAY_COLORS,
   OVERLAY_TAG,

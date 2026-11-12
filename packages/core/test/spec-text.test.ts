@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  containsAtBoundaries,
   INVISIBLE_CLASS,
   normText,
   occurrences,
@@ -72,6 +73,45 @@ describe('shared spec text rules (ADR 0020 section d)', () => {
     expect('İ'.toLowerCase()).toBe('i\u0307');
     expect(occurrences('i\u0307', 'İ')).toEqual([]);
     expect(occurrences('İ', 'İ')).toEqual([{ start: 0, end: 1, exact: true }]);
+  });
+
+  it('containsAtBoundaries agrees with occurrences(...).length > 0', () => {
+    const cases: [string, string][] = [
+      ['5 items', '5'],
+      ['15 items', '5'],
+      ['1.5 kg', '5'],
+      ['5.5 kg', '5'],
+      ['Total 5.', '5'],
+      ['-5', '5'],
+      ['BOOK', 'OK'],
+      ['order-12-b', 'order-12'],
+      ['(order-12)', 'order-12'],
+      ['Các trang của sơ đồ', 'Sơ đồ'],
+      ['Đơn từng', 'Đơn từ'],
+      ['i\u0307', 'İ'],
+      ['İ', 'İ'],
+      ['İ', 'i\u0307'],
+      ['Lab\u200bel', 'Lab'],
+      ['aa aa aa', 'a a'],
+      ['aa aa a a', 'a a'],
+      ['aaa', 'aa'],
+      ['x aab aa', 'aa'],
+      ['𝐀 b', '𝐀'],
+      ['abc', ''],
+      ['', 'a'],
+      ['a', 'a'],
+    ];
+    for (const [text, value] of cases)
+      expect(containsAtBoundaries(text, value), `${text} / ${value}`).toBe(
+        occurrences(text, value).length > 0,
+      );
+  });
+
+  it('containsAtBoundaries is linear: a long value with many non-boundary hits in a long text', () => {
+    const value = `a ${'aa '.repeat(2_000)}a`;
+    const text = `${'aa '.repeat(200_000)}`;
+    expect(containsAtBoundaries(text, value)).toBe(false);
+    expect(containsAtBoundaries(`${text} ${value}`, value)).toBe(true);
   });
 
   it('lists quoted literals with the offsets of their inner text', () => {
