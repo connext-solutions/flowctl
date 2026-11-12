@@ -23,6 +23,30 @@ function holdsMap(path: string): boolean {
 }
 
 /**
+ * Refuses an output path under `.auth` (the saved sessions), a `.git` directory or the runs directory (other runs'
+ * evidence) of the flows root, by its components below that root, in any case. Containment itself is the caller's
+ * (`ensureDirInside`).
+ *
+ * @param target the absolute path an `--out` option names.
+ * @param given the path as the user wrote it, for the message.
+ * @throws {ConfigError} for a path under one of those directories.
+ */
+export function refuseReservedOut(
+  cfg: LoadedConfig,
+  target: string,
+  given: string,
+): void {
+  const parts = relative(cfg.flowsPath, target)
+    .split(/[\\/]/)
+    .map((p) => p.toLowerCase());
+  const runs = relative(cfg.flowsPath, runsPath(cfg)).toLowerCase();
+  if (parts.some((p) => FORBIDDEN.has(p)) || parts[0] === runs)
+    throw new ConfigError(
+      `--out may not write under .auth, .git or ${runs} (sessions, git metadata and run evidence): ${given}`,
+    );
+}
+
+/**
  * The absolute path `file` (relative to the current directory) names for a copy of an `AppMap`, its directory
  * created: checked before a crawl starts, so a bad `--out` costs no crawl.
  *
@@ -37,14 +61,7 @@ export function appMapPath(cfg: LoadedConfig, file: string): string {
   const target = resolve(file);
   if (!target.endsWith('.json'))
     throw new ConfigError(`--out must name a .json file, not ${file}`);
-  const parts = relative(cfg.flowsPath, target)
-    .split(/[\\/]/)
-    .map((p) => p.toLowerCase());
-  const runs = relative(cfg.flowsPath, runsPath(cfg)).toLowerCase();
-  if (parts.some((p) => FORBIDDEN.has(p)) || parts[0] === runs)
-    throw new ConfigError(
-      `--out may not write under .auth, .git or ${runs} (sessions, git metadata and run evidence): ${file}`,
-    );
+  refuseReservedOut(cfg, target, file);
   const path = join(
     ensureDirInside(dirname(target), cfg.flowsPath),
     basename(target),

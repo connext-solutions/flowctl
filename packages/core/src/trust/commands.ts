@@ -22,6 +22,7 @@ export const COMMANDS = {
   login: { guarded: true },
   cleanup: { guarded: true },
   observe: { guarded: true },
+  reconcile: { guarded: true },
   'trust init': { guarded: false },
   'trust hook': { guarded: true },
   'trust add env': { guarded: true },

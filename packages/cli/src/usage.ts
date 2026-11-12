@@ -8,6 +8,13 @@ export const USAGE = `Usage:
   flowctl observe [--env <env>] [--profile <profile>] [--start <path>] [--json] [--out <file.json>] [--config <path>]
                                          crawl the app read-only and write its map (appmap.json) into the run
                                          directory, and to --out inside the flows directory (early)
+  flowctl reconcile <run id> [--code <dir>] [--appmap <file>] [--spec <dir>] [--json] [--config <path>]
+                                         class a failed run (product bug, spec drift, stale test, environment or
+                                         unknown) with its evidence; writes classification.json into the run
+                                         directory; advice, exits 0 whatever the class
+  flowctl reconcile --gaps [--code <dir>] [--appmap <file>] [--spec <dir>] [--out <dir>] [--json] [--config <path>]
+                                         write the coverage gaps between code, the latest crawl (or --appmap) and
+                                         the spec as gaps.json and gaps.md (default <flows>/gaps)
   flowctl trust init [--anchor-dir <abs dir>] [--config <path>]
                                          create this machine's trust store and owner key (interactive); the
                                          store head is also kept in the keychain, or in --anchor-dir without one

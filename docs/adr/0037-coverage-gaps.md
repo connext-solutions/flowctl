@@ -95,3 +95,30 @@ ADR 0034, not a coverage gap).
   `page_no_route`. A route reached only with a query or a hash route is invisible to a crawl that keys pages by path.
 - **Revisit when:** the classifier (T6.2) needs gaps per component, the crawl records routes visited by actions
   (T2.8), or measured reports show the catch-all rule hiding real routes.
+
+## Amendment 2026-11-12: `flowctl reconcile --gaps` (task T6.6)
+
+Decided under the owner's delegation of 2026-11-11; status of the body unchanged.
+
+`coverageGaps` and `writeGaps` now have a caller: `flowctl reconcile --gaps`, through the core entry point
+`reconcileGaps(cfg, { code?, appmap?, spec?, out? })` (`core/src/reconcile/project/`), exported from the package.
+
+1. **Contract.** `flowctl reconcile --gaps [--code <dir>] [--appmap <file>] [--spec <dir>] [--out <dir>] [--json]
+   [--config <path>]`. It prints the map it read, the number of gaps, the `checked` kinds with a count each, the
+   kinds not checked, notes, and the two files; `--json` prints the `gaps.json` text. `--code` and `--spec` follow
+   ADR 0036 amendment 2026-11-12, decision 5 (inside the project root until `trust add root` exists); `--spec` is a
+   folder of markdown documents read by `markdownSpecProvider`, whose operations the matcher joins to the map.
+2. **The map.** `--appmap <file>` names an `AppMap` inside the flows directory (a run's `appmap.json` or an
+   `observe --out` copy; not under `.auth`, no symlink, at most 32 MiB). Without it, the map is the `appmap.json` of
+   the run whose id sorts last: a run id starts with its creation time in base 36, so that is the latest crawl. The
+   choice reads only directory names (real directories named like a run id holding a regular `appmap.json`), no file
+   content and no modification time, so it is cheap and the same for the same directory. With no map at all the
+   command is a usage error (exit 2): every kind needs the map or a report made from one.
+3. **Where the files go.** `--out <dir>`, default `<flowsDir>/gaps`, follows the containment of `observe --out`
+   (ADR 0033): inside the flows directory, never under `.auth`, a `.git` directory or the runs directory, created one
+   component at a time with no symlink on the way. An existing `gaps.json` there must be a gaps report
+   (`CoverageGapsSchema`) and an existing `gaps.md` is replaced only beside one, so a mistyped `--out` never
+   overwrites a project file. The checks run before the code index is built.
+4. **Exit codes.** `0` whenever it ran, whatever the gaps (a gap is advice, never a verdict); `2` for a usage or
+   configuration error (no map, a refused `--out` or source, a containment refusal of the code index or the spec
+   provider); `3` for a trust refusal. Never `1`.
