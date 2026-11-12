@@ -47,10 +47,26 @@ export interface PageSnapshot extends z.infer<typeof RawSnapshotSchema> {
   fingerprint: string;
 }
 
+/**
+ * Runs the snapshot script through CDP `Runtime.evaluate` in the page's main world, as `page.evaluate` would: a
+ * Playwright trace records a `page.evaluate` result (the page text, every field value, the URL) and no CDP call, so
+ * what System 1 is shown stays out of a safe trace (ADR 0030, T1.5).
+ *
+ * @throws {Error} when the script throws or the page context goes away mid-evaluation (the caller retries once).
+ */
 async function evaluateSnapshot(page: Page, ignore: string[]) {
-  return RawSnapshotSchema.parse(
-    await page.evaluate(snapshotScript([...DEV_OVERLAYS, ...ignore])),
-  );
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const r = await cdp.send('Runtime.evaluate', {
+      expression: snapshotScript([...DEV_OVERLAYS, ...ignore]),
+      returnByValue: true,
+    });
+    if (r.exceptionDetails !== undefined)
+      throw new Error(`snapshot failed: ${r.exceptionDetails.text}`);
+    return RawSnapshotSchema.parse(r.result.value);
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
 }
 
 const SETTLE_POLL_MS = 200;

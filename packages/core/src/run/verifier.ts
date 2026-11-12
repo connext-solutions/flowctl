@@ -97,9 +97,10 @@ const describeHits = (hits: NetEntry[], all: readonly NetEntry[]): string =>
  * Whether the visible text of the page, or of the one visible element `within` names, contains `text`.
  *
  * @remarks `within` must match exactly one visible element, like a step's locator; none or several fail with the
- *   count, so a region that is not there never passes by accident. Page text is read with `evaluate`, whose result
- *   a Playwright trace does not record (unlike `innerText` and `inputValue`), so the page's text stays out of a
- *   safe trace (ADR 0030).
+ *   count, so a region that is not there never passes by accident. The page compares its own text and returns only
+ *   whether it holds `text` and its length: a Playwright trace records an `evaluateAll` call's argument (the
+ *   assertion's text, from the flow) and result, never the page text, and unlike `evaluate` it logs no preview of
+ *   the resolved element with its text, so the page's text stays out of a safe trace (ADR 0030, T1.5).
  */
 async function checkText(
   text: string,
@@ -119,15 +120,17 @@ async function checkText(
       };
   }
   const shown = await region
-    .evaluate((e) => (e instanceof HTMLElement ? e.innerText : ''), undefined, {
-      timeout: 1000,
-    })
-    .catch(() => '');
+    .evaluateAll((els, want) => {
+      const e = els[0];
+      const t = e instanceof HTMLElement ? e.innerText : '';
+      return { ok: t.includes(want), chars: t.length };
+    }, text)
+    .catch(() => ({ ok: false, chars: 0 }));
   const where =
     within === undefined ? 'visible page text' : describeLoc(within);
   return {
-    ok: shown.includes(text),
-    got: `${where} does not contain it (${shown.length} chars)`,
+    ok: shown.ok,
+    got: `${where} does not contain it (${shown.chars} chars)`,
   };
 }
 
