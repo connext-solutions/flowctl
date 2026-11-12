@@ -43,7 +43,7 @@ export {
   SeenSet,
 } from './ledger/index.js';
 export { scopeFor } from './scope-for.js';
-export { redactBody, redactResponse, redactText } from './redact.js';
+export { MASK, redactBody, redactResponse, redactText } from './redact.js';
 export {
   cookieMatches,
   filterState,
