@@ -249,3 +249,7 @@ export function gitRepo(dir: string): string {
   }
   return git(dir, ['rev-list', '--max-parents=0', 'HEAD']);
 }
+
+/** The store in `store.dir` read again, as a command does after another one changed it. */
+export const reopenStore = (store: TrustStore): TrustStore =>
+  TrustStore.open(store.dir);
