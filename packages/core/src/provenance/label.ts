@@ -37,8 +37,15 @@ export function labelFlow(
 
 /** The class name of a thrown value, never its message or any path in it. */
 function errorClass(e: unknown): string {
-  const name = e instanceof Error ? e.constructor.name : typeof e;
-  return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : 'Unknown';
+  try {
+    if (!(e instanceof Error)) return 'Unknown';
+    const name: unknown = e.constructor.name;
+    return typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)
+      ? name
+      : 'Unknown';
+  } catch {
+    return 'Unknown';
+  }
 }
 
 function label(

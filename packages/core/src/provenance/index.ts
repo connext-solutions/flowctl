@@ -8,6 +8,8 @@ export {
   flowKey,
   handWrittenDigest,
   listedHandWritten,
+  snapshotFlowFile,
+  type FlowFileSnapshot,
   type ProvenanceStore,
 } from './hand-written.js';
 export { provenanceState, type ProvenanceState } from './state.js';

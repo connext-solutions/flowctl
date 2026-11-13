@@ -119,6 +119,49 @@ describe('the label binds to the bytes loadFlow parsed', () => {
 
 describe('sourceRef text fields', () => {
   it.each([
+    ['ref', 'a\u200eb'],
+    ['author', 'a\u200fb'],
+    ['ref', 'a\u061cb'],
+    ['author', 'a\u2060b'],
+    ['ref', 'a\u00adb'],
+    ['author', 'a\u{e0041}b'],
+    ['ref', 'a\u202eb'],
+    ['author', 'a\u2028b'],
+  ])('refuses an invisible code point in %s', (field, value) => {
+    expect(
+      SourceRefSchema.safeParse({ kind: 'contract', ref: 'x', [field]: value })
+        .success,
+    ).toBe(false);
+  });
+
+  it.each([
+    '\u200e',
+    '\u200f',
+    '\u061c',
+    '\u2060',
+    '\u00ad',
+    '\u{e0041}',
+    '\u202e',
+    '\u2028',
+  ])('refuses U+%s in a quote', (ch) => {
+    expect(
+      SourceRefSchema.safeParse({
+        kind: 'contract',
+        ref: 'x',
+        quote: `a${ch}b`,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps CRLF in a quote but refuses a lone carriage return', () => {
+    const quote = (q: string) =>
+      SourceRefSchema.safeParse({ kind: 'contract', ref: 'x', quote: q })
+        .success;
+    expect(quote('one\r\n\ttwo')).toBe(true);
+    expect(quote('one\rtwo')).toBe(false);
+  });
+
+  it.each([
     ['ref', 'r'.repeat(501)],
     ['author', 'a'.repeat(501)],
     ['ref', 'a\nb'],

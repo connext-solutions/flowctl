@@ -30,6 +30,26 @@ export function flowKey(
 }
 
 /**
+ * One read of a flow file's hash, taken once per labelling and shared by every check, so a file that changes
+ * between checks cannot make them disagree. `sha256` is `undefined` when the file has no key or cannot be hashed
+ * safely.
+ */
+export interface FlowFileSnapshot {
+  readonly sha256: string | undefined;
+}
+
+/** Reads the flow file's hash once (see {@link FlowFileSnapshot}). */
+export function snapshotFlowFile(
+  flow: Pick<Flow, 'file'>,
+  flowsRoot: string,
+): FlowFileSnapshot {
+  const key = flowKey(flow, flowsRoot);
+  return {
+    sha256: key === undefined ? undefined : hashFlowFile(flowsRoot, key),
+  };
+}
+
+/**
  * Whether the flow file on disk was read and its bytes differ from the ones `loadFlow` parsed into `flow` (the file
  * was rewritten or swapped between load and label). A label bound to the file on disk would then describe bytes the
  * run does not use.
@@ -37,11 +57,14 @@ export function flowKey(
  * @returns `false` for a flow that carries no `sourceSha256` (not read from a file), has no key, or whose file
  *   cannot be read (see {@link flowFileUnreadable}).
  */
-export function flowFileChanged(flow: Flow, flowsRoot: string): boolean {
+export function flowFileChanged(
+  flow: Flow,
+  flowsRoot: string,
+  snapshot: FlowFileSnapshot = snapshotFlowFile(flow, flowsRoot),
+): boolean {
   if (flow.sourceSha256 === undefined) return false;
-  const key = flowKey(flow, flowsRoot);
-  if (key === undefined) return false;
-  const now = hashFlowFile(flowsRoot, key);
+  if (flowKey(flow, flowsRoot) === undefined) return false;
+  const now = snapshot.sha256;
   return now !== undefined && now !== flow.sourceSha256;
 }
 
@@ -51,11 +74,14 @@ export function flowFileChanged(flow: Flow, flowsRoot: string): boolean {
  *
  * @returns `false` for a flow that carries no `sourceSha256` or has no key.
  */
-export function flowFileUnreadable(flow: Flow, flowsRoot: string): boolean {
+export function flowFileUnreadable(
+  flow: Flow,
+  flowsRoot: string,
+  snapshot: FlowFileSnapshot = snapshotFlowFile(flow, flowsRoot),
+): boolean {
   if (flow.sourceSha256 === undefined) return false;
-  const key = flowKey(flow, flowsRoot);
-  if (key === undefined) return false;
-  return hashFlowFile(flowsRoot, key) === undefined;
+  if (flowKey(flow, flowsRoot) === undefined) return false;
+  return snapshot.sha256 === undefined;
 }
 
 /**
@@ -75,10 +101,14 @@ export function flowFileUnreadable(flow: Flow, flowsRoot: string): boolean {
  *   file no longer the bytes `loadFlow` parsed ({@link flowFileChanged}), or a hook that is `uncovered` or cannot be
  *   shown in full. `''` never matches a stored entry.
  */
-export function handWrittenDigest(flow: Flow, flowsRoot: string): string {
+export function handWrittenDigest(
+  flow: Flow,
+  flowsRoot: string,
+  snapshot: FlowFileSnapshot = snapshotFlowFile(flow, flowsRoot),
+): string {
   const key = flowKey(flow, flowsRoot);
   if (key === undefined) return '';
-  const flowSha256 = hashFlowFile(flowsRoot, key);
+  const flowSha256 = snapshot.sha256;
   if (flowSha256 === undefined) return '';
   if (flow.sourceSha256 !== undefined && flow.sourceSha256 !== flowSha256)
     return '';
@@ -119,10 +149,11 @@ export function listedHandWritten(
   flow: Flow,
   flowsRoot: string,
   store: ProvenanceStore,
+  snapshot: FlowFileSnapshot = snapshotFlowFile(flow, flowsRoot),
 ): boolean {
   const key = flowKey(flow, flowsRoot);
   if (key === undefined) return false;
-  const digest = handWrittenDigest(flow, flowsRoot);
+  const digest = handWrittenDigest(flow, flowsRoot, snapshot);
   if (digest === '') return false;
   return store.data.handWritten.some(
     (e) =>

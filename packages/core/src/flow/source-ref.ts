@@ -1,36 +1,27 @@
 import { z } from 'zod';
+import { INVISIBLE_CLASS } from '../foundation/index.js';
 
 /** The longest `ref` or `author` a `sourceRef` holds. */
 export const MAX_REF_CHARS = 500;
 
+const HIDDEN = new RegExp(`[${INVISIBLE_CLASS}]`, 'u');
+const HIDDEN_IN_QUOTE = new RegExp(`(?![\\n\\t])[${INVISIBLE_CLASS}]`, 'u');
+
+/** No invisible or control code point (ADR 0020 section d: `INVISIBLE_CLASS`), so nothing steers or hides text. */
+const hasNoControl = (text: string): boolean => !HIDDEN.test(text);
+
 /**
- * Code points that steer or disguise text in a terminal or a log line: C0 and C1 controls, the bidi controls
- * (U+202A-202E, U+2066-2069), the line and paragraph separators (U+2028, U+2029) and the zero-width characters
- * (U+200B-200D, U+FEFF).
+ * A quote is multi-line spec text: it may hold `\n`, `\r\n` (a CRLF spec) and `\t`, but no other invisible or
+ * control code point (a lone `\r` included).
  */
-const isHidden = (n: number): boolean =>
-  n <= 0x1f ||
-  (n >= 0x7f && n <= 0x9f) ||
-  (n >= 0x200b && n <= 0x200d) ||
-  (n >= 0x2028 && n <= 0x202e) ||
-  (n >= 0x2066 && n <= 0x2069) ||
-  n === 0xfeff;
-
-const hasNoControl = (text: string): boolean =>
-  [...text].every((c) => !isHidden(c.codePointAt(0) ?? 0));
-
-/** A quote is multi-line spec text: it may hold `\n` and `\t`, but no escape or other control character. */
 const quoteHasNoControl = (text: string): boolean =>
-  [...text].every((c) => {
-    const n = c.codePointAt(0) ?? 0;
-    return n === 0x0a || n === 0x09 || (n > 0x1f && (n < 0x7f || n > 0x9f));
-  });
+  !HIDDEN_IN_QUOTE.test(text.replace(/\r\n/g, '\n'));
 
 const Label = z
   .string()
   .min(1)
   .max(MAX_REF_CHARS)
-  .refine(hasNoControl, 'no control characters');
+  .refine(hasNoControl, 'no control or invisible characters');
 
 const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a lowercase hex sha256');
 
@@ -54,7 +45,7 @@ export const SourceRefSchema = z
     quote: z
       .string()
       .max(MAX_QUOTE_CHARS)
-      .refine(quoteHasNoControl, 'no control characters')
+      .refine(quoteHasNoControl, 'no control or invisible characters')
       .optional(),
     quoteSha256: Sha256.optional(),
     contextSha256: Sha256.optional(),

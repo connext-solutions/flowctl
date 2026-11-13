@@ -4,6 +4,7 @@ import {
   flowFileChanged,
   flowFileUnreadable,
   listedHandWritten,
+  snapshotFlowFile,
   type ProvenanceStore,
 } from './hand-written.js';
 
@@ -39,12 +40,13 @@ export function provenanceState(
   const notes = ['freshness_not_checked', 'rollback_not_checked'];
   if (claimsDerivation(flow))
     return { state: 'unverified', notes: [...notes, 'signature_unavailable'] };
-  if (flowFileChanged(flow, flowsRoot))
+  const snapshot = snapshotFlowFile(flow, flowsRoot);
+  if (flowFileChanged(flow, flowsRoot, snapshot))
     return { state: 'unclassified', notes: [...notes, 'flow_file_changed'] };
-  if (flowFileUnreadable(flow, flowsRoot))
+  if (flowFileUnreadable(flow, flowsRoot, snapshot))
     return { state: 'unclassified', notes: [...notes, 'flow_file_unreadable'] };
   const listed =
-    store !== undefined && listedHandWritten(flow, flowsRoot, store);
+    store !== undefined && listedHandWritten(flow, flowsRoot, store, snapshot);
   return listed
     ? { state: 'hand-written', notes: [...notes, 'handwritten_entry_unsigned'] }
     : { state: 'unclassified', notes };
