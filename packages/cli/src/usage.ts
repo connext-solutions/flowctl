@@ -55,5 +55,15 @@ export const USAGE = `Usage:
   flowctl trust key rotate-owner [--config <path>]
                                          replace the owner key and re-sign every entry; a rerun finishes or rolls
                                          back a rotation that was interrupted (interactive)
+  flowctl trust key new --person <name> --scope flows|spec --expires <days> [--out <file>] [--config <path>]
+                                         generate a reviewer key (passphrase typed twice), write it with its .pub
+                                         outside any repository (default ~/.config/flowctl-reviewer-keys/<key id>.key)
+                                         and register it; --expires is 1 to 365 days, no default (interactive)
+  flowctl trust key add <public key file> --person <name> --scope flows|spec --expires <days> --custody hardware|file [--config <path>]
+                                         register a public key (PEM or ssh-ed25519 line); you declare where the
+                                         private half lives (interactive)
+  flowctl trust key revoke <key id> [--reason <text>] [--config <path>]
+                                         revoke a reviewer key; the entry is kept and its approvals fail from the
+                                         next store read (interactive)
 
 Every command except --help and trust init needs a trust store: run flowctl trust init once per machine.`;

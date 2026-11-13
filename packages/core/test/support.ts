@@ -9,6 +9,7 @@ export {
   consentHooks,
   gitRepo,
   localAnswers,
+  reopenStore,
   testOwnerKey,
   testStore,
 } from './trust-fixture.js';

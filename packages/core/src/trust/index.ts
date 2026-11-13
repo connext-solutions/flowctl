@@ -4,7 +4,7 @@
  * validate, the owner key with signed entries, the hook closure, consent and snapshot, `trust init` with the
  * owner's env classes, `trust add env`, the profile env-var allowlist with `trust add profile` (T1.14), the
  * command registry with its guard, `trust.log` with the anchor, the other `trust add` kinds, and owner-key
- * rotation, `trust init --replace`, and the shared containment helper for spec and contract readers (`contain/`,
+ * rotation, reviewer keys (`trust key new|add|revoke`, T1.15), `trust init --replace`, and the shared containment helper for spec and contract readers (`contain/`,
  * T3.0; roots are passed in by the caller until the store `roots` reader lands). Still to come: the CI layouts.
  *
  * `TrustStore.open(dir)` is a test-only seam; it is re-exported here for the trust folder's own tests
@@ -60,6 +60,40 @@ export {
   type EnvVarKind,
   type TrustedProfile,
 } from './env-vars.js';
+export {
+  addReviewerKey,
+  createReviewerKey,
+  type NewKeyTarget,
+  planNewKey,
+  planRevokeKey,
+  revokeReviewerKey,
+  type ReviewerKeyRequest,
+  type ReviewerKeyStatus,
+  reviewerKeyStatus,
+  validateKeyRequest,
+} from './keys.js';
+export {
+  MAX_KEY_DAYS,
+  readReviewerKeys,
+  REVIEWER_CUSTODY,
+  REVIEWER_SCOPES,
+  type ReviewerCustody,
+  type ReviewerKey,
+  type ReviewerKeys,
+  reviewerKeyId,
+  type ReviewerRevocation,
+  type ReviewerScope,
+  validateCustody,
+  validateReason,
+} from './keys-schema.js';
+export { assertReviewerKeyPath, defaultReviewerKeyDir } from './keys-path.js';
+export { parsePublicKey } from './keys-pub.js';
+export {
+  assertReviewerPassphrase,
+  type ReviewerSigner,
+} from './keys-crypto.js';
+export { createReviewerKeyFile, type ReviewerKeyFiles } from './keys-seal.js';
+export { loadReviewerKey } from './keys-load.js';
 export { addEnvOrigin, checkEnvOrigin, type OriginSet } from './env-origins.js';
 export {
   addSystem1,
