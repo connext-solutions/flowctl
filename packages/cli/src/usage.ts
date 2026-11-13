@@ -60,8 +60,9 @@ export const USAGE = `Usage:
                                          outside any repository (default ~/.config/flowctl-reviewer-keys/<key id>.key)
                                          and register it; --expires is 1 to 365 days, no default (interactive)
   flowctl trust key add <public key file> --person <name> --scope flows|spec --expires <days> --custody hardware|file [--config <path>]
-                                         register a public key (PEM or ssh-ed25519 line); you declare where the
-                                         private half lives (interactive)
+                                         register a public key (PEM or ssh-ed25519 line); --custody is your
+                                         declaration of where the private half lives, recorded as declared by
+                                         owner, not verified (interactive)
   flowctl trust key revoke <key id> [--reason <text>] [--config <path>]
                                          revoke a reviewer key; the entry is kept and its approvals fail from the
                                          next store read (interactive)

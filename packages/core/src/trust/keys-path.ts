@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
+import { platform } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { TrustError } from './errors.js';
 import { assertNotInRepository, defaultStoreDir } from './location.js';
@@ -25,11 +26,22 @@ export function realPathOf(path: string): string {
     missing.unshift(basename(current));
     current = dirname(current);
   }
-  return join(realpathSync(current), ...missing);
+  return join(realpathSync.native(current), ...missing);
 }
 
+/**
+ * `path` folded for comparison: NFC always, and lower case on macOS and Windows, whose usual filesystems treat names
+ * that differ only in case (or in Unicode form) as one name. Folding can only make the excluded-directory check
+ * refuse more, never less.
+ */
+const fold = (path: string): string => {
+  const nfc = path.normalize('NFC');
+  const os = platform();
+  return os === 'darwin' || os === 'win32' ? nfc.toLowerCase() : nfc;
+};
+
 const within = (dir: string, path: string): boolean => {
-  const rel = relative(dir, path);
+  const rel = relative(fold(dir), fold(path));
   return (
     rel === '' ||
     (!rel.startsWith(`..${sep}`) && rel !== '..' && !rel.startsWith('/'))
@@ -39,7 +51,7 @@ const within = (dir: string, path: string): boolean => {
 /**
  * The real path a reviewer key file will be written to, after the refusals of ADR 0025 section 3: not inside any
  * repository (judged on the real path, and on the path as written), not inside an excluded directory (the owner-key
- * directory and the store directory, compared by real path).
+ * directory and the store directory, compared by real path, and without regard to case where the filesystem ignores it).
  *
  * @param excluded directories the key may not be written in or under, e.g. `[ownerKeyDir, storeDir]`.
  * @throws {TrustError} `trust_entry_invalid` with detail `key_path_in_key_dir` for an excluded directory, or

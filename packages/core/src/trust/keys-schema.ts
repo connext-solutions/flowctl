@@ -9,11 +9,23 @@ export const REVIEWER_SCOPES = ['flows', 'spec'] as const;
 export type ReviewerScope = (typeof REVIEWER_SCOPES)[number];
 
 /**
- * Where the private half lives, as the owner declared it. `file` is a passphrase-encrypted key file; `hardware` is a
- * key that never leaves a device. flowctl cannot verify either claim and never accepts an unencrypted file key.
+ * Where the private half of a reviewer key lives, as the trust store records it.
+ *
+ * - `file`: `trust key new` sealed the key file itself, under a passphrase it read from the terminal. flowctl wrote
+ *   that file; it still cannot know the file stays there.
+ * - `declared-file` and `declared-hardware`: `trust key add` registered a public key and the owner only SAID that the
+ *   private half is in a passphrase-encrypted file or on a hardware device. flowctl never saw the private half and
+ *   cannot verify the statement; it is a record of what the owner declared, not a guarantee.
  */
-export const REVIEWER_CUSTODY = ['file', 'hardware'] as const;
+export const REVIEWER_CUSTODY = [
+  'file',
+  'declared-file',
+  'declared-hardware',
+] as const;
 export type ReviewerCustody = (typeof REVIEWER_CUSTODY)[number];
+
+/** The custody values `trust key add` can record: the owner's unverified declaration. */
+export type DeclaredCustody = Extract<ReviewerCustody, `declared-${string}`>;
 
 /** The longest a reviewer key may live, in whole days. There is no default: the owner always names it. */
 export const MAX_KEY_DAYS = 365;
@@ -139,15 +151,19 @@ export function validateScope(scope: string): ReviewerScope {
   return found;
 }
 
-/** `custody` as one of {@link REVIEWER_CUSTODY}. */
-export function validateCustody(custody: string): ReviewerCustody {
-  const found = REVIEWER_CUSTODY.find((c) => c === custody);
-  if (found === undefined)
-    throw new TrustError(
-      'trust_entry_invalid',
-      `--custody must be ${REVIEWER_CUSTODY.join(' or ')}, not ${JSON.stringify(custody)}.`,
-    );
-  return found;
+/**
+ * The `--custody` words of `trust key add` (`file` or `hardware`) as the declaration the store records
+ * (`declared-file` or `declared-hardware`).
+ *
+ * @throws {TrustError} `trust_entry_invalid` for any other word.
+ */
+export function validateCustody(custody: string): DeclaredCustody {
+  if (custody === 'file') return 'declared-file';
+  if (custody === 'hardware') return 'declared-hardware';
+  throw new TrustError(
+    'trust_entry_invalid',
+    `--custody must be file or hardware, not ${JSON.stringify(custody)}.`,
+  );
 }
 
 /** `--expires` as whole days from 1 to {@link MAX_KEY_DAYS}. */

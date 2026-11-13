@@ -21,13 +21,20 @@ describe('reviewer keys and owner-key rotation (T1.15)', () => {
     () => {
       const { storeDir, keyDir, key, init } = fresh();
       const store = TrustStore.open(storeDir);
-      const a = addReviewerKey(store, key, newPublicKey(), REQ, 'file', NOW);
+      const a = addReviewerKey(
+        store,
+        key,
+        newPublicKey(),
+        REQ,
+        'declared-file',
+        NOW,
+      );
       const b = addReviewerKey(
         store,
         key,
         newPublicKey(),
         { ...REQ, scope: 'spec' },
-        'hardware',
+        'declared-hardware',
         NOW,
       );
       revokeReviewerKey(store, key, a.id, undefined, NOW);

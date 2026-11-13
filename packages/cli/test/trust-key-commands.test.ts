@@ -1,5 +1,12 @@
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +14,7 @@ import { stringify } from 'yaml';
 import { addReviewerKey, loadConfig, type TrustStore } from '@flowctl/core';
 import { reopenStore, testOwnerKey, testStore } from '@flowctl/core-testing';
 import { runCli } from '../src/main.js';
+import { keyLines } from '../src/trust-key-opts.js';
 import { USAGE } from '../src/usage.js';
 
 /**
@@ -154,6 +162,42 @@ describe('flowctl trust key add (T1.15)', () => {
     expect(err.join('')).not.toContain('tty_required');
   });
 
+  it('opens the public key file without following symlinks and reads only regular files, at most 4 KiB', async () => {
+    const good = publicFile();
+    const link = join(outside(), 'link.pub');
+    symlinkSync(good, link);
+    const fifo = join(outside(), 'fifo.pub');
+    execFileSync('mkfifo', [fifo]);
+    const big = join(outside(), 'big.pub');
+    writeFileSync(big, readFileSync(good, 'utf8') + ' '.repeat(5000));
+    for (const [path, says] of [
+      [link, 'Cannot read the public key file'],
+      [fifo, 'Cannot read the public key file'],
+      [outside(), 'Cannot read the public key file'],
+      [big, 'too large'],
+    ] as const) {
+      err.length = 0;
+      expect(await run(ADD(path))).toBe(3);
+      expect(err.join('')).toContain(says);
+      expect(err.join('')).not.toContain('tty_required');
+    }
+  });
+
+  it('says on its confirmation screen that custody is declared and not verified', () => {
+    expect(USAGE).toContain('--custody hardware|file');
+    expect(
+      keyLines({
+        person: 'A',
+        scope: 'flows',
+        custody: 'declared-hardware',
+        expires: 'x',
+      }),
+    ).toContain('declared by owner, not verified');
+    expect(
+      keyLines({ person: 'A', scope: 'flows', custody: 'file', expires: 'x' }),
+    ).not.toContain('not verified');
+  });
+
   it('exits 3 with tty_required for a valid public key, and 2 without a file argument', async () => {
     expect(await run(ADD(publicFile()))).toBe(3);
     expect(err.join('')).toContain('tty_required');
@@ -174,7 +218,7 @@ describe('flowctl trust key revoke (T1.15)', () => {
       testOwnerKey(),
       Buffer.from(der.subarray(der.length - 32)),
       { person: 'Alice', scope: 'flows', days: 30 },
-      'file',
+      'declared-file',
     );
     store = reopenStore(store);
     expect(await run(['trust', 'key', 'revoke', 'f'.repeat(64)])).toBe(3);

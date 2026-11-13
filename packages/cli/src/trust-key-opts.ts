@@ -1,5 +1,5 @@
 import {
-  type ReviewerCustody,
+  type DeclaredCustody,
   type ReviewerKey,
   type ReviewerKeyRequest,
   TrustError,
@@ -31,16 +31,21 @@ export const keyRequest = (values: Values): ReviewerKeyRequest =>
   });
 
 /**
- * The `--custody` the owner declared for `trust key add`: `hardware` or `file` (an encrypted key file). flowctl cannot
- * check the claim.
+ * The `--custody` the owner declared for `trust key add`: `hardware` or `file` (an encrypted key file), returned as
+ * the `declared-*` value the store records. It is an owner declaration; flowctl cannot check the claim.
  *
  * @throws {TrustError} `trust_entry_invalid` when missing or neither value.
  */
-export const keyCustody = (values: Values): ReviewerCustody =>
+export const keyCustody = (values: Values): DeclaredCustody =>
   validateCustody(required('custody', values.custody));
+
+const custodyText = (custody: ReviewerKey['custody']): string =>
+  custody.startsWith('declared-')
+    ? `${custody} (declared by owner, not verified)`
+    : custody;
 
 /** The lines of a confirmation screen that describe a key: who, what it may approve, until when. */
 export const keyLines = (
   k: Pick<ReviewerKey, 'person' | 'scope' | 'custody'> & { expires: string },
 ): string =>
-  `Person:    ${k.person}\nScope:     ${k.scope}\nExpires:   ${k.expires}\nCustody:   ${k.custody}\n`;
+  `Person:    ${k.person}\nScope:     ${k.scope}\nExpires:   ${k.expires}\nCustody:   ${custodyText(k.custody)}\n`;

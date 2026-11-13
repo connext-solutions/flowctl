@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -67,6 +67,24 @@ describe('reviewer key paths (T1.15)', () => {
         ]),
       ),
     ).toBeUndefined();
+  });
+
+  it('compares excluded directories case-insensitively where the filesystem is', () => {
+    const dir = base();
+    const ownerDir = join(dir, 'Owner-Key');
+    mkdirSync(ownerDir);
+    const probe = join(dir, 'owner-key');
+    if (!existsSync(probe)) return; // a case-sensitive filesystem: nothing to prove
+    expect(
+      kindOf(() => assertReviewerKeyPath(join(probe, 'a.key'), [ownerDir])),
+    ).toBe('trust_entry_invalid:key_path_in_key_dir');
+    expect(
+      kindOf(() =>
+        assertReviewerKeyPath(join(dir, 'OWNER-KEY', 'new', 'a.key'), [
+          ownerDir,
+        ]),
+      ),
+    ).toBe('trust_entry_invalid:key_path_in_key_dir');
   });
 
   it('keeps the default directory next to the store and the owner-key directory', () => {

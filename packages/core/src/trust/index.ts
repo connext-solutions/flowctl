@@ -77,6 +77,7 @@ export {
   readReviewerKeys,
   REVIEWER_CUSTODY,
   REVIEWER_SCOPES,
+  type DeclaredCustody,
   type ReviewerCustody,
   type ReviewerKey,
   type ReviewerKeys,

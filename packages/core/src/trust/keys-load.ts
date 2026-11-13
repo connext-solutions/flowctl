@@ -25,10 +25,10 @@ import {
  * Unlocks a reviewer key file with `passphrase`.
  *
  * @remarks The file is opened `O_NOFOLLOW` and `fstat`ed: a single-link regular file owned by the current user and
- *   closed to group and other. scrypt parameters outside the owner-key floors and ceilings are refused before any
- *   derivation.
+ *   closed to group and other. scrypt parameters outside the owner-key floors and ceilings, or an N that is not a power of two, are refused
+ *   before any derivation, and any failure while deriving or decrypting is a `TrustError`, never a raw crypto error.
  * @throws {TrustError} `key_missing`; `trust_tampered` (detail `key_file`) for a symlink, a hard link, another owner
- *   or loose mode bits; `key_params_weak`; `key_params_unsupported`; `key_unlock_failed` for a wrong passphrase, a
+ *   or loose mode bits; `key_params_weak`; `key_params_unsupported` (too much memory, or N not a power of two); `key_unlock_failed` for a wrong passphrase, a
  *   damaged file or a file that is not a reviewer key.
  */
 export function loadReviewerKey(
@@ -53,6 +53,11 @@ export function loadReviewerKey(
       'key_params_weak',
       `${keyFile} uses scrypt N=${k.N} r=${k.r} p=${k.p}; flowctl needs N between 131072 and 1048576, r >= 8 and p between 1 and ${REVIEWER_P_MAX}.`,
     );
+  if ((k.N & (k.N - 1)) !== 0)
+    throw new TrustError(
+      'key_params_unsupported',
+      `${keyFile} uses scrypt N=${k.N}, which is not a power of two.`,
+    );
   if (128 * k.r * (k.N + 2) + 128 * k.r * k.p > REVIEWER_SCRYPT.maxmem)
     throw new TrustError(
       'key_params_unsupported',
@@ -66,8 +71,9 @@ export function loadReviewerKey(
       'key_unlock_failed',
       `${keyFile} is damaged: salt, nonce or ciphertext has the wrong length.`,
     );
-  const aesKey = deriveReviewerKey(passphrase, salt, k);
+  let aesKey: Buffer | undefined;
   try {
+    aesKey = deriveReviewerKey(passphrase, salt, k);
     const decipher = createDecipheriv('aes-256-gcm', aesKey, nonce, {
       authTagLength: REVIEWER_TAG,
     }).setAAD(REVIEWER_AAD);
@@ -81,7 +87,7 @@ export function loadReviewerKey(
       `Could not unlock ${keyFile}: wrong passphrase or a damaged key file.`,
     );
   } finally {
-    aesKey.fill(0);
+    aesKey?.fill(0);
   }
 }
 

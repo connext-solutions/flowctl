@@ -3,8 +3,10 @@ import { join } from 'node:path';
 import dayjs from 'dayjs';
 import { assertCanWrite } from './admin.js';
 import { TrustError } from './errors.js';
+import { entryCommitted } from './keys-commit.js';
 import { assertReviewerKeyPath, defaultReviewerKeyDir } from './keys-path.js';
 import {
+  type DeclaredCustody,
   type ReviewerCustody,
   type ReviewerKey,
   type ReviewerRevocation,
@@ -101,8 +103,8 @@ function assertWritable(store: TrustStore, owner: OwnerKey): TrustStore {
 
 /**
  * Registers an existing public key (`flowctl trust key add`): an owner-signed `key` entry in `reviewerKeys`.
- * The owner declares where the private half lives; flowctl cannot check it, so `custody` is a statement, and a
- * file key is only ever accepted as the encrypted file `trust key new` writes.
+ * The owner declares where the private half lives (`declared-file` or `declared-hardware`); flowctl never sees it
+ * and cannot check the claim, so the store records a declaration, not a fact. No unencrypted file key is accepted.
  *
  * @remarks Several active keys per person and scope are allowed (rotation needs an overlap). The store is read
  *   again after the owner answered, so a change written meanwhile is kept.
@@ -115,7 +117,7 @@ export function addReviewerKey(
   owner: OwnerKey,
   publicKey: Buffer,
   req: ReviewerKeyRequest,
-  custody: ReviewerCustody,
+  custody: DeclaredCustody,
   now: Date = new Date(),
 ): ReviewerKey {
   const fresh = assertWritable(store, owner);
@@ -153,7 +155,7 @@ export function planNewKey(store: TrustStore, target: NewKeyTarget): string {
 
 /**
  * Generates a reviewer key and registers it in one step on the owner machine (`flowctl trust key new`): the sealed
- * key file and its `.pub` are written first, then the owner-signed entry; a failed registration removes both files.
+ * key file and its `.pub` are written first, then the owner-signed entry; a registration that failed before the entry was committed removes both files; one that failed after the commit keeps them.
  *
  * @param passphrase the new key's passphrase, read from `/dev/tty` only.
  * @returns the entry and where the key files are.
@@ -182,8 +184,10 @@ export function createReviewerKey(
       files,
     };
   } catch (e) {
-    rmSync(files.keyFile, { force: true });
-    rmSync(files.pubFile, { force: true });
+    if (!entryCommitted(store, files.publicKey)) {
+      rmSync(files.keyFile, { force: true });
+      rmSync(files.pubFile, { force: true });
+    }
     throw e;
   }
 }

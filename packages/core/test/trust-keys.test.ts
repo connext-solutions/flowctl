@@ -6,52 +6,10 @@ import {
   reviewerKeyStatus,
   revokeReviewerKey,
   TrustStore,
-  validateKeyRequest,
 } from '../src/trust/index.js';
 import { fresh, kindOf } from './rotate-fixture.js';
 import { cfg, DAY, newPublicKey, NOW, REQ } from './trust-keys-fixture.js';
 import { editStore, testOwnerKey, testStore } from './trust-fixture.js';
-
-describe('reviewer key requests (T1.15)', () => {
-  it('normalises the person to NFC and refuses hidden or oversized text', () => {
-    const raw = { person: 'Nguyên', scope: 'flows', expires: '30' };
-    expect(validateKeyRequest(raw).person).toBe('Nguyên');
-    for (const person of [
-      '',
-      ' Alice',
-      'Alice ',
-      'Ali​ce',
-      'Ali\nce',
-      'Ali ce',
-      'a'.repeat(129),
-    ])
-      expect(kindOf(() => validateKeyRequest({ ...raw, person }))).toBe(
-        'trust_entry_invalid:',
-      );
-    expect(
-      validateKeyRequest({ ...raw, person: 'a'.repeat(128) }).person,
-    ).toHaveLength(128);
-  });
-
-  it('takes only the scopes flows and spec', () => {
-    const raw = { person: 'Alice', scope: 'flows', expires: '30' };
-    expect(validateKeyRequest({ ...raw, scope: 'spec' }).scope).toBe('spec');
-    for (const scope of ['', 'FLOWS', 'both', 'flows,spec'])
-      expect(kindOf(() => validateKeyRequest({ ...raw, scope }))).toBe(
-        'trust_entry_invalid:',
-      );
-  });
-
-  it('takes whole days from 1 to 365 and no default', () => {
-    const raw = { person: 'Alice', scope: 'flows' };
-    expect(validateKeyRequest({ ...raw, expires: '1' }).days).toBe(1);
-    expect(validateKeyRequest({ ...raw, expires: '365' }).days).toBe(365);
-    for (const expires of ['', '0', '366', '1.5', '-1', 'abc', '030', '1e2'])
-      expect(kindOf(() => validateKeyRequest({ ...raw, expires }))).toBe(
-        'trust_entry_invalid:',
-      );
-  });
-});
 
 describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
   it('writes an owner-signed key entry that reads back with its id and expiry', () => {
@@ -62,7 +20,7 @@ describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
       testOwnerKey(),
       publicKey,
       REQ,
-      'hardware',
+      'declared-hardware',
       NOW,
     );
     expect(added.id).toBe(reviewerKeyId(publicKey));
@@ -73,7 +31,7 @@ describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
     expect(keys[0]).toMatchObject({
       person: 'Alice Nguyen',
       scope: 'flows',
-      custody: 'hardware',
+      custody: 'declared-hardware',
       expiresAt: '2026-01-31T00:00:00.000Z',
       addedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -83,8 +41,15 @@ describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
   it('allows several active keys for one person and scope, and refuses one key twice', () => {
     const store = testStore(cfg());
     const first = newPublicKey();
-    addReviewerKey(store, testOwnerKey(), first, REQ, 'file', NOW);
-    addReviewerKey(store, testOwnerKey(), newPublicKey(), REQ, 'file', NOW);
+    addReviewerKey(store, testOwnerKey(), first, REQ, 'declared-file', NOW);
+    addReviewerKey(
+      store,
+      testOwnerKey(),
+      newPublicKey(),
+      REQ,
+      'declared-file',
+      NOW,
+    );
     expect(readReviewerKeys(TrustStore.open(store.dir)).keys).toHaveLength(2);
     expect(
       kindOf(() =>
@@ -93,7 +58,7 @@ describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
           testOwnerKey(),
           first,
           { ...REQ, scope: 'spec' },
-          'file',
+          'declared-file',
           NOW,
         ),
       ),
@@ -108,7 +73,7 @@ describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
       testOwnerKey(),
       publicKey,
       REQ,
-      'file',
+      'declared-file',
       NOW,
     );
     const at = (scope: 'flows' | 'spec', t: Date) =>
@@ -136,7 +101,14 @@ describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
     editStore(store.dir, (d) => ({ ...d, markers: ['test', 'ci'] }));
     expect(
       kindOf(() =>
-        addReviewerKey(store, testOwnerKey(), newPublicKey(), REQ, 'file', NOW),
+        addReviewerKey(
+          store,
+          testOwnerKey(),
+          newPublicKey(),
+          REQ,
+          'declared-file',
+          NOW,
+        ),
       ),
     ).toBe('trust_entry_invalid:');
     const other = fresh();
@@ -147,7 +119,7 @@ describe('addReviewerKey and reviewerKeyStatus (T1.15)', () => {
           testOwnerKey(),
           newPublicKey(),
           REQ,
-          'file',
+          'declared-file',
           NOW,
         ),
       ),
@@ -163,7 +135,7 @@ describe('revokeReviewerKey (T1.15)', () => {
       testOwnerKey(),
       newPublicKey(),
       REQ,
-      'file',
+      'declared-file',
       NOW,
     );
     const b = addReviewerKey(
@@ -171,7 +143,7 @@ describe('revokeReviewerKey (T1.15)', () => {
       testOwnerKey(),
       newPublicKey(),
       REQ,
-      'file',
+      'declared-file',
       NOW,
     );
     const done = revokeReviewerKey(
@@ -214,7 +186,7 @@ describe('the reviewerKeys section is read strictly (T1.15)', () => {
       testOwnerKey(),
       newPublicKey(),
       REQ,
-      'file',
+      'declared-file',
       NOW,
     );
     revokeReviewerKey(store, testOwnerKey(), a.id, undefined, NOW);
@@ -273,7 +245,7 @@ describe('the reviewerKeys section is read strictly (T1.15)', () => {
       testOwnerKey(),
       newPublicKey(),
       REQ,
-      'file',
+      'declared-file',
       NOW,
     );
     editStore(store.dir, (d) => ({

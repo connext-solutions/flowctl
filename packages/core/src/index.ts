@@ -49,6 +49,7 @@ export {
   planNewKey,
   planRevokeKey,
   revokeReviewerKey,
+  type DeclaredCustody,
   type ReviewerCustody,
   type ReviewerKey,
   type ReviewerKeyRequest,

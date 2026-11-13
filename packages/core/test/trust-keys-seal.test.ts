@@ -91,6 +91,11 @@ describe('reviewer key file (T1.15)', () => {
     const weak = join(k.dir, 'weak.key');
     writeFileSync(weak, JSON.stringify({ ...doc, N: 1024 }), { mode: 0o400 });
     expect(kindOf(() => loadReviewerKey(weak, PASS))).toBe('key_params_weak:');
+    const odd = join(k.dir, 'odd.key');
+    writeFileSync(odd, JSON.stringify({ ...doc, N: 131_073 }), { mode: 0o400 });
+    expect(kindOf(() => loadReviewerKey(odd, PASS))).toBe(
+      'key_params_unsupported:',
+    );
     const loose = join(k.dir, 'loose.key');
     copyFileSync(k.keyFile, loose);
     chmodSync(loose, 0o644);
