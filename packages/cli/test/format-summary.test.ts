@@ -20,7 +20,7 @@ function result(over: Partial<RunResult>): RunResult {
       console: [],
     },
     ms: 12,
-    provenance: 'hand-written',
+    provenance: 'verified',
     provenanceNotes: [],
     ...over,
   };
@@ -65,7 +65,16 @@ describe('formatSummary', () => {
     },
   );
 
-  it('does not label a hand-written flow, nor a flow file that never ran', () => {
+  it('warns that the store listing of a hand-written flow is unsigned', () => {
+    const text = formatSummary(
+      summary([result({ provenance: 'hand-written' })], { passed: 1 }),
+    );
+    expect(text).toContain(
+      '✔ sample [local] 12ms\n  ⚠ hand-written provenance: the store listing is unsigned',
+    );
+  });
+
+  it('does not label a verified flow, nor a flow file that never ran', () => {
     expect(formatSummary(summary([result({})], { passed: 1 }))).not.toContain(
       'provenance',
     );

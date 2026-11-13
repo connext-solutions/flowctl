@@ -50,7 +50,20 @@ describe('labelFlow never fails a replay', () => {
     const { file, root } = setup(body());
     const r = labelFlow(loadFlow(file, ['employee']), root, broken);
     expect(r.state).toBe('unclassified');
-    expect(r.notes).toContain('classification_unreadable');
+    expect(r.notes).toContain('classification_unreadable:Error');
+  });
+
+  it('names the error class but never its message', () => {
+    class OddFailure extends Error {}
+    const odd = {
+      get data(): never {
+        throw new OddFailure('/secret/path');
+      },
+    } as unknown as TrustStore;
+    const { file, root } = setup(body());
+    const r = labelFlow(loadFlow(file, ['employee']), root, odd);
+    expect(r.notes).toContain('classification_unreadable:OddFailure');
+    expect(r.notes.join(' ')).not.toContain('/secret/path');
   });
 
   it('keeps a derivation claim unverified', () => {
@@ -80,6 +93,16 @@ describe('the label binds to the bytes loadFlow parsed', () => {
     expect(handWrittenDigest(parsed, root)).toBe('');
   });
 
+  it('keeps a file that cannot be read apart from one whose bytes differ', () => {
+    const { file, root } = setup(body());
+    const parsed = loadFlow(file, ['employee']);
+    writeFileSync(file, `${body()}# ${'x'.repeat(300 * 1024)}\n`);
+    const r = provenanceState(parsed, root, storeWith());
+    expect(r.state).toBe('unclassified');
+    expect(r.notes).toContain('flow_file_unreadable');
+    expect(r.notes).not.toContain('flow_file_changed');
+  });
+
   it('still lists an unchanged flow', () => {
     const { file, root } = setup(body());
     const flow = loadFlow(file, ['employee']);
@@ -101,6 +124,13 @@ describe('sourceRef text fields', () => {
     ['ref', 'a\nb'],
     ['author', 'a\u001b[31mb'],
     ['ref', 'a\u0000b'],
+    ['ref', 'a\u202eb'],
+    ['author', 'a\u2066b'],
+    ['ref', 'a\u2028b'],
+    ['author', 'a\u2029b'],
+    ['ref', 'a\u200bb'],
+    ['author', 'a\u200db'],
+    ['ref', '\ufeffb'],
   ])('refuses a bad %s', (field, value) => {
     const r = SourceRefSchema.safeParse({
       kind: 'contract',
@@ -108,6 +138,16 @@ describe('sourceRef text fields', () => {
       [field]: value,
     });
     expect(r.success).toBe(false);
+  });
+
+  it('refuses escape and other control characters in a quote but keeps newline and tab', () => {
+    const quote = (q: string) =>
+      SourceRefSchema.safeParse({ kind: 'contract', ref: 'x', quote: q })
+        .success;
+    expect(quote('a\u001b[31mb')).toBe(false);
+    expect(quote('a\u0085b')).toBe(false);
+    expect(quote('a\u0000b')).toBe(false);
+    expect(quote('line one\n\tline two')).toBe(true);
   });
 
   it('accepts a ref at the cap', () => {

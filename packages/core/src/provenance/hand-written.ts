@@ -30,16 +30,32 @@ export function flowKey(
 }
 
 /**
- * Whether the flow file on disk is no longer the bytes `loadFlow` parsed into `flow` (the file was rewritten or
- * swapped between load and label). A label bound to the file on disk would then describe bytes the run does not use.
+ * Whether the flow file on disk was read and its bytes differ from the ones `loadFlow` parsed into `flow` (the file
+ * was rewritten or swapped between load and label). A label bound to the file on disk would then describe bytes the
+ * run does not use.
  *
- * @returns `false` for a flow that carries no `sourceSha256` (not read from a file) or has no key.
+ * @returns `false` for a flow that carries no `sourceSha256` (not read from a file), has no key, or whose file
+ *   cannot be read (see {@link flowFileUnreadable}).
  */
 export function flowFileChanged(flow: Flow, flowsRoot: string): boolean {
   if (flow.sourceSha256 === undefined) return false;
   const key = flowKey(flow, flowsRoot);
   if (key === undefined) return false;
-  return hashFlowFile(flowsRoot, key) !== flow.sourceSha256;
+  const now = hashFlowFile(flowsRoot, key);
+  return now !== undefined && now !== flow.sourceSha256;
+}
+
+/**
+ * Whether the flow file on disk cannot be hashed safely (over 256 KiB, a hard link, a symlink, gone): the label
+ * cannot tell whether it still matches the bytes `loadFlow` parsed.
+ *
+ * @returns `false` for a flow that carries no `sourceSha256` or has no key.
+ */
+export function flowFileUnreadable(flow: Flow, flowsRoot: string): boolean {
+  if (flow.sourceSha256 === undefined) return false;
+  const key = flowKey(flow, flowsRoot);
+  if (key === undefined) return false;
+  return hashFlowFile(flowsRoot, key) === undefined;
 }
 
 /**

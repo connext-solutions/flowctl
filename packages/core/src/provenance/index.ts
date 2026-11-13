@@ -4,6 +4,7 @@
  */
 export {
   flowFileChanged,
+  flowFileUnreadable,
   flowKey,
   handWrittenDigest,
   listedHandWritten,

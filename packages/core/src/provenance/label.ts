@@ -12,7 +12,7 @@ import { provenanceState, type ProvenanceState } from './state.js';
  *     consent is checked (`hooks_untrusted`, `env_not_allowed`).
  *   - Any other failure while classifying (an unreadable store section, a file that vanished) falls back to
  *     `unverified` for a flow that claims a derivation and `unclassified` for any other, with the note
- *     `classification_unreadable`: both are labels that vouch for nothing.
+ *     `classification_unreadable:<ErrorClass>` (the error's class name only, never its message or a path): both are labels that vouch for nothing.
  * @param flowsRoot absolute path of the flows folder.
  * @param store `'default'` for the owner's store.
  */
@@ -23,16 +23,22 @@ export function labelFlow(
 ): ProvenanceState {
   try {
     return label(flow, flowsRoot, store);
-  } catch {
+  } catch (e) {
     return {
       state: claimsDerivation(flow) ? 'unverified' : 'unclassified',
       notes: [
         'freshness_not_checked',
         'rollback_not_checked',
-        'classification_unreadable',
+        `classification_unreadable:${errorClass(e)}`,
       ],
     };
   }
+}
+
+/** The class name of a thrown value, never its message or any path in it. */
+function errorClass(e: unknown): string {
+  const name = e instanceof Error ? e.constructor.name : typeof e;
+  return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) ? name : 'Unknown';
 }
 
 function label(

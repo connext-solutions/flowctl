@@ -83,8 +83,8 @@ function describeResult(r: RunResult): string {
 }
 
 /**
- * The `unverified provenance` line of a run (ADR 0020 section h): printed for a flow in state `unverified` or
- * `unclassified`, with the reason in words. A run that never started (an unloadable flow file) has none.
+ * The `unverified provenance` line of a run (ADR 0020 section h): printed for a flow in state `unverified`, `unclassified` or
+ * `hand-written` (the store listing is unsigned), with the reason in words. A run that never started (an unloadable flow file) has none.
  */
 function provenanceLine(r: RunResult): string[] {
   if (r.evidence.dir === '') return [];
@@ -97,8 +97,11 @@ function provenanceLine(r: RunResult): string[] {
       return [
         '  ⚠ unverified provenance: the flow claims no derivation and the trust store does not list it as hand-written',
       ];
-    case 'verified':
     case 'hand-written':
+      return [
+        '  ⚠ hand-written provenance: the store listing is unsigned, so it is only as trustworthy as the store file',
+      ];
+    case 'verified':
       return [];
     default:
       return assertNever(r.provenance, 'provenance state');
