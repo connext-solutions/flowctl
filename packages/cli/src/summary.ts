@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { assertNever } from '@flowctl/core';
 import type {
   CleanupResult,
   FlowFileError,
@@ -87,15 +88,21 @@ function describeResult(r: RunResult): string {
  */
 function provenanceLine(r: RunResult): string[] {
   if (r.evidence.dir === '') return [];
-  if (r.provenance === 'unverified')
-    return [
-      '  ⚠ unverified provenance: the flow claims it was derived (derived or sourceRef), and nothing proves it yet',
-    ];
-  if (r.provenance === 'unclassified')
-    return [
-      '  ⚠ unverified provenance: the flow claims no derivation and the trust store does not list it as hand-written',
-    ];
-  return [];
+  switch (r.provenance) {
+    case 'unverified':
+      return [
+        '  ⚠ unverified provenance: the flow claims it was derived (derived or sourceRef), and nothing proves it yet',
+      ];
+    case 'unclassified':
+      return [
+        '  ⚠ unverified provenance: the flow claims no derivation and the trust store does not list it as hand-written',
+      ];
+    case 'verified':
+    case 'hand-written':
+      return [];
+    default:
+      return assertNever(r.provenance, 'provenance state');
+  }
 }
 
 export function formatSummary(s: ReplaySummary): string {

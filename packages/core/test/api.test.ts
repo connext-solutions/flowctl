@@ -33,6 +33,7 @@ it('exposes exactly the documented runtime interface', () => {
     'addSystem1',
     'addTrustedEnv',
     'appMapPath',
+    'assertNever',
     'assertNoStore',
     'checkEnvOrigin',
     'checkProductionOrigin',

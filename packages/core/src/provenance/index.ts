@@ -3,6 +3,7 @@
  * (ADR 0020). Sits above `run/`: `replay.ts` computes the state and hands it to `RunSession` as an option.
  */
 export {
+  flowFileChanged,
   flowKey,
   handWrittenDigest,
   listedHandWritten,

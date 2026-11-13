@@ -1,4 +1,4 @@
-import type { Flow } from '../flow/index.js';
+import { claimsDerivation, type Flow } from '../flow/index.js';
 import { TrustError, openTrustStore, type TrustStore } from '../trust/index.js';
 import { provenanceState, type ProvenanceState } from './state.js';
 
@@ -6,14 +6,36 @@ import { provenanceState, type ProvenanceState } from './state.js';
  * The provenance label of a flow for a run, reading the trust store the run reads: the injected one (a test seam,
  * ADR 0025 section 1) or the owner's default store.
  *
- * @remarks A store that cannot be opened (tampered, unreadable, unsupported platform) never fails the run: the flow
- *   is labelled as if there were no store, with the note `trust_store_unavailable`, so a flow that claims a
- *   derivation stays `unverified` and any other is `unclassified`. A store problem that matters for consent still
- *   surfaces where consent is checked (`hooks_untrusted`, `env_not_allowed`).
+ * @remarks Labelling never fails a run, whatever goes wrong while it reads:
+ *   - A store that cannot be opened (tampered, unreadable, unsupported platform) labels the flow as if there were no
+ *     store, with the note `trust_store_unavailable`. A store problem that matters for consent still surfaces where
+ *     consent is checked (`hooks_untrusted`, `env_not_allowed`).
+ *   - Any other failure while classifying (an unreadable store section, a file that vanished) falls back to
+ *     `unverified` for a flow that claims a derivation and `unclassified` for any other, with the note
+ *     `classification_unreadable`: both are labels that vouch for nothing.
  * @param flowsRoot absolute path of the flows folder.
  * @param store `'default'` for the owner's store.
  */
 export function labelFlow(
+  flow: Flow,
+  flowsRoot: string,
+  store: TrustStore | 'default',
+): ProvenanceState {
+  try {
+    return label(flow, flowsRoot, store);
+  } catch {
+    return {
+      state: claimsDerivation(flow) ? 'unverified' : 'unclassified',
+      notes: [
+        'freshness_not_checked',
+        'rollback_not_checked',
+        'classification_unreadable',
+      ],
+    };
+  }
+}
+
+function label(
   flow: Flow,
   flowsRoot: string,
   store: TrustStore | 'default',

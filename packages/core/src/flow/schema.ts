@@ -181,6 +181,11 @@ export type Step = (
 export interface Flow extends FlowDoc {
   file: string;
   parsedSteps: Step[];
+  /**
+   * sha256 (lowercase hex) of the exact bytes `loadFlow` parsed, so a label computed later can tell that the file
+   * on disk is still the one this object came from. Absent for a flow that was not read from a file.
+   */
+  sourceSha256?: string;
 }
 
 export { FlowError } from '../foundation/index.js';

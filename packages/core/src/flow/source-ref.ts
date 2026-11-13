@@ -1,5 +1,21 @@
 import { z } from 'zod';
 
+/** The longest `ref` or `author` a `sourceRef` holds. */
+export const MAX_REF_CHARS = 500;
+
+/** No C0 or C1 control character (they would steer a terminal or a log line). */
+const hasNoControl = (text: string): boolean =>
+  [...text].every((c) => {
+    const n = c.codePointAt(0) ?? 0;
+    return n > 0x1f && (n < 0x7f || n > 0x9f);
+  });
+
+const Label = z
+  .string()
+  .min(1)
+  .max(MAX_REF_CHARS)
+  .refine(hasNoControl, 'no control characters');
+
 const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a lowercase hex sha256');
 
 /** The longest quote a `sourceRef` holds (ADR 0020 section d: the default cap). */
@@ -18,12 +34,12 @@ export const MAX_QUOTE_CHARS = 500;
 export const SourceRefSchema = z
   .object({
     kind: z.enum(['spec', 'contract', 'invariant', 'baseline']),
-    ref: z.string().min(1),
+    ref: Label,
     quote: z.string().max(MAX_QUOTE_CHARS).optional(),
     quoteSha256: Sha256.optional(),
     contextSha256: Sha256.optional(),
     revision: z.number().int().nonnegative().optional(),
-    author: z.string().min(1).optional(),
+    author: Label.optional(),
     review: z.enum(['reviewed', 'unreviewed']).optional(),
   })
   .strict()
