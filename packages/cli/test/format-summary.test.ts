@@ -20,6 +20,8 @@ function result(over: Partial<RunResult>): RunResult {
       console: [],
     },
     ms: 12,
+    provenance: 'hand-written',
+    provenanceNotes: [],
     ...over,
   };
 }
@@ -44,6 +46,36 @@ describe('formatSummary', () => {
     const text = formatSummary(summary([result({})], { passed: 1 }));
     expect(text).toBe(
       '✔ sample [local] 12ms\n1 passed, 0 failed, 0 flaky, 0 errors\n',
+    );
+  });
+
+  it.each([
+    ['unverified', 'claims it was derived'],
+    ['unclassified', 'does not list it as hand-written'],
+  ] as const)(
+    'labels a %s flow as unverified provenance',
+    (provenance, why) => {
+      const text = formatSummary(
+        summary([result({ provenance })], { passed: 1 }),
+      );
+      expect(text).toContain(
+        '✔ sample [local] 12ms\n  ⚠ unverified provenance:',
+      );
+      expect(text).toContain(why);
+    },
+  );
+
+  it('does not label a hand-written flow, nor a flow file that never ran', () => {
+    expect(formatSummary(summary([result({})], { passed: 1 }))).not.toContain(
+      'provenance',
+    );
+    const unloaded = result({
+      status: 'error',
+      provenance: 'unclassified',
+      evidence: { dir: '', traces: [], network: [], console: [] },
+    });
+    expect(formatSummary(summary([unloaded], { errors: 1 }))).not.toContain(
+      'provenance',
     );
   });
 

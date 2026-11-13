@@ -32,3 +32,4 @@ export {
   readFixture,
   type FixtureFile,
 } from './fixtures.js';
+export { PROVENANCE_STATES, type ProvenanceStateName } from './provenance.js';

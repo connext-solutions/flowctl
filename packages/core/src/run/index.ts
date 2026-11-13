@@ -52,4 +52,4 @@ export {
   sessionOrigins,
   type StorageState,
 } from './session-state.js';
-export type { RunSessionOptions } from './options.js';
+export { DRAFT_PROVENANCE, type RunSessionOptions } from './options.js';

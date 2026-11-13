@@ -4,7 +4,7 @@ import { GUARD_PAGES, startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RunResult } from '../src/result.js';
-import { RunSession } from '../src/run/index.js';
+import { DRAFT_PROVENANCE, RunSession } from '../src/run/index.js';
 import { fixtureConfig, seedProfiles, writeFlow } from './helpers.js';
 
 /**
@@ -39,6 +39,7 @@ async function open(
   const cfg = fixtureConfig(fixture.url, extra);
   await seedProfiles(cfg, fixture.url);
   const run = RunSession.open(cfg, writeFlow(cfg, { ...FLOW, assertions }), {
+    provenance: DRAFT_PROVENANCE,
     browser,
   });
   await run.begin();

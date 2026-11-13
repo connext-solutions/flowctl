@@ -13,8 +13,8 @@ import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ConfigError, storageStatePath } from '../src/config.js';
-import { outcomeOf, RunSession, toOutcome } from '../src/run/index.js';
-import { fixtureConfig, seedProfiles, writeFlow } from './helpers.js';
+import { outcomeOf, toOutcome } from '../src/run/index.js';
+import { fixtureConfig, openRun, seedProfiles, writeFlow } from './helpers.js';
 import { allowEnvVars, testStore } from './trust-fixture.js';
 
 let fixture: Fixture;
@@ -42,7 +42,7 @@ describe('RunSession', () => {
   it('opens without touching the browser, then begins at the start page', async () => {
     const cfg = fixtureConfig(fixture.url);
     await seedProfiles(cfg, fixture.url);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     expect(browser.contexts()).toHaveLength(0);
     expect(() => run.steps).toThrow(/begin/);
     await run.begin();
@@ -62,7 +62,7 @@ describe('RunSession', () => {
   it('switches profile with evidence attached and reuses an open context', async () => {
     const cfg = fixtureConfig(fixture.url);
     await seedProfiles(cfg, fixture.url);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     await run.begin();
     await run.perform({ kind: 'as', profile: 'manager', goto: '/approvals' });
     expect(run.page.url()).toBe(`${fixture.url}/approvals`);
@@ -82,7 +82,7 @@ describe('RunSession', () => {
   it('opens a profile switch with a page directly at that page', async () => {
     const cfg = fixtureConfig(fixture.url);
     await seedProfiles(cfg, fixture.url);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     await run.begin();
     const oneLoad = await run.page.evaluate(() => history.length);
     await run.perform({ kind: 'as', profile: 'manager', goto: '/approvals' });
@@ -94,7 +94,7 @@ describe('RunSession', () => {
   it('reports a goto that lands on the login page as profile_expired', async () => {
     const cfg = fixtureConfig(fixture.url);
     await seedProfiles(cfg, fixture.url);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     await run.begin();
     await expect(
       run.perform({ kind: 'goto', url: '/login' }),
@@ -107,7 +107,7 @@ describe('RunSession', () => {
     async (url) => {
       const cfg = fixtureConfig(fixture.url);
       await seedProfiles(cfg, fixture.url);
-      const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+      const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
       await run.begin();
       const before = run.ctx().page.url();
       await expect(run.perform({ kind: 'goto', url })).rejects.toMatchObject({
@@ -121,7 +121,7 @@ describe('RunSession', () => {
   it('performs actions in the active page and checks assertions', async () => {
     const cfg = fixtureConfig(fixture.url);
     await seedProfiles(cfg, fixture.url);
-    const run = RunSession.open(
+    const run = openRun(
       cfg,
       writeFlow(cfg, {
         ...FLOW,
@@ -173,7 +173,7 @@ describe('RunSession', () => {
       const store = allowEnvVars(testStore(cfg), 'employee', [
         'FLOWCTL_TEST_SECRET',
       ]);
-      const run = RunSession.open(cfg, flow, { browser, store });
+      const run = openRun(cfg, flow, { browser, store });
       await run.begin();
       for (const step of run.steps) await run.perform(step);
       const r = await run.finish(outcomeOf(await run.check(0)), 1);
@@ -197,7 +197,7 @@ describe('RunSession', () => {
         ...FLOW,
         inputs: { note: { env: 'FLOWCTL_TEST_HOST_KEY' } },
       });
-      const run = RunSession.open(cfg, flow, {
+      const run = openRun(cfg, flow, {
         browser,
         store: testStore(cfg),
       });
@@ -216,7 +216,7 @@ describe('RunSession', () => {
 
   it('still finishes with an error result when begin fails', async () => {
     const cfg = fixtureConfig(fixture.url);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     const outcome = await run
       .begin()
       .then(() => ({ status: 'passed' as const }), toOutcome);
@@ -236,7 +236,7 @@ describe('RunSession session files (#46)', () => {
     copyFileSync(state, elsewhere);
     rmSync(state);
     symlinkSync(elsewhere, state);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     await expect(run.begin()).rejects.toThrow(ConfigError);
     await run.finish(toOutcome(new Error('x')), 0);
   });
@@ -245,7 +245,7 @@ describe('RunSession session files (#46)', () => {
     const cfg = fixtureConfig(fixture.url);
     await seedProfiles(cfg, fixture.url);
     chmodSync(storageStatePath(cfg, 'local', 'employee'), 0o644);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     await run.begin();
     expect(run.page.url()).toContain('/requests');
     await run.finish({ status: 'passed' }, 0);
@@ -271,7 +271,7 @@ describe('RunSession loads only the env origin of a saved session (#50)', () => 
       sameSite: 'Lax',
     });
     writeFileSync(path, JSON.stringify(state));
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = openRun(cfg, writeFlow(cfg, FLOW), { browser });
     await run.begin();
     const names = (
       await run.page

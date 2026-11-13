@@ -27,6 +27,8 @@ export function invalidFlowResult(e: FlowFileError, env: string): RunResult {
     weakLocators: [],
     evidence: { dir: '', traces: [], network: [], console: [] },
     ms: 0,
+    provenance: 'unclassified',
+    provenanceNotes: [],
   };
 }
 
@@ -79,9 +81,27 @@ function describeResult(r: RunResult): string {
   return `✘ ${head} ${why}\n  evidence: ${t(r.evidence.dir, Infinity)}`;
 }
 
+/**
+ * The `unverified provenance` line of a run (ADR 0020 section h): printed for a flow in state `unverified` or
+ * `unclassified`, with the reason in words. A run that never started (an unloadable flow file) has none.
+ */
+function provenanceLine(r: RunResult): string[] {
+  if (r.evidence.dir === '') return [];
+  if (r.provenance === 'unverified')
+    return [
+      '  ⚠ unverified provenance: the flow claims it was derived (derived or sourceRef), and nothing proves it yet',
+    ];
+  if (r.provenance === 'unclassified')
+    return [
+      '  ⚠ unverified provenance: the flow claims no derivation and the trust store does not list it as hand-written',
+    ];
+  return [];
+}
+
 export function formatSummary(s: ReplaySummary): string {
   const lines = s.results.flatMap((r) => [
     describeResult(r),
+    ...provenanceLine(r),
     ...(r.teardownFailed
       ? [`  ⚠ teardown failed (see ${terminalSafe(r.evidence.dir, Infinity)})`]
       : []),

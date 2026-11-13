@@ -6,6 +6,7 @@ import {
   FlowError,
   FlowSchema,
   errorText,
+  withoutSourceRef,
   type Flow,
   type Loc,
   type Step,
@@ -56,7 +57,7 @@ export function loadFlow(file: string, profiles: string[]): Flow {
           ),
         ),
         steps: parsedSteps,
-        assertions: doc.assertions,
+        assertions: doc.assertions.map(withoutSourceRef),
       },
       '',
     );

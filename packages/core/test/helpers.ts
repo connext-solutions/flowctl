@@ -9,6 +9,11 @@ import {
   type LoadedConfig,
 } from '../src/config.js';
 import { loadFlow, type Flow } from '../src/flow/index.js';
+import {
+  DRAFT_PROVENANCE,
+  RunSession,
+  type RunSessionOptions,
+} from '../src/run/index.js';
 import { FIXTURE_FLOWS_DIR } from '@flowctl/fixture-app';
 
 export const PROFILES = ['employee', 'manager'];
@@ -91,3 +96,12 @@ export function exploreConfig(
     ...extra,
   });
 }
+
+/** `RunSession.open` for a test: the run's provenance is the fixed draft label unless the test sets its own. */
+export const openRun = (
+  cfg: LoadedConfig,
+  flow: Flow,
+  opts: Omit<RunSessionOptions, 'provenance'> &
+    Partial<Pick<RunSessionOptions, 'provenance'>>,
+): RunSession =>
+  RunSession.open(cfg, flow, { provenance: DRAFT_PROVENANCE, ...opts });

@@ -11,6 +11,7 @@ import {
   scopeFor,
   toOutcome,
   type Outcome,
+  DRAFT_PROVENANCE,
 } from '../run/index.js';
 import type { TrustStore } from '../trust/index.js';
 import { PageBudget, type CrawlBudget } from './budget.js';
@@ -172,6 +173,7 @@ async function crawlIn(
     browser,
     store: opts.store,
     writes,
+    provenance: DRAFT_PROVENANCE,
   });
   const rules: LinkRules = {
     scope: scopeFor(cfg, p.env, opts.store ?? 'default'),

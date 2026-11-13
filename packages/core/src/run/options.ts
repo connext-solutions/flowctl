@@ -1,5 +1,5 @@
 import type { Browser } from 'playwright';
-import type { TraceMode } from '../result.js';
+import type { RunProvenance, TraceMode } from '../result.js';
 import type { TrustStore } from '../trust/index.js';
 import type { RequestGuard } from './request-guard.js';
 
@@ -23,4 +23,19 @@ export interface RunSessionOptions {
   trace?: TraceMode;
   /** Record a demo video per profile with a step overlay (ADR 0032); refused for a flow with secret inputs. */
   video?: boolean;
+  /**
+   * The provenance label of the flow, computed by the caller (`replay.ts`) and only carried here: `run/` sits below
+   * `provenance/` and never classifies. It goes to the result and `run.json` and never changes the verdict (ADR 0004,
+   * ADR 0020 section h). Required, so a new caller cannot forget it.
+   */
+  provenance: RunProvenance;
 }
+
+/**
+ * The label of a run that has no flow file to classify (an exploration draft, a crawl): `unclassified`, which no
+ * store entry can change. A fixed value, so these callers state it instead of leaving the option out.
+ */
+export const DRAFT_PROVENANCE: RunProvenance = {
+  state: 'unclassified',
+  notes: ['freshness_not_checked', 'rollback_not_checked'],
+};

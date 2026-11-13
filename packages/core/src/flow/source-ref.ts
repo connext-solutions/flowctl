@@ -1,0 +1,56 @@
+import { z } from 'zod';
+
+const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a lowercase hex sha256');
+
+/** The longest quote a `sourceRef` holds (ADR 0020 section d: the default cap). */
+export const MAX_QUOTE_CHARS = 500;
+
+/**
+ * Where one expected item of an assertion comes from: spec text, a contract symbol, an invariant or a baseline
+ * (ADR 0020 section a). It rides on an assertion of a flow marked `derived: true`.
+ *
+ * @remarks `author` and `review` are metadata the trust store or signed metadata is the source of; a flow file
+ *   can carry them, but nothing may trust them there (the provenance state ignores them). `quote` is spec text,
+ *   which is untrusted: it is never expanded as a template and never shown to a model as fact (see
+ *   {@link withoutSourceRef}). A `spec` reference needs `quote`, `quoteSha256`, `contextSha256` and `revision`.
+ * @see docs/adr/0020-assertion-provenance.md
+ */
+export const SourceRefSchema = z
+  .object({
+    kind: z.enum(['spec', 'contract', 'invariant', 'baseline']),
+    ref: z.string().min(1),
+    quote: z.string().max(MAX_QUOTE_CHARS).optional(),
+    quoteSha256: Sha256.optional(),
+    contextSha256: Sha256.optional(),
+    revision: z.number().int().nonnegative().optional(),
+    author: z.string().min(1).optional(),
+    review: z.enum(['reviewed', 'unreviewed']).optional(),
+  })
+  .strict()
+  .superRefine((r, ctx) => {
+    if (r.kind !== 'spec') return;
+    for (const field of [
+      'quote',
+      'quoteSha256',
+      'contextSha256',
+      'revision',
+    ] as const)
+      if (r[field] === undefined)
+        ctx.addIssue({
+          code: 'custom',
+          path: [field],
+          message: `a spec sourceRef needs ${field}`,
+        });
+  });
+export type SourceRef = z.infer<typeof SourceRefSchema>;
+
+/**
+ * Whether a flow claims to be derived: it carries the `derived` marker or any `sourceRef`. A claim is a label,
+ * never proof (ADR 0020 section b).
+ */
+export const claimsDerivation = (flow: {
+  derived?: true;
+  assertions: readonly { sourceRef?: SourceRef }[];
+}): boolean =>
+  flow.derived === true ||
+  flow.assertions.some((a) => a.sourceRef !== undefined);

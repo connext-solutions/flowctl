@@ -34,7 +34,7 @@ import type { RunSessionOptions } from './options.js';
  * page, and the final {@link RunResult}. Replay and exploration only decide which steps to perform.
  *
  * @example
- * const run = RunSession.open(cfg, flow, { browser }); // never fails the run
+ * const run = RunSession.open(cfg, flow, { browser, provenance }); // never fails the run
  * try {
  *   await run.begin(); // may throw RunError / FlowError
  *   for (const step of run.steps) await run.perform(step); // StepError on a broken step
@@ -258,8 +258,7 @@ export class RunSession {
    *   `error: internal` naming the stage. Teardown runs only for a run that started: its setup hook
    *   was started (even if it failed), or it has no setup and got past input resolution. A failing
    *   teardown sets `teardownFailed` instead of changing the outcome.
-   * @param extra healed step indices and, for an exploration, the recorded steps whose weak
-   *   locators are reported.
+   * @param extra healed step indices and, for an exploration, the recorded steps whose weak locators are reported.
    */
   async finish(
     outcome: Outcome,
@@ -284,6 +283,7 @@ export class RunSession {
         hooks: this.hooks,
         secrets: this.prepared?.secrets ?? [],
         guard: this.guard,
+        provenance: this.opts.provenance,
       },
       final,
       stepsDone,
