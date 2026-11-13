@@ -1,5 +1,5 @@
 import type { Assertion } from './flow/index.js';
-import type { ErrorKind } from './foundation/index.js';
+import type { ErrorKind, ProvenanceStateName } from './foundation/index.js';
 
 export type { ErrorKind } from './foundation/index.js';
 
@@ -105,6 +105,12 @@ export interface System1Metrics {
   costUsd: number | 'unknown';
 }
 
+/** The provenance label a run is given: a state and the notes that qualify it (ADR 0020 section h). */
+export interface RunProvenance {
+  state: ProvenanceStateName;
+  notes: string[];
+}
+
 export interface RunResult {
   runId: string;
   flow: string;
@@ -127,6 +133,13 @@ export interface RunResult {
   weakLocators: string[];
   evidence: EvidenceSummary;
   ms: number;
+  /**
+   * How the flow's expected values are vouched for (ADR 0020 section h). A label only: it never changes `status`.
+   * `unverified` and `unclassified` print as `unverified provenance`.
+   */
+  provenance: ProvenanceStateName;
+  /** Why the label is not stronger or what was not checked (`freshness_not_checked`, `rollback_not_checked`, ...). */
+  provenanceNotes: string[];
   /** System 1 decisions of the run; absent when System 1 was not asked (replay without heal). */
   system1?: System1Metrics;
 }

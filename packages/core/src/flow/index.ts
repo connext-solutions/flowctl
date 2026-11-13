@@ -1,5 +1,11 @@
 export * from './schema.js';
 export {
+  claimsDerivation,
+  MAX_QUOTE_CHARS,
+  SourceRefSchema,
+  type SourceRef,
+} from './source-ref.js';
+export {
   joinSwitches,
   normalizeSteps,
   normalizeStepsWithSources,

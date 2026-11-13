@@ -13,6 +13,8 @@ describe('summarize / exitCodeFor', () => {
       healed: [],
       teardownFailed: false,
       weakLocators: [],
+      provenance: 'unclassified',
+      provenanceNotes: [],
       evidence: { dir: '', traces: [], network: [], console: [] },
       ms: 1,
     });

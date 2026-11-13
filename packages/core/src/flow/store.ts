@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { parse, parseDocument } from 'yaml';
@@ -6,6 +7,7 @@ import {
   FlowError,
   FlowSchema,
   errorText,
+  withoutSourceRef,
   type Flow,
   type Loc,
   type Step,
@@ -23,7 +25,8 @@ import { checkTemplates } from './templates.js';
  *   offset). `setup` and `teardown` are shell text and are never checked or expanded.
  */
 export function loadFlow(file: string, profiles: string[]): Flow {
-  const parsed = FlowSchema.safeParse(parse(readFileSync(file, 'utf8')));
+  const bytes = readFileSync(file);
+  const parsed = FlowSchema.safeParse(parse(bytes.toString('utf8')));
   if (!parsed.success)
     throw new FlowError(`${file}:\n${z.prettifyError(parsed.error)}`);
   const doc = parsed.data;
@@ -56,14 +59,15 @@ export function loadFlow(file: string, profiles: string[]): Flow {
           ),
         ),
         steps: parsedSteps,
-        assertions: doc.assertions,
+        assertions: doc.assertions.map(withoutSourceRef),
       },
       '',
     );
   } catch (e) {
     throw new FlowError(`${file}: ${errorText(e)}`);
   }
-  return { ...doc, file, parsedSteps };
+  const sourceSha256 = createHash('sha256').update(bytes).digest('hex');
+  return { ...doc, file, parsedSteps, sourceSha256 };
 }
 
 /** One flow file that could not be loaded. */

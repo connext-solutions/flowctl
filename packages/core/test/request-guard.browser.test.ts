@@ -2,7 +2,11 @@ import { createServer, type Server } from 'node:http';
 import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { RequestGuard, RunSession } from '../src/run/index.js';
+import {
+  DRAFT_PROVENANCE,
+  RequestGuard,
+  RunSession,
+} from '../src/run/index.js';
 import { fixtureConfig, seedProfiles, writeFlow } from './helpers.js';
 
 /**
@@ -76,6 +80,7 @@ async function open(envClass: 'shared' | 'local'): Promise<RunSession> {
   };
   await seedProfiles(cfg, fixture.url);
   const run = RunSession.open(cfg, writeFlow(cfg, FLOW), {
+    provenance: DRAFT_PROVENANCE,
     browser,
     writes: new RequestGuard(envClass, false),
   });

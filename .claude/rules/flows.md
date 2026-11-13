@@ -13,3 +13,4 @@ paths:
 - Any other `{{…}}` is an error (`flow_invalid`, with field and character). Write `{{lbrace}}` for a literal `{{`. Env values are inserted literally and never re-scanned (ADR 0026).
 - Secrets only as `{ env: NAME }`; never inline. Each machine allows the name for the flow's profile once: `flowctl trust add profile <profile> <NAME> secret`.
 - The file name equals `name:`.
+- `derived: true` and `sourceRef` are written by the generator's save only (ADR 0020). A hand-written flow carries neither; a `sourceRef` without `derived: true` is refused at load. Never copy them into a flow you write.

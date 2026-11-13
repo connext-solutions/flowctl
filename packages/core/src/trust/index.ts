@@ -139,6 +139,7 @@ export {
   type ClosureFile,
   type ClosureOptions,
   computeClosure,
+  hashFlowFile,
   type HookDigestInput,
   hookConsentDigest,
   type Uncovered,

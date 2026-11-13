@@ -11,6 +11,7 @@ import {
   outcomeOf,
   toOutcome,
   type Outcome,
+  DRAFT_PROVENANCE,
 } from '../run/index.js';
 import type { CheckedDriver, HistoryEntry } from '../system1/index.js';
 import type { TrustStore } from '../trust/index.js';
@@ -113,6 +114,7 @@ export class Exploration {
       browser: opts.browser,
       store: opts.store,
       writes,
+      provenance: DRAFT_PROVENANCE,
     });
     const x = new Exploration(cfg, req, run, system1, guard, writes);
     try {
