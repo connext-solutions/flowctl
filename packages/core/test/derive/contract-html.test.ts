@@ -50,6 +50,13 @@ describe('HTML that is not a form control', () => {
     expect(valueOf(facts, 'real', 'maxLength')).toBe('4');
   });
 
+  it('finds the end of a script body even after characters whose lower case is longer', () => {
+    const src = `<p>İİİİİİ</p><SCRIPT>x = '<input name="s" maxlength="1">'</SCRIPT><input name="real" maxlength="2">`;
+    expect(readFiles({ 'p.html': src }).facts.map((f) => f.field)).toEqual([
+      'real',
+    ]);
+  });
+
   it('keeps the first of a duplicated attribute and reports the repeat', () => {
     const { facts, skipped } = readFiles({
       'p.html': '<input name="a" maxlength="5" maxlength="9">',

@@ -27,8 +27,8 @@ const FORBIDDEN: readonly [string, RegExp][] = [
   ['child_process', /child_process/],
   ['worker_threads', /worker_threads/],
   [
-    'a compiled pattern from text',
-    /\bnew\s+RegExp\s*\(\s*(?!`<\/\$\{name\}`|`\[\$\{INVISIBLE_CLASS\}\]`)/,
+    'a pattern compiled from anything but the fixed invisible-character class',
+    /\bnew\s+RegExp\s*\(\s*(?!`\[\$\{INVISIBLE_CLASS\}\]`)/,
   ],
   ['the environment', /\bprocess\.env\b/],
   ['the clock', /\bDate\b|\bperformance\.now\b/],

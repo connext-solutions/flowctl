@@ -40,6 +40,7 @@ export function htmlFacts(
     return line;
   };
   let at = 0;
+  const lower = text.replace(/[A-Z]/g, (c) => c.toLowerCase());
   while (at < text.length) {
     const lt = text.indexOf('<', at);
     if (lt < 0) return;
@@ -59,10 +60,8 @@ export function htmlFacts(
     const parsed = attributes(text, TAG.lastIndex, lim.maxAttributes);
     if (parsed === undefined) return out.skip('unclosed_tag', lineAt(lt));
     if (RAW_TEXT.has(name) && !CONTROLS.has(name)) {
-      const closing = new RegExp(`</${name}`, 'gi');
-      closing.lastIndex = parsed.end;
-      const close = closing.exec(text);
-      at = close === null ? text.length : close.index;
+      const close = lower.indexOf(`</${name}`, parsed.end);
+      at = close < 0 ? text.length : close;
       continue;
     }
     at = parsed.end;
