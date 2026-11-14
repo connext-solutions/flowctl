@@ -24,8 +24,9 @@
  * - every package directory is known to `PACKAGE_DEPS`;
  * - fixed waits (`waitForTimeout`, timer sleeps) only in `SLEEP_ALLOWED` files (`.claude/rules/performance.md`);
  * - core never prints or exits (`console.*`, `process.exit`, `process.stdout`) (`.claude/rules/reliability.md`);
- * - `core/src/reconcile/` never imports `child_process` (with or without `node:`): the code index reads
- *   untrusted repositories and never starts git or any other process (ADR 0035);
+ * - `core/src/reconcile/` and `core/src/derive/contract/` never import `child_process` (with or without `node:`):
+ *   the code index and the contract readers read untrusted repositories and never start git or any other process
+ *   (ADR 0035, ADR 0040);
  * - no new env-input path in `packages/*\/src` (T0.13): a new read of the process environment or `env` input key
  *   fails unless listed in `env-input-baseline.mjs` (ADR 0024 section 7; flow inputs are also checked against the
  *   trust store allowlist since T1.14); a baseline entry whose
@@ -113,8 +114,8 @@ const squash = (text) =>
     })
     .replace(/\$\{[\s'"`]*\}/g, '')
     .replace(/['"`+\s]/g, '');
-/** Folders whose code reads untrusted repositories and may never start a process (ADR 0035). */
-const NO_SPAWN = /^packages\/core\/src\/reconcile\//i;
+/** Folders whose code reads untrusted repositories and may never start a process (ADR 0035, ADR 0040). */
+const NO_SPAWN = /^packages\/core\/src\/(?:reconcile|derive\/contract)\//i;
 const CHILD_PROCESS = /^(?:node:)?child_process(?:\/|$)/i;
 const SLEEP = /\bwaitForTimeout\(|\bsetTimeout\b/;
 const CORE_OUTPUT = /\bconsole\.\w+\(|\bprocess\.(exit|stdout|stderr)\b/;
@@ -315,7 +316,7 @@ for (const file of files) {
     const decoded = safeDecode(written.replace(/[\t\n\r]/g, ''));
     const spec = decoded.startsWith('.') ? decoded.replace(/[?#][\s\S]*$/, '') : decoded;
     if (NO_SPAWN.test(file) && CHILD_PROCESS.test(spec))
-      report(file, n, `reconcile never starts a process (ADR 0035): ${spec}; read files through trust/contain`);
+      report(file, n, `${/\/derive\//i.test(file) ? 'contract readers' : 'reconcile'} never starts a process (ADR ${/\/derive\//i.test(file) ? '0040' : '0035'}): ${spec}; read files through trust/contain`);
     if (spec.startsWith('.') && (spec.includes('\\') || raw.includes('\\'))) {
       report(file, n, `relative import ${JSON.stringify(spec).slice(1, -1)} contains a backslash (or a backslash escape); Node reads \\ as a slash, so the layer checks cannot follow it`);
       continue;

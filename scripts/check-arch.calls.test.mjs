@@ -93,6 +93,22 @@ describe('check-arch: reconcile never starts a process (ADR 0035)', () => {
     passes({ 'packages/core/src/trust/a.ts': "import { spawn } from 'node:child_process';\nexport const a = spawn;\n" }));
 });
 
+describe('check-arch: contract readers never start a process (ADR 0040)', () => {
+  const FILE = 'packages/core/src/derive/contract/a.ts';
+  const SPAWN = /never starts a process/;
+  const CASES = {
+    'node: import': "import { execFileSync } from 'node:child_process';\nexport const a = execFileSync;\n",
+    'bare import': "import * as cp from 'child_process';\nexport const a = cp;\n",
+    'dynamic import': "export const a = () => import('node:child_process');\n",
+    require: "export const a = require('child_process');\n",
+  };
+  for (const [name, text] of Object.entries(CASES)) it(`fails: ${name}`, () => fails({ [FILE]: text }, SPAWN));
+  it('lets the rest of derive and its tests import it', () => {
+    passes({ 'packages/core/src/derive/match/a.ts': "import { spawn } from 'node:child_process';\nexport const a = spawn;\n" });
+    passes({ 'packages/core/test/derive/a.test.ts': "import { spawn } from 'node:child_process';\nexport const a = spawn;\n" });
+  });
+});
+
 describe('check-arch: escapes past the last code point', () => {
   it('passes a file holding \\u{110000} instead of crashing', () =>
     passes({ 'packages/core/test/a.test.ts': "export const a = '\\\\u{110000}';\n" }));
