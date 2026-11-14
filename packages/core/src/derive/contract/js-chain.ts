@@ -43,19 +43,21 @@ export interface Found {
  * with the namespace `ns` one of `namespaces` (`z`, `Joi`). Nothing is evaluated or resolved: a key whose value
  * is not a literal chain (a variable, a spread, a computed key, an imported schema) is an entry with a `reason`,
  * and a call argument that is not a literal is `other`. Brackets are tracked with a counter capped at
- * `maxDepth`; past it the scan stops with one skip, so a hostile nesting costs a bounded amount of work.
+ * `maxDepth`; past it the scan stops with one skip, so a hostile nesting costs a bounded amount of work. A file with
+ * more than `maxSchemas` schemas, or a schema with more than `maxKeys` keys, stops the scan with a typed skip.
+ * `owners` counts the variable names already used in the file; pass the same map for every namespace of a file.
  *
  * @see docs/adr/0040-contract-readers.md
  */
 export function findSchemas(
   tokens: readonly JsToken[],
   namespaces: ReadonlySet<string>,
-  maxDepth: number,
+  caps: { maxDepth: number; maxSchemas: number; maxKeys: number },
+  owners: Map<string, number> = new Map(),
   anonymous = 0,
 ): Found {
   const found: Found = { schemas: [], skips: [] };
-  const p = new Parser(tokens, namespaces, maxDepth);
-  const owners = new Set<string>();
+  const p = new Parser(tokens, namespaces, caps.maxDepth, caps.maxKeys);
   try {
     for (let i = 0; i < tokens.length; i++) {
       const t = tokens[i];
@@ -69,6 +71,10 @@ export function findSchemas(
         !isP(tokens[i + 4], '{')
       )
         continue;
+      if (anonymous + found.schemas.length >= caps.maxSchemas) {
+        found.skips.push({ line: t.line, reason: 'too_many_schemas' });
+        break;
+      }
       const owner = uniqueOwner(
         ownerOf(tokens, i, anonymous + found.schemas.length),
         owners,
@@ -86,12 +92,15 @@ export function findSchemas(
   return found;
 }
 
-/** `name`, or `name@2`, `name@3` when another schema of the file already has it, so no two owners are alike. */
-function uniqueOwner(name: string, used: Set<string>): string {
-  let owner = name;
-  for (let n = 2; used.has(owner); n++) owner = `${name}@${n}`;
-  used.add(owner);
-  return owner;
+/**
+ * `name`, or `name@2`, `name@3` when another schema of the file already has it, so no two owners are alike. One
+ * counter per name, so each owner costs one lookup; `@` is not part of an identifier, so a suffixed owner can never
+ * equal a plain one.
+ */
+function uniqueOwner(name: string, counts: Map<string, number>): string {
+  const n = (counts.get(name) ?? 0) + 1;
+  counts.set(name, n);
+  return n === 1 ? name : `${name}@${n}`;
 }
 
 /** The variable a schema is assigned to (`const x = z.object(`), else `schemaN`. */

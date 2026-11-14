@@ -96,13 +96,19 @@ export function extractFile(ctx: ReadCtx, rel: string): Extracted {
     const zod = new Emitter(rel, 'zod', ctx.sh, refs);
     const joi = new Emitter(rel, 'joi', ctx.sh, refs);
     let anonymous = 0;
+    const owners = new Map<string, number>();
+    const caps = {
+      maxDepth: lim.maxDepth,
+      maxSchemas: lim.maxSchemas,
+      maxKeys: lim.maxKeys,
+    };
     try {
       const tokens = lexJs(file.text, lim.maxTokens);
       for (const [ns, out, read] of [
         [['z', 'zod'], zod, readZodChain],
         [['Joi', 'joi'], joi, readJoiChain],
       ] as const) {
-        const found = findSchemas(tokens, new Set(ns), lim.maxDepth, anonymous);
+        const found = findSchemas(tokens, new Set(ns), caps, owners, anonymous);
         anonymous += found.schemas.length;
         for (const s of found.schemas) emitSchema(s, out, read);
         for (const s of found.skips) out.skip(s.reason, s.line);

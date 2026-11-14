@@ -1,4 +1,4 @@
-import { type Emitter, pointerOf } from './emit.js';
+import { type Emitter, pointerOf, shortName } from './emit.js';
 import { canonicalNumber } from './numbers.js';
 import type { ContractLimits, ContractRule } from './types.js';
 
@@ -53,6 +53,7 @@ export function htmlFacts(
   let line = 1;
   let tags = 0;
   const seen = new Map<string, number>();
+  const used = new Set<string>();
   const lineAt = (to: number): number => {
     for (; i < to; i++) if (text[i] === '\n') line++;
     return line;
@@ -86,13 +87,10 @@ export function htmlFacts(
     const here = lineAt(lt);
     if (parsed.overflow) out.skip('too_many_attributes', here);
     for (const dup of parsed.duplicates)
-      out.skip(`duplicate_attribute:${dup.slice(0, 40)}`, here);
+      out.skip(`duplicate_attribute:${shortName(dup)}`, here);
     const control = parsed.attrs.get('name') ?? parsed.attrs.get('id');
     if (control === undefined || control === '') continue;
-    const key = `${name}\0${control}`;
-    const nth = (seen.get(key) ?? 0) + 1;
-    seen.set(key, nth);
-    const named = nth === 1 ? control : `${control}#${nth}`;
+    const named = uniqueControl(name, control, seen, used);
     for (const [attr, rule] of RULES) {
       const raw = parsed.attrs.get(attr);
       if (raw === undefined) continue;
@@ -112,6 +110,29 @@ export function htmlFacts(
       });
     }
   }
+}
+
+/**
+ * The name a control carries in its pointer: `control`, then `control#2`, `control#3` for the repeats of one tag and
+ * name. A repeat is numbered past any name the file already uses (a control literally called `a#2`), so no two
+ * controls share a name. `seen` counts the repeats of a name, so each control costs one step plus the names it skips.
+ */
+function uniqueControl(
+  tag: string,
+  control: string,
+  seen: Map<string, number>,
+  used: Set<string>,
+): string {
+  const key = `${tag}\0${control}`;
+  let nth = seen.get(key) ?? 0;
+  let named: string;
+  do {
+    nth++;
+    named = nth === 1 ? control : `${control}#${nth}`;
+  } while (used.has(`${tag}\0${named}`));
+  seen.set(key, nth);
+  used.add(`${tag}\0${named}`);
+  return named;
 }
 
 interface Attrs {

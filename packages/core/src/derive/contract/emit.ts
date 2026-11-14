@@ -33,6 +33,14 @@ export const printable = (text: string): string =>
     (c) => `\\u{${(c.codePointAt(0) ?? 0).toString(16)}}`,
   );
 
+/** The first `max` code points of `text`, escaped by {@link printable}: a name that may sit in a skip reason. */
+export const shortName = (text: string, max = 40): string =>
+  printable(
+    Array.from(text.slice(0, max * 2))
+      .slice(0, max)
+      .join(''),
+  );
+
 /** The counters shared by every file of one read: facts taken so far. */
 export interface Shared {
   facts: ByteBudget;

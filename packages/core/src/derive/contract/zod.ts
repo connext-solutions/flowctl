@@ -1,3 +1,4 @@
+import { shortName } from './emit.js';
 import {
   argOf,
   type ChainReader,
@@ -133,7 +134,7 @@ export const readZodChain: ChainReader = (chain, skip) => {
       if (re === undefined) skip('non_literal_argument', call.line);
       else add('pattern', re.value);
     } else if (!IGNORED.has(call.name))
-      skip(`unsupported_method:${call.name.slice(0, 40)}`, call.line);
+      skip(`unsupported_method:${shortName(call.name)}`, call.line);
   }
   if (!optional && first.name !== 'object')
     rules.push({ rule: 'required', value: 'true', line: first.line });

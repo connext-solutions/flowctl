@@ -1,3 +1,4 @@
+import { shortName } from './emit.js';
 import {
   argOf,
   type ChainReader,
@@ -113,7 +114,7 @@ export const readJoiChain: ChainReader = (chain, skip) => {
       if (o === undefined) skip('non_literal_argument', call.line);
       else messages = o.props;
     } else if (call !== first && !IGNORED.has(call.name))
-      skip(`unsupported_method:${call.name.slice(0, 40)}`, call.line);
+      skip(`unsupported_method:${shortName(call.name)}`, call.line);
   }
   return rules.map((r) => {
     const key = Object.entries(CODES).find(([, rule]) => rule === r.rule)?.[0];

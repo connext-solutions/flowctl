@@ -56,34 +56,49 @@ interface YNode {
 
 const NEWLINE = 10;
 const COMMA = 44;
+const HASH = 35;
+const DQUOTE = 34;
+const SQUOTE = 39;
+const BACKSLASH = 92;
 const OPENERS = new Set([123, 91]);
 const CLOSERS = new Set([125, 93]);
+/** What may come before a quote that opens a quoted scalar: the start of a line or a structural character. */
+const BEFORE_QUOTE = new Set([58, 45, 63, 91, 123, 44]);
 /** Columns of indentation allowed per level of `maxDepth` before a block document is refused as too deep. */
 const COLUMNS_PER_LEVEL = 4;
+const isBlank = (c: number): boolean => c === 32 || c === 9 || c === NEWLINE;
+/** A pretty-printed document has at most two lines per node (a closing line for each container). */
+const LINES_PER_NODE = 2;
 
 /**
  * One linear pass over `text` before any parser runs, so that `maxNodes`, `maxDepth` and the file size bound the
- * work of the parse and not only the size of its result: lines plus commas are a ceiling on the nodes a document can
- * have, the deepest flow bracket nesting and the widest indentation are a ceiling on its depth. A text that passes
- * can still be refused later by the exact counts; a text that fails here is never handed to the parser.
+ * work of the parse and not only the size of its result: lines and commas are a ceiling on the nodes a document can
+ * have, the deepest flow bracket nesting and the widest indentation are a ceiling on its depth. Brackets and commas
+ * inside a quoted scalar or a comment are text, not structure, and are not counted, so a pattern or a sentence
+ * that holds a lone `[` cannot refuse a file. A text that passes can still be refused later by the exact counts; a
+ * text that fails here is never handed to the parser.
  *
  * @throws {ContractParseError} `too_many_nodes` or `too_deep`.
  */
 export function prescan(text: string, lim: ContractLimits): void {
-  let separators = 0;
+  let lines = 0;
+  let commas = 0;
   let flow = 0;
   let column = 0;
   let indenting = true;
+  let quote = 0;
+  let comment = false;
+  let before = NEWLINE;
   const widest = lim.maxDepth * COLUMNS_PER_LEVEL;
+  const maxLines = lim.maxNodes * LINES_PER_NODE;
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
-    if (c === NEWLINE || c === COMMA) {
-      if (++separators > lim.maxNodes)
-        throw new ContractParseError('too_many_nodes');
-    }
     if (c === NEWLINE) {
+      if (++lines > maxLines) throw new ContractParseError('too_many_nodes');
       column = 0;
       indenting = true;
+      comment = false;
+      before = NEWLINE;
       continue;
     }
     if (indenting && (c === 32 || c === 9)) {
@@ -91,9 +106,27 @@ export function prescan(text: string, lim: ContractLimits): void {
       continue;
     }
     indenting = false;
-    if (OPENERS.has(c)) {
+    if (comment) continue;
+    if (quote !== 0) {
+      if (c === BACKSLASH && quote === DQUOTE) i++;
+      else if (c === quote) quote = 0;
+      continue;
+    }
+    if (c === 32 || c === 9 || c === 13) continue;
+    if (
+      (c === DQUOTE || c === SQUOTE) &&
+      (BEFORE_QUOTE.has(before) || before === NEWLINE)
+    )
+      quote = c;
+    else if (c === HASH && (i === 0 || isBlank(text.charCodeAt(i - 1))))
+      comment = true;
+    else if (c === COMMA) {
+      if (++commas > lim.maxNodes)
+        throw new ContractParseError('too_many_nodes');
+    } else if (OPENERS.has(c)) {
       if (++flow > lim.maxDepth) throw new ContractParseError('too_deep');
     } else if (CLOSERS.has(c) && flow > 0) flow--;
+    before = c;
   }
 }
 

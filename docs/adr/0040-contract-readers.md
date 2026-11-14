@@ -58,7 +58,10 @@ parse statically: never `import`, `require` or evaluate the file.
    longer reference is a skip, not a fact. Within one read every emitted reference is unique and
    `resolveContractRef` returns exactly that fact: pointers are structurally unique (`/required/<index>`, the owner
    of a nested schema is its top variable, a repeated rule is `rule.2`, a repeated control `name#2`), and the emitter
-   turns any pointer taken twice into an `ambiguous_ref` skip. The root name is 1 to 64 letters, digits, `_` or `-`. `resolveContractRef` reads
+   turns any pointer taken twice into an `ambiguous_ref` skip. A fact read through a same-file `$ref` is keyed by the
+   referring place (its pointer, then `$ref`), so operations that share a component each keep their facts. A key
+   written twice in a schema is read once, the last (as JavaScript does). Schemas per file and keys per schema are
+   capped (`too_many_schemas`, `too_many_keys`). The root name is 1 to 64 letters, digits, `_` or `-`. `resolveContractRef` reads
    the file again, extracts its facts and returns the first with that reference, with its value and the SHA-256 of the
    file; `null` means the file or fact is gone, a different value means the source changed. A fact has no integer
    revision; the caller stores `quoteSha256` of the value (`valueSha256`).

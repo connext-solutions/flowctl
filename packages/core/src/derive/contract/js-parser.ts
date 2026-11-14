@@ -18,6 +18,7 @@ export class Parser {
     private readonly t: readonly JsToken[],
     private readonly ns: ReadonlySet<string>,
     private readonly maxDepth: number,
+    private readonly maxKeys: number,
   ) {}
 
   /** The schema whose `{` is at `open`, and the index of its closing `}`. */
@@ -34,6 +35,8 @@ export class Parser {
         i++;
         continue;
       }
+      if (entries.length >= this.maxKeys)
+        throw new ContractParseError('too_many_keys');
       const key = this.t[i];
       const start = i;
       if (
@@ -103,7 +106,7 @@ export class Parser {
     from: number,
     schema: SchemaObject,
   ): { schema: SchemaObject; next: number } {
-    let entries: Entry[] = [...schema.entries];
+    const entries: Entry[] = [...schema.entries];
     let i = from;
     while (isP(this.t[i], '.') && this.t[i + 1]?.type === 'id') {
       const name = this.t[i + 1]?.value ?? '';
@@ -112,9 +115,11 @@ export class Parser {
       if (EXTENDERS.has(name)) {
         const r = this.args(i + 2, name, 0);
         const arg = r.args[0];
-        if (arg?.kind === 'schema')
-          entries = [...entries, ...arg.schema.entries];
-        else this.skips.push({ line, reason: 'schema_extension_unread' });
+        if (arg?.kind === 'schema') {
+          for (const e of arg.schema.entries) entries.push(e);
+          if (entries.length > this.maxKeys)
+            throw new ContractParseError('too_many_keys');
+        } else this.skips.push({ line, reason: 'schema_extension_unread' });
         i = r.next;
       } else i = this.afterCall(i + 2);
     }

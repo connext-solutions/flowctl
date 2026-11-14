@@ -134,11 +134,18 @@ describe('reference identity', () => {
     expect(new Set(pick(facts, 'x', 'type').map((f) => f.owner)).size).toBe(2);
   });
 
-  it('reports a later fact with a ref already taken as ambiguous_ref, never as a second fact', () => {
-    const { facts, skipped } = readFiles({ 'a.yaml': OPENAPI });
-    expect(reasons(skipped)).toContain('ambiguous_ref');
-    const refs = facts.map((f) => contractRef(f, 'api'));
-    expect(new Set(refs).size).toBe(refs.length);
+  it('keeps the facts of every operation that shares one requestBody, each under its own ref', () => {
+    const { facts } = readFiles({ 'a.yaml': OPENAPI });
+    for (const owner of ['POST /a', 'POST /b'])
+      expect(
+        facts.filter(
+          (f) =>
+            f.owner.startsWith(owner) &&
+            f.field === 'a' &&
+            f.rule === 'maxLength',
+        ),
+      ).toHaveLength(1);
+    expect(new Set(facts.map((f) => f.pointer)).size).toBe(facts.length);
   });
 });
 

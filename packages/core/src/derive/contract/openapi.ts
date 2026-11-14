@@ -263,7 +263,11 @@ export class OpenApiReader {
     }
   }
 
-  /** `node`, or what its `$ref` points at when that is in this file (a foreign file's pointers are not ours). */
+  /**
+   * `node`, or what its `$ref` points at when that is in this file (a foreign file's pointers are not ours), with
+   * the pointer its facts carry: the referring place's pointer then `$ref`, not the component's, so two operations
+   * that share one component each keep their facts, under unique refs.
+   */
   private follow(
     node: DataNode | undefined,
     ptr: readonly string[],
@@ -280,6 +284,6 @@ export class OpenApiReader {
       this.out.skip('ref_other_file', node.line);
       return undefined;
     }
-    return { node: r.node, path: r.path };
+    return { node: r.node, path: [...ptr, '$ref'] };
   }
 }

@@ -80,6 +80,8 @@ export interface ContractLimits {
   maxDepth: number;
   maxRefs: number;
   maxTokens: number;
+  maxSchemas: number;
+  maxKeys: number;
   maxTags: number;
   maxAttributes: number;
   maxString: number;
@@ -96,6 +98,8 @@ export const CONTRACT_LIMITS: ContractLimits = {
   maxDepth: 64,
   maxRefs: 2_000,
   maxTokens: 400_000,
+  maxSchemas: 5_000,
+  maxKeys: 2_000,
   maxTags: 20_000,
   maxAttributes: 64,
   maxString: 4_000,

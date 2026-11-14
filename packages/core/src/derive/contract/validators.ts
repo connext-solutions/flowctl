@@ -1,5 +1,5 @@
 import { type Emitter, pointerOf } from './emit.js';
-import type { Arg, Call, Chain, SchemaObject } from './js-chain.js';
+import type { Arg, Call, Chain, Entry, SchemaObject } from './js-chain.js';
 import type { ContractRule } from './types.js';
 
 /** A rule read from a chain: what it states, its literal value and the message that goes with it. */
@@ -39,6 +39,19 @@ export function messageAt(call: Call, i: number): string | undefined {
 }
 
 /**
+ * The entries that take effect: JavaScript keeps the last value of a key written twice (an object literal with a
+ * repeated key, or an `.extend` that redefines one), so an earlier entry of the same key is dropped, never read.
+ * Entries without a key (spreads and other unreadable members) stay as they are, in order, to be reported.
+ */
+function effective(entries: readonly Entry[]): Entry[] {
+  const last = new Map<string, number>();
+  entries.forEach((e, i) => {
+    if (e.key !== '') last.set(e.key, i);
+  });
+  return entries.filter((e, i) => e.key === '' || last.get(e.key) === i);
+}
+
+/**
  * Emits the facts of every entry of `schema` that `read` understands: field `prefix + key`, pointer
  * `/<owner>/<field path>/<rule>` (the owner is the variable the top schema is assigned to, or `schemaN`, and
  * stays the owner of every schema nested in it). A rule a chain repeats (`.min(1).min(2)`) keeps its place in the
@@ -52,7 +65,7 @@ export function emitSchema(
   path: readonly string[] = [],
   owner: string = schema.owner,
 ): void {
-  for (const e of schema.entries) {
+  for (const e of effective(schema.entries)) {
     if (e.chain === undefined) {
       out.skip(e.reason ?? 'unsupported_entry', e.line);
       continue;
