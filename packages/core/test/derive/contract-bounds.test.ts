@@ -90,4 +90,12 @@ describe('work is bounded before a file is parsed', () => {
     expect(commas.ms).toBeLessThan(LIMIT_MS);
     expect(reasons(commas.skipped)).toEqual(['too_many_nodes']);
   });
+
+  it('keeps the separator ceiling when a stray quote hides the rest of the file', () => {
+    const hidden = timed({
+      'i18n/vi.json': `a: |\n  "\nb: [${'a,'.repeat(300_000)}a]\n`,
+    });
+    expect(hidden.ms).toBeLessThan(LIMIT_MS);
+    expect(reasons(hidden.skipped)).toEqual(['too_many_nodes']);
+  });
 });

@@ -69,6 +69,8 @@ const COLUMNS_PER_LEVEL = 4;
 const isBlank = (c: number): boolean => c === 32 || c === 9 || c === NEWLINE;
 /** A pretty-printed document has at most two lines per node (a closing line for each container). */
 const LINES_PER_NODE = 2;
+/** Commas and openers, counted even inside quotes, may exceed `maxNodes` by this factor. */
+const RAW_FACTOR = 1;
 
 /**
  * One linear pass over `text` before any parser runs, so that `maxNodes`, `maxDepth` and the file size bound the
@@ -89,6 +91,8 @@ export function prescan(text: string, lim: ContractLimits): void {
   let quote = 0;
   let comment = false;
   let before = NEWLINE;
+  let raw = 0;
+  const maxRaw = lim.maxNodes * RAW_FACTOR;
   const widest = lim.maxDepth * COLUMNS_PER_LEVEL;
   const maxLines = lim.maxNodes * LINES_PER_NODE;
   for (let i = 0; i < text.length; i++) {
@@ -106,6 +110,9 @@ export function prescan(text: string, lim: ContractLimits): void {
       continue;
     }
     indenting = false;
+    if (c === COMMA || OPENERS.has(c)) {
+      if (++raw > maxRaw) throw new ContractParseError('too_many_nodes');
+    }
     if (comment) continue;
     if (quote !== 0) {
       if (c === BACKSLASH && quote === DQUOTE) i++;
