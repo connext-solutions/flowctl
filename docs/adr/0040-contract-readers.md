@@ -33,7 +33,10 @@ parse statically: never `import`, `require` or evaluate the file.
    refuses the whole read; a file over its cap, a link, a hard link, a FIFO, a name that is not NFC and bytes that are
    not UTF-8 are skips with a fixed reason.
 3. **No new dependency.** YAML and JSON go through `yaml` with the options of the markdown front matter (failsafe
-   schema, no merge keys, unique keys, strict), then the data is walked by the reader: no anchors, aliases or explicit
+   schema, no merge keys, strict), after a linear pre-scan that refuses a text with more lines and commas than
+   `maxNodes`, or deeper indentation or flow nesting than `maxDepth` allows, so the limits bound the parse and not
+   only its result; duplicate keys are found in the walk with a `Map`, because the parser's own check is quadratic.
+   Then the data is walked by the reader: no anchors, aliases or explicit
    tags, no key named `__proto__`, `constructor`, `prototype` or `<<`, bounded depth, nodes and string length. JSON is
    read as YAML, so duplicate keys are refused. Mappings are `Map`s. zod and Joi are read by a restricted lexer (a
    trimmed copy of the one in `reconcile/code/`, which derive may not import) and a recognizer of the shape
@@ -51,13 +54,16 @@ parse statically: never `import`, `require` or evaluate the file.
 6. **Facts and references.** A fact is `{ source, side, file, line, pointer, owner, field, rule, value, messageKey? }`.
    `side` is `client` for HTML and zod, `server` for OpenAPI and Joi and `catalogue` for i18n (the caller may override).
    A reference is `<rootName>:<relative/path>#<JSON Pointer>`, at most 500 characters, with no invisible character
-   (`INVISIBLE_CLASS`); a fact whose pointer, owner, field or key is longer, holds one, or would make a longer
-   reference is a skip, not a fact. The root name is 1 to 64 letters, digits, `_` or `-`. `resolveContractRef` reads
+   (`INVISIBLE_CLASS`); a fact whose file, pointer, owner, field, key or value is longer, holds one, or would make a
+   longer reference is a skip, not a fact. Within one read every emitted reference is unique and
+   `resolveContractRef` returns exactly that fact: pointers are structurally unique (`/required/<index>`, the owner
+   of a nested schema is its top variable, a repeated rule is `rule.2`, a repeated control `name#2`), and the emitter
+   turns any pointer taken twice into an `ambiguous_ref` skip. The root name is 1 to 64 letters, digits, `_` or `-`. `resolveContractRef` reads
    the file again, extracts its facts and returns the first with that reference, with its value and the SHA-256 of the
    file; `null` means the file or fact is gone, a different value means the source changed. A fact has no integer
    revision; the caller stores `quoteSha256` of the value (`valueSha256`).
 7. **Consistency checks.** `client_server` compares, per field named by both sides, the comparable rules as `equal`,
-   `differs` or `missing` on one side. `message_i18n` looks each message key up per locale (`equal`, `missing`, or
+   `differs` or `missing` on one side. `message_i18n` looks each message key up per locale (the folder of `locales/<lang>/<namespace>.json`, else the file name; `equal`, `missing`, or
    `unknown` for text that is not a dotted key and when no catalogue was read). `response_schema` checks that the
    field names of an error response's `field` enum are properties of the request schema, through `allOf`. A side that
    cannot be judged is `unknown`, never `equal`. A check carries facts and a fixed `reason` code, no text of its own.

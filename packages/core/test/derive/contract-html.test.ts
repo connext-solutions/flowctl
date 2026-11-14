@@ -65,14 +65,14 @@ describe('HTML that is not a form control', () => {
     expect(reasons(skipped)).toEqual(['duplicate_attribute:maxlength']);
   });
 
-  it('does not decode entities in attribute names, and keeps a date min as written', () => {
+  it('does not decode entities in attribute names, and keeps a canonical date min, and skips a number that is not canonical', () => {
     const { facts } = readFiles({
       'p.html':
         '<input name="d" &#109;axlength="1" min="2026-01-01" max="0200">',
     });
     expect(pick(facts, 'd', 'maxLength')).toEqual([]);
     expect(valueOf(facts, 'd', 'min')).toBe('2026-01-01');
-    expect(valueOf(facts, 'd', 'max')).toBe('0200');
+    expect(pick(facts, 'd', 'max')).toEqual([]);
   });
 
   it('caps attributes per tag and reports an unclosed tag', () => {

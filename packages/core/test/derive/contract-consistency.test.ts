@@ -4,7 +4,7 @@ import {
   type ConsistencyCheck,
   readContracts,
 } from '../../src/derive/index.js';
-import { fixtureRoot, readFiles, rootOf } from './contract-fixture.js';
+import { fixtureRoot, readFiles, reasons, rootOf } from './contract-fixture.js';
 
 const KEYS = ['id', 'verdict', 'flow', 'step', 'assertion', 'sourceRef'];
 const find = (
@@ -84,16 +84,17 @@ describe('client against server', () => {
     ]);
   });
 
-  it('reports a rule one side lacks as missing, and a number that reads differently as differs', () => {
+  it('reports a rule one side lacks as missing, and a number that reads differently as a skip, not a fact', () => {
     const files = {
       'form.html': '<input name="reason" maxlength="0200" required>',
       'api.yaml': API,
     };
-    const { facts } = readContracts(rootOf(files));
+    const { facts, skipped } = readContracts(rootOf(files));
+    expect(reasons(skipped)).toEqual(['ambiguous_number']);
     const checks = checkConsistency({ facts });
     expect(
-      find(checks, 'client_server', 'reason', 'maxLength')[0]?.outcome,
-    ).toBe('differs');
+      find(checks, 'client_server', 'reason', 'maxLength')[0],
+    ).toMatchObject({ outcome: 'missing', reason: 'absent_on_client' });
     expect(
       find(checks, 'client_server', 'reason', 'minLength')[0],
     ).toMatchObject({ outcome: 'missing', reason: 'absent_on_client' });

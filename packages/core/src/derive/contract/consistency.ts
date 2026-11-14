@@ -134,7 +134,16 @@ function responses(facts: readonly ContractFact[]): ConsistencyCheck[] {
     seen.add(schema);
     const fields = new Set(
       api
-        .filter((f) => f.owner === schema && f.rule === 'type')
+        .filter(
+          (f) =>
+            f.owner === schema &&
+            f.rule !== 'status' &&
+            f.rule !== 'required' &&
+            !(
+              f.rule === 'schema' &&
+              (f.field === 'allOf' || f.field.endsWith('.allOf'))
+            ),
+        )
         .map((f) => f.field),
     );
     for (const parent of api.filter(

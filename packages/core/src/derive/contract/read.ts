@@ -5,7 +5,7 @@ import {
   requirePurpose,
   walkContained,
 } from '../../trust/index.js';
-import { shared } from './emit.js';
+import { printable, shared } from './emit.js';
 import { extractFile } from './extract.js';
 import { kindOf } from './load.js';
 import { checkRootName, DEFAULT_ROOT_NAME } from './ref.js';
@@ -64,7 +64,7 @@ export function readContracts(
   const ctx = { root, sh: shared(limits, opts.sides), bytes, trees: new Map() };
   const facts: ContractFact[] = [];
   const skipped: SkippedContract[] = walked.skipped.map((s) => ({
-    file: s.path,
+    file: printable(s.path),
     line: 0,
     reason: s.rule,
   }));

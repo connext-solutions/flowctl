@@ -40,14 +40,17 @@ export function messageAt(call: Call, i: number): string | undefined {
 
 /**
  * Emits the facts of every entry of `schema` that `read` understands: field `prefix + key`, pointer
- * `/<owner>/<field path>/<rule>` (the owner is the variable the schema is assigned to, or `schemaN`). A nested
- * object schema is read with the key as prefix. Entries and methods that cannot be read are skips with their line.
+ * `/<owner>/<field path>/<rule>` (the owner is the variable the top schema is assigned to, or `schemaN`, and
+ * stays the owner of every schema nested in it). A rule a chain repeats (`.min(1).min(2)`) keeps its place in the
+ * pointer (`minLength`, then `minLength.2`), so every pointer is unique. A nested object schema is read with the
+ * key as prefix. Entries and methods that cannot be read are skips with their line.
  */
 export function emitSchema(
   schema: SchemaObject,
   out: Emitter,
   read: ChainReader,
   path: readonly string[] = [],
+  owner: string = schema.owner,
 ): void {
   for (const e of schema.entries) {
     if (e.chain === undefined) {
@@ -57,12 +60,19 @@ export function emitSchema(
     const at = [...path, e.key];
     for (const call of e.chain.calls)
       for (const a of call.args)
-        if (a.kind === 'schema') emitSchema(a.schema, out, read, at);
+        if (a.kind === 'schema') emitSchema(a.schema, out, read, at, owner);
+    const times = new Map<string, number>();
     for (const r of read(e.chain, (reason, line) => out.skip(reason, line))) {
+      const nth = (times.get(r.rule) ?? 0) + 1;
+      times.set(r.rule, nth);
       const f = {
         line: r.line,
-        pointer: pointerOf([schema.owner, ...at, r.rule]),
-        owner: schema.owner,
+        pointer: pointerOf([
+          owner,
+          ...at,
+          nth === 1 ? r.rule : `${r.rule}.${nth}`,
+        ]),
+        owner,
         field: at.join('.'),
         rule: r.rule,
         value: r.value,

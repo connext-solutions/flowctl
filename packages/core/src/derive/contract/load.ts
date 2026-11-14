@@ -92,3 +92,22 @@ export const kindOf = (rel: string): 'data' | 'code' | 'html' | undefined =>
 /** Whether a JSON file below a folder named like a message catalogue is read as one. */
 export const isCatalogue = (rel: string): boolean =>
   /\.json$/i.test(rel) && I18N_DIR.test(rel);
+
+const I18N_SEGMENT = /^(?:i18n|locales?|lang|messages|translations?)$/i;
+
+/**
+ * The locale a catalogue file belongs to: for `locales/<lang>/<namespace>.json` the folder `<lang>` (the segment
+ * after the last catalogue folder when a file name follows it), else the file's base name (`i18n/vi.json` is `vi`).
+ */
+export function localeOf(rel: string): string {
+  const parts = rel.split('/');
+  const file = parts.at(-1) ?? rel;
+  const base = file.replace(/\.[^.]*$/, '');
+  const dirs = parts.slice(0, -1);
+  let last = -1;
+  dirs.forEach((d, i) => {
+    if (I18N_SEGMENT.test(d)) last = i;
+  });
+  const lang = last >= 0 ? dirs[last + 1] : undefined;
+  return lang === undefined || lang === '' ? base : lang;
+}

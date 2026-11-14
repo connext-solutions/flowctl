@@ -89,7 +89,7 @@ export class OpenApiReader {
     for (const [kw, rule] of NUMERIC) {
       const v = node.entries.get(kw);
       if (v?.kind !== 'scalar') continue;
-      const n = canonicalNumber(v.text, 'data');
+      const n = v.plain ? canonicalNumber(v.text, 'data') : undefined;
       if (n === undefined) this.out.skip('ambiguous_number', v.line);
       else this.fact(v, [...ptr, kw], owner, field, rule, n, textAt(keys, kw));
     }
@@ -168,16 +168,17 @@ export class OpenApiReader {
         );
     const required = node.entries.get('required');
     if (required?.kind === 'seq')
-      for (const r of required.items)
+      required.items.forEach((r, i) => {
         if (r.kind === 'scalar')
           this.fact(
             r,
-            [...ptr, 'required'],
+            [...ptr, 'required', String(i)],
             owner,
             `${prefix}${r.text}`,
             'required',
             'true',
           );
+      });
   }
 
   private property(
@@ -223,7 +224,10 @@ export class OpenApiReader {
     const r = this.follow(p, ptr);
     const name = textAt(r?.node, 'name');
     if (r === undefined || r.node.kind !== 'map' || name === undefined) return;
-    if (textAt(r.node, 'required') === 'true')
+    const flag = r.node.entries.get('required');
+    if (flag?.kind === 'scalar' && flag.text === 'true' && !flag.plain)
+      this.out.skip('quoted_boolean', flag.line);
+    else if (flag?.kind === 'scalar' && flag.text === 'true')
       this.fact(
         r.node,
         [...r.path, 'required'],

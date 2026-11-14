@@ -54,20 +54,65 @@ interface YNode {
   tag?: string;
 }
 
+const NEWLINE = 10;
+const COMMA = 44;
+const OPENERS = new Set([123, 91]);
+const CLOSERS = new Set([125, 93]);
+/** Columns of indentation allowed per level of `maxDepth` before a block document is refused as too deep. */
+const COLUMNS_PER_LEVEL = 4;
+
+/**
+ * One linear pass over `text` before any parser runs, so that `maxNodes`, `maxDepth` and the file size bound the
+ * work of the parse and not only the size of its result: lines plus commas are a ceiling on the nodes a document can
+ * have, the deepest flow bracket nesting and the widest indentation are a ceiling on its depth. A text that passes
+ * can still be refused later by the exact counts; a text that fails here is never handed to the parser.
+ *
+ * @throws {ContractParseError} `too_many_nodes` or `too_deep`.
+ */
+export function prescan(text: string, lim: ContractLimits): void {
+  let separators = 0;
+  let flow = 0;
+  let column = 0;
+  let indenting = true;
+  const widest = lim.maxDepth * COLUMNS_PER_LEVEL;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === NEWLINE || c === COMMA) {
+      if (++separators > lim.maxNodes)
+        throw new ContractParseError('too_many_nodes');
+    }
+    if (c === NEWLINE) {
+      column = 0;
+      indenting = true;
+      continue;
+    }
+    if (indenting && (c === 32 || c === 9)) {
+      if (++column > widest) throw new ContractParseError('too_deep');
+      continue;
+    }
+    indenting = false;
+    if (OPENERS.has(c)) {
+      if (++flow > lim.maxDepth) throw new ContractParseError('too_deep');
+    } else if (CLOSERS.has(c) && flow > 0) flow--;
+  }
+}
+
 /**
  * Parses YAML or JSON text with the safe options of ADR 0023 rule 4, the set `spec/markdown/front-matter.ts`
- * uses: the failsafe schema (every scalar is text, no type coercion), no merge keys, unique keys, strict, and
- * then no anchors, aliases or explicit tags, no key of {@link FORBIDDEN}, bounded depth, nodes and string length.
- * JSON is read as YAML (it is a subset), so duplicate keys in JSON are refused too.
+ * uses: the failsafe schema (every scalar is text, no type coercion), no merge keys, strict, and
+ * then (after a {@link prescan} that bounds the work) no anchors, aliases or explicit tags, no key of {@link FORBIDDEN}, bounded depth, nodes and string length.
+ * JSON is read as YAML (it is a subset), so duplicate keys in JSON are refused too. Duplicates are found in
+ * the conversion with a map, in linear time, because the parser's own check is quadratic in the keys of a mapping.
  *
  * @throws {ContractParseError} for anything unsafe or malformed.
  */
 export function parseData(text: string, lim: ContractLimits): DataNode {
+  prescan(text, lim);
   const lines = new LineCounter();
   const doc = parseDocument(text, {
     schema: 'failsafe',
     merge: false,
-    uniqueKeys: true,
+    uniqueKeys: false,
     strict: true,
     prettyErrors: false,
     lineCounter: lines,
@@ -113,6 +158,7 @@ export function parseData(text: string, lim: ContractLimits): DataNode {
         throw new ContractParseError('non_scalar_key');
       if (FORBIDDEN.has(key.value) || key.value.length > lim.maxString)
         throw new ContractParseError('forbidden_key');
+      if (entries.has(key.value)) throw new ContractParseError('yaml_invalid');
       entries.set(
         key.value,
         pair.value === null

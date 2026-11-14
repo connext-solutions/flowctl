@@ -1,11 +1,17 @@
 import { ByteBudget, type ContainmentErrorKind } from '../../trust/index.js';
-import { Emitter } from './emit.js';
+import { Emitter, isVisible, printable } from './emit.js';
 import { htmlFacts } from './html.js';
 import { i18nFacts } from './i18n.js';
 import { findSchemas } from './js-chain.js';
 import { lexJs } from './js-lex.js';
 import { readJoiChain } from './joi.js';
-import { isCatalogue, kindOf, readFileText, type ReadCtx } from './load.js';
+import {
+  isCatalogue,
+  kindOf,
+  localeOf,
+  readFileText,
+  type ReadCtx,
+} from './load.js';
 import { OpenApiReader } from './openapi.js';
 import type { RefLoader } from './openapi-ref.js';
 import { ContractParseError, type DataNode, parseData } from './safe-data.js';
@@ -22,9 +28,33 @@ export interface Extracted {
 }
 
 const MARKS_VALIDATOR = /\b(?:z|zod|Joi|joi)\s*\.\s*object\b/;
-const MARKS_OPENAPI = /(?:^|\n)\s*["']?(?:openapi|swagger)["']?\s*:/;
-const baseName = (rel: string): string =>
-  (rel.split('/').at(-1) ?? rel).replace(/\.[^.]*$/, '');
+const BLANK = new Set([' ', '\t', '\r']);
+
+/**
+ * Whether `text` has a line that starts with an `openapi` or `swagger` key (YAML, optionally quoted). A linear scan
+ * over the occurrences of the two words, with no pattern that can backtrack: the work is bounded by the text's
+ * length, whatever it holds (a megabyte of blanks costs one pass).
+ */
+function marksOpenApi(text: string): boolean {
+  for (const word of ['openapi', 'swagger']) {
+    for (
+      let at = text.indexOf(word);
+      at >= 0;
+      at = text.indexOf(word, at + word.length)
+    ) {
+      let before = at - 1;
+      const quote = text[before];
+      if (quote === '"' || quote === "'") before--;
+      while (before >= 0 && BLANK.has(text[before] ?? '')) before--;
+      if (before >= 0 && text[before] !== '\n') continue;
+      let after = at + word.length;
+      if (text[after] === quote && (quote === '"' || quote === "'")) after++;
+      while (BLANK.has(text[after] ?? '')) after++;
+      if (text[after] === ':') return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Reads one file of the root into facts: `.html` for form controls, JS and TS for zod and Joi schemas, YAML and
@@ -38,11 +68,16 @@ const baseName = (rel: string): string =>
 export function extractFile(ctx: ReadCtx, rel: string): Extracted {
   const kind = kindOf(rel);
   if (kind === undefined) return { facts: [], skipped: [] };
+  if (!isVisible(rel))
+    return {
+      facts: [],
+      skipped: [{ file: printable(rel), line: 0, reason: 'file_name_unsafe' }],
+    };
   const file = readFileText(ctx, rel);
   if (!file.ok)
     return {
       facts: [],
-      skipped: [{ file: rel, line: 0, reason: file.reason }],
+      skipped: [{ file: printable(rel), line: 0, reason: file.reason }],
       ...(file.kind === undefined
         ? {}
         : { refused: { kind: file.kind, rule: file.reason } }),
@@ -57,15 +92,18 @@ export function extractFile(ctx: ReadCtx, rel: string): Extracted {
   if (kind === 'code') {
     if (!MARKS_VALIDATOR.test(file.text))
       return { ...base, facts: [], skipped: [] };
-    const zod = new Emitter(rel, 'zod', ctx.sh);
-    const joi = new Emitter(rel, 'joi', ctx.sh);
+    const refs = new Set<string>();
+    const zod = new Emitter(rel, 'zod', ctx.sh, refs);
+    const joi = new Emitter(rel, 'joi', ctx.sh, refs);
+    let anonymous = 0;
     try {
       const tokens = lexJs(file.text, lim.maxTokens);
       for (const [ns, out, read] of [
         [['z', 'zod'], zod, readZodChain],
         [['Joi', 'joi'], joi, readJoiChain],
       ] as const) {
-        const found = findSchemas(tokens, new Set(ns), lim.maxDepth);
+        const found = findSchemas(tokens, new Set(ns), lim.maxDepth, anonymous);
+        anonymous += found.schemas.length;
         for (const s of found.schemas) emitSchema(s, out, read);
         for (const s of found.skips) out.skip(s.reason, s.line);
       }
@@ -82,7 +120,7 @@ export function extractFile(ctx: ReadCtx, rel: string): Extracted {
   const catalogue = isCatalogue(rel);
   if (
     !catalogue &&
-    !MARKS_OPENAPI.test(file.text) &&
+    !marksOpenApi(file.text) &&
     !file.text.includes('"openapi"') &&
     !file.text.includes('"swagger"')
   )
@@ -95,11 +133,11 @@ export function extractFile(ctx: ReadCtx, rel: string): Extracted {
     return {
       ...base,
       facts: [],
-      skipped: [{ file: rel, line: 0, reason: e.reason }],
+      skipped: [{ file: printable(rel), line: 0, reason: e.reason }],
     };
   }
   const out = new Emitter(rel, catalogue ? 'i18n' : 'openapi', ctx.sh);
-  if (catalogue) i18nFacts(tree, baseName(rel), out);
+  if (catalogue) i18nFacts(tree, localeOf(rel), out);
   else if (
     tree.kind === 'map' &&
     (tree.entries.has('openapi') || tree.entries.has('swagger'))
