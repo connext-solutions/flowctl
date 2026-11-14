@@ -16,7 +16,7 @@ import {
 } from './contract-fixture.js';
 
 const MIB = 1024 * 1024;
-const LIMIT_MS = 2000;
+const LIMIT_MS = 6000;
 
 const SHARED = `openapi: 3.1.0
 paths:

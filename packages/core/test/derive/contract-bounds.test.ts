@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFiles, reasons } from './contract-fixture.js';
 
 const MIB = 1024 * 1024;
-const LIMIT_MS = 2000;
+/** Generous for a shared CI runner: a quadratic read of these inputs takes minutes, so it still fails. */
+const LIMIT_MS = 6000;
 
 /** Reads `files` and returns the report with the wall time of the read. */
 function timed(
