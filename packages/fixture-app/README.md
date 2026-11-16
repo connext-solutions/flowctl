@@ -69,11 +69,24 @@ not in `BUG_MODES` or the flow `CAUGHT_BY`; core's `observe-checks.accuracy.test
 `no-broken-link` re-reports the failure of a target page from each page that links to it, so it has no mode of its
 own; `brokenLink`, `page500` and `pageNoAnswer` require it next to the target's check.
 
-The T4.9 invariants map to bugs that already exist: create appears and reload keeps (`notPersisted`, `list500`),
-round-trip equality (`wrongValueAfterReload`), state change after an action (`approveNoop`), success toast
-implies 2xx (`toastOnFail`), the client blocks what the server rejects (`noValidation`), no 5xx (`save500`), no
-console error (`consoleError`). The app has no edit or delete, so the "edit shows" and "delete is absent" round
-trips have no seeded bug yet.
+## Invariant bugs (T4.9)
+
+The `/items` app (unlinked, a crawl or a drive starts there by path) carries the seeded bugs of the invariant library
+(ADR 0041). They are in `INVARIANT_BUG_MODES`, not `BUG_MODES`: no flow assertion catches them. Each is caught by
+exactly one invariant, pinned in `core/test/invariants.accuracy.test.ts`.
+
+| Mode | Defect | Invariant |
+|---|---|---|
+| `createNotListed` | after a create the page does not redraw its list | `crud-create-appears` |
+| `editNotShown` | PATCH answers 200 and the name stays | `crud-edit-shows` |
+| `deleteStillListed` | DELETE answers 204 and the item stays | `crud-delete-absent` |
+| `reloadLosesData` | the list a page load fetches (`?initial=1`) leaves out every item | `reload-keeps-data` |
+| `readBackAltered` | the list a page load fetches returns each name with a trailing dot | `round-trip-equality` |
+| `itemApproveNoop` | approve answers 200 and the item is never approved | `state-change-after-action` |
+| `toastOnConflict` | a create answered 409 still shows the success text | `success-toast-implies-2xx` |
+| `clientLimitMissing` | the page sends a name over 40 characters instead of blocking it; the server answers 400 | `client-blocks-what-server-rejects` |
+| `call500`, `page500` (crawl) | a 5xx call or page | `no-5xx` |
+| `pageConsoleError` (crawl) | a console error on `/map/report` | `no-console-error` |
 
 ## Scope guard pages
 

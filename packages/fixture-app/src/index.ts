@@ -10,6 +10,11 @@ export { CRAWL_BUG_MODES, DECOYS, type CrawlBugMode } from './crawl.js';
 export { GUARD_PAGES } from './guard-pages.js';
 export { ECHO_PATH, ECHO_PREFILL } from './echo.js';
 export { ITEMS_PATH } from './items.js';
+export {
+  INVARIANT_BUG_MODES,
+  ITEM_NAME_LIMIT,
+  type InvariantBugMode,
+} from './invariant-bugs.js';
 export { MESSAGES } from './pages.js';
 export {
   LEAVE_REQUEST_RULES,
