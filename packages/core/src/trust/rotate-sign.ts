@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TrustError } from './errors.js';
+import { parseReviewerElement, reviewerSigned } from './keys-schema.js';
 import type { OwnerKey } from './owner-key.js';
 import type { TrustStoreDoc } from './schema.js';
 import type { SignedEntry } from './signing.js';
@@ -14,16 +15,13 @@ export type EntryCounts = Record<
   | 'productionOrigins'
   | 'hooks'
   | 'anchor'
-  | 'system1',
+  | 'system1'
+  | 'reviewerKeys',
   number
 >;
 
 /** Signed sections whose signing flowctl does not implement yet; a rotation cannot vouch for them. */
-const UNSUPPORTED = [
-  'reviewerKeys',
-  'destructiveConfirm',
-  'handWritten',
-] as const;
+const UNSUPPORTED = ['destructiveConfirm', 'handWritten'] as const;
 
 const StoredHook = z.object({ value: z.unknown(), sig: z.string() }).strict();
 
@@ -82,7 +80,7 @@ export function openToVerify(
  * @param refusal the kind to refuse with: `replace_unverified` for `trust init --replace` (section 6, step 1).
  * @remarks Entries keep their values byte for byte; only `sig` changes. `head` is left for the writer to set.
  * @throws {TrustError} `refusal` (default `rotate_unverified`) when an entry has no signature or one that does not verify, or when a
- *   signed section flowctl cannot re-sign yet (`reviewerKeys`, `destructiveConfirm`, `handWritten`) is not empty.
+ *   signed section flowctl cannot re-sign yet (`destructiveConfirm`, `handWritten`) is not empty.
  */
 export function resignStore(
   store: TrustStore,
@@ -138,6 +136,13 @@ export function resignStore(
             sig: check({ id: 'system1', kind: 'system1', value }, sig),
           };
         })();
+  const reviewerKeys = d.reviewerKeys.map((raw) => {
+    const element = parseReviewerElement(raw);
+    if (element === undefined)
+      throw unverified('a reviewerKeys element has a bad shape');
+    const { sig, ...value } = element;
+    return { ...element, sig: check(reviewerSigned(value), sig) };
+  });
   if (d.anchor === undefined) throw unverified('the store names no anchor');
   const { sig: anchorSig, ...location } = d.anchor;
   const anchor = {
@@ -158,6 +163,7 @@ export function resignStore(
     productionOrigins,
     roots,
     hooks,
+    reviewerKeys,
     anchor,
     ...(system1 === undefined ? {} : { system1 }),
     ownerFingerprint: next?.fingerprint ?? d.ownerFingerprint,
@@ -176,4 +182,5 @@ export const countEntries = (d: TrustStoreDoc): EntryCounts => ({
   hooks: Object.keys(d.hooks).length,
   anchor: d.anchor === undefined ? 0 : 1,
   system1: d.system1 === undefined ? 0 : 1,
+  reviewerKeys: d.reviewerKeys.length,
 });

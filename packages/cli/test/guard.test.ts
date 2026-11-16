@@ -53,6 +53,32 @@ const ARGV: Record<Guarded, string[]> = {
     'https://erp.example.com',
   ],
   'trust key rotate-owner': ['trust', 'key', 'rotate-owner'],
+  'trust key new': [
+    'trust',
+    'key',
+    'new',
+    '--person',
+    'Alice',
+    '--scope',
+    'flows',
+    '--expires',
+    '30',
+  ],
+  'trust key add': [
+    'trust',
+    'key',
+    'add',
+    '/nonexistent/reviewer.pub',
+    '--person',
+    'Alice',
+    '--scope',
+    'flows',
+    '--expires',
+    '30',
+    '--custody',
+    'hardware',
+  ],
+  'trust key revoke': ['trust', 'key', 'revoke', 'a'.repeat(64)],
   'trust add origin': [
     'trust',
     'add',
@@ -182,7 +208,7 @@ describe('guarded commands without a trust store', () => {
   it.each([
     [['trust', 'link'], 'not available yet'],
     [['trust', 'add', 'root', 'x'], 'not available yet'],
-    [['trust', 'key', 'new'], 'not available yet'],
+    [['trust', 'key', 'list'], 'not available yet'],
     [['trust', 'leave-approve'], 'flowctl trust hook leave-approve'],
   ])('%j is a usage error that says %s', async (argv, says) => {
     expect(await runCli(argv, { openStore: () => undefined })).toBe(2);

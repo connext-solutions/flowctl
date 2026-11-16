@@ -44,6 +44,8 @@ const result = (runId: string, dir: string): RunResult => ({
   weakLocators: [],
   evidence: { dir, traces: [], network: [], console: [] },
   ms: 10,
+  provenance: 'unclassified',
+  provenanceNotes: [],
 });
 
 /** A fresh flows dir and its `.runs` path (not created). */

@@ -4,6 +4,7 @@ import {
   ensureDirInside,
   FlowError,
   NAME_PATTERN,
+  PROVENANCE_STATES,
   RunError,
   StepError,
   writeFileNoFollow,
@@ -33,5 +34,14 @@ describe('foundation layer', () => {
   it('exposes the symlink-safe fs helpers', () => {
     expect(typeof ensureDirInside).toBe('function');
     expect(typeof writeFileNoFollow).toBe('function');
+  });
+
+  it('names the four provenance states, strongest first', () => {
+    expect([...PROVENANCE_STATES]).toEqual([
+      'verified',
+      'hand-written',
+      'unverified',
+      'unclassified',
+    ]);
   });
 });

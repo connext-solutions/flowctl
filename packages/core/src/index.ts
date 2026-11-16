@@ -25,6 +25,7 @@ export {
 export { exitCodeFor, replayFlow, replayMany, summarize } from './replay.js';
 export { login, type LoginOptions } from './login.js';
 export type * from './result.js';
+export { assertNever, type ProvenanceStateName } from './foundation/index.js';
 export {
   cleanupRun,
   confirmInputFor,
@@ -40,6 +41,26 @@ export {
 export {
   addEnvOrigin,
   addProfileEnvVar,
+  addReviewerKey,
+  assertReviewerPassphrase,
+  createReviewerKey,
+  defaultReviewerKeyDir,
+  type NewKeyTarget,
+  parsePublicKey,
+  planNewKey,
+  planRevokeKey,
+  revokeReviewerKey,
+  type DeclaredCustody,
+  type ReviewerCustody,
+  type ReviewerKey,
+  type ReviewerKeyRequest,
+  type ReviewerKeyStatus,
+  reviewerKeyId,
+  reviewerKeyStatus,
+  type ReviewerScope,
+  validateCustody,
+  validateKeyRequest,
+  validateReason,
   addProductionOrigin,
   addProject,
   addSystem1,

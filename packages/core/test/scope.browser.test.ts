@@ -6,7 +6,7 @@ import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LoadedConfig } from '../src/config.js';
-import { RunSession } from '../src/run/index.js';
+import { DRAFT_PROVENANCE, RunSession } from '../src/run/index.js';
 import { initTrust, TrustStore } from '../src/trust/index.js';
 import { fixtureConfig, seedProfiles, writeFlow } from './helpers.js';
 import { gitRepo, testAnchorDir, testOwnerKey } from './trust-fixture.js';
@@ -42,7 +42,11 @@ async function open(
 ): Promise<RunSession> {
   const cfg = fixtureConfig(fixture.url, extra);
   await seedProfiles(cfg, fixture.url);
-  const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser, store });
+  const run = RunSession.open(cfg, writeFlow(cfg, FLOW), {
+    provenance: DRAFT_PROVENANCE,
+    browser,
+    store,
+  });
   await run.begin();
   return run;
 }
@@ -182,7 +186,10 @@ describe('scope guard on the /map decoys', () => {
   it('keeps a failed navigation app_unreachable, not a scope violation', async () => {
     const cfg = fixtureConfig('http://127.0.0.1:9');
     await seedProfiles(cfg, fixture.url);
-    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), { browser });
+    const run = RunSession.open(cfg, writeFlow(cfg, FLOW), {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+    });
     expect(await kindOf(run.begin())).toBe('app_unreachable');
     await run.finish({ status: 'passed' }, 0);
   });
@@ -221,6 +228,7 @@ describe('scope guard on the /map decoys', () => {
     });
     await seedProfiles(cfg, fixture.url);
     const run = RunSession.open(cfg, writeFlow(cfg, FLOW), {
+      provenance: DRAFT_PROVENANCE,
       browser,
       store: TrustStore.open(storeDir),
     });

@@ -13,6 +13,8 @@ const run = (leftover: Leftover[]): RunResult => ({
   teardownFailed: false,
   cleanup: { confirmed: 0, leftover },
   weakLocators: [],
+  provenance: 'unclassified',
+  provenanceNotes: [],
   evidence: { dir: '', traces: [], network: [], console: [] },
   ms: 1,
 });

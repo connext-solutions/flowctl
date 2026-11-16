@@ -10,6 +10,7 @@ import type {
   StepFailure,
   TraceMode,
 } from './result.js';
+import { labelFlow } from './provenance/index.js';
 import { RunSession, outcomeOf, toOutcome, type Outcome } from './run/index.js';
 import { createDriver, type CheckedDriver } from './system1/index.js';
 import type { TrustStore } from './trust/index.js';
@@ -26,6 +27,8 @@ import type { TrustStore } from './trust/index.js';
  *   amendment, issue #48: page text can steer System 1, so a heal is never written silently); assertions are
  *   never touched. The caller obtains the driver from `createDriver`, which enforces `allowedEnvs`; heal refuses any
  *   other (`system1_not_allowed`).
+ * - The result carries the flow's provenance label (`provenance`, `provenanceNotes`), computed here because
+ *   `provenance/` sits above `run/`; the label never changes the verdict (ADR 0004, ADR 0020).
  * @returns Always a {@link RunResult}; run-level problems become `status: 'error'`.
  * @throws {ConfigError} when `opts.env` is not a configured env.
  */
@@ -42,7 +45,10 @@ export async function replayFlow(
     video?: boolean;
   },
 ): Promise<RunResult> {
-  const run = RunSession.open(cfg, flow, opts);
+  const run = RunSession.open(cfg, flow, {
+    ...opts,
+    provenance: labelFlow(flow, cfg.flowsPath, opts.store ?? 'default'),
+  });
   const healed = new Map<number, Loc>();
   let written = false;
   let outcome: Outcome;

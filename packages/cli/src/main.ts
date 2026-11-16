@@ -5,18 +5,13 @@ import {
   COMMANDS,
   ConfigError,
   effectiveConfig,
-  exitCodeFor,
   FlowError,
-  findFlowsWithErrors,
   type LoadedConfig,
   loadConfig,
   login,
-  replayMany,
   requireStore,
   requireTrust,
-  resolveEnv,
   RunError,
-  summarize,
   type Trusted,
   TrustError,
   type TrustStore,
@@ -27,20 +22,14 @@ import {
   OPTIONS,
   resolve,
   type Runnable,
-  traceMode,
-  videoMode,
   usageError,
   type Values,
 } from './argv.js';
 import { waitForLogin } from './login-wait.js';
 import { observeCmd } from './observe-cmd.js';
+import { replayCmd } from './replay-cmd.js';
 import { reconcileCmd } from './reconcile-cmd.js';
-import {
-  formatCleanup,
-  formatSummary,
-  invalidFlowResult,
-  terminalSafe,
-} from './summary.js';
+import { formatCleanup, terminalSafe } from './summary.js';
 import {
   trustAddEnv,
   trustAddProfile,
@@ -57,6 +46,9 @@ import {
 } from './trust-destructive-add.js';
 import { trustAddSystem1 } from './trust-system1.js';
 import { trustRotateOwner } from './trust-key.js';
+import { trustKeyAdd } from './trust-key-add.js';
+import { trustKeyNew } from './trust-key-new.js';
+import { trustKeyRevoke } from './trust-key-revoke.js';
 import { trustAddProductionOrigin, trustSetProject } from './trust-settings.js';
 import { MID_ROTATION, openFor } from './open-store.js';
 import { USAGE } from './usage.js';
@@ -88,6 +80,13 @@ const trustedOf = (c: Ctx): Trusted => {
   return c.trusted;
 };
 
+/** The store a `storeOnly` handler was given; the registry guarantees it. */
+const storeOf = (c: Ctx): TrustStore => {
+  if (c.store === undefined)
+    throw new TrustError('trust_missing', 'No trust store was checked.');
+  return c.store;
+};
+
 /** The handler of `trust add default-env | language | locale <value>` for this project. */
 const setting =
   (field: ProjectSetting['field']) =>
@@ -103,46 +102,8 @@ const setting =
   };
 
 const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
-  replay: async ({ cfg, args, values, trusted }) => {
-    if (values['trust-hooks'])
-      process.stderr.write(
-        'flowctl: --trust-hooks is ignored: hooks run only with consent in the trust store (flowctl trust hook <name>; ADR 0025 section 5)\n',
-      );
-    const repeat = Number(values.repeat);
-    if (!Number.isInteger(repeat) || repeat < 1)
-      throw new ConfigError('--repeat must be a positive integer');
-    const { flows, errors } = findFlowsWithErrors(
-      cfg.flowsPath,
-      Object.keys(cfg.profiles),
-      { names: args, tag: values.tag },
-    );
-    if (flows.length === 0 && errors.length === 0)
-      throw new FlowError(`No flows matched in ${cfg.flowsPath}`);
-    const env = resolveEnv(cfg, values.env).name;
-    const ran =
-      flows.length === 0
-        ? summarize([])
-        : await replayMany(cfg, flows, {
-            env: values.env,
-            repeat,
-            headed: values.headed,
-            heal: values.heal,
-            store: trusted?.store,
-            trace: traceMode(values.trace),
-            video: videoMode(values.video),
-            acceptHeals: values['accept-heals'],
-          });
-    const summary = summarize([
-      ...ran.results,
-      ...errors.map((e) => invalidFlowResult(e, env)),
-    ]);
-    write(
-      values.json
-        ? `${JSON.stringify(summary, null, 2)}\n`
-        : formatSummary(summary),
-    );
-    return exitCodeFor(summary);
-  },
+  replay: ({ cfg, args, values, trusted }) =>
+    replayCmd(cfg, args, values, trusted?.store, write),
   login: async ({ cfg, args, values }) => {
     const path = await login(cfg, {
       warn: (m) => process.stderr.write(`flowctl: ${terminalSafe(m)}\n`),
@@ -197,9 +158,7 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
     return 0;
   },
   'trust add project': (c) => {
-    if (c.store === undefined)
-      throw new TrustError('trust_missing', 'No trust store was checked.');
-    trustAddProject(c.cfg, c.store, c.args[0], write);
+    trustAddProject(c.cfg, storeOf(c), c.args[0], write);
     return 0;
   },
   'trust add origin': (c) => {
@@ -212,6 +171,18 @@ const HANDLERS: Record<Runnable, (c: Ctx) => Promise<number> | number> = {
   },
   'trust key rotate-owner': () => {
     trustRotateOwner(write);
+    return 0;
+  },
+  'trust key new': (c) => {
+    trustKeyNew(storeOf(c), c.values, write);
+    return 0;
+  },
+  'trust key add': (c) => {
+    trustKeyAdd(storeOf(c), c.args[0] ?? '', c.values, write);
+    return 0;
+  },
+  'trust key revoke': (c) => {
+    trustKeyRevoke(storeOf(c), c.args[0] ?? '', c.values, write);
     return 0;
   },
   'trust add destructive': (c) => {

@@ -1,6 +1,6 @@
 import type { LoadedConfig, ResolvedEnv } from '../config.js';
 import { weakLocators, type Flow, type Step } from '../flow/index.js';
-import type { HealProposal, RunResult } from '../result.js';
+import type { HealProposal, RunProvenance, RunResult } from '../result.js';
 import type { HookSession } from '../trust/index.js';
 import type { Evidence } from './evidence.js';
 import { system1Metrics } from './metrics.js';
@@ -31,6 +31,8 @@ export interface FinishInput {
    * cleaned up before the contexts close, and its overrule is applied again after that cleanup.
    */
   guard?: ScopeGuard;
+  /** The provenance label the caller computed; written to the result and `run.json`, never read for the verdict. */
+  provenance: RunProvenance;
 }
 
 /**
@@ -130,6 +132,8 @@ export async function finishRun(
     weakLocators: weakLocators(extra.recorded ?? run.flow.parsedSteps),
     evidence: summary,
     ms: Date.now() - run.started,
+    provenance: run.provenance.state,
+    provenanceNotes: [...run.provenance.notes],
   };
   const metrics = system1Metrics(run.evidence.decisions);
   if (metrics !== undefined) result.system1 = metrics;

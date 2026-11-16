@@ -25,6 +25,8 @@ export function run(over: Partial<RunResult> = {}): RunResult {
     weakLocators: [],
     evidence: { dir: '/tmp/r1', traces: [], network: [], console: [] },
     ms: 10,
+    provenance: 'unclassified',
+    provenanceNotes: [],
     ...over,
   };
 }

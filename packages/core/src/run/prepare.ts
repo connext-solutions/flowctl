@@ -6,6 +6,7 @@ import {
   expand,
   newTemplateContext,
   resolveInputs,
+  withoutSourceRef,
   type Assertion,
   type Flow,
   type Step,
@@ -59,7 +60,7 @@ export function prepareRun(flow: Flow, env: ResolvedEnv): Prepared {
       { value: templates.uid, template: '{{uid}}' },
     ].sort((a, b) => b.value.length - a.value.length),
     steps: deepExpand(flow.parsedSteps, templates),
-    assertions: deepExpand(flow.assertions, templates),
+    assertions: deepExpand(flow.assertions.map(withoutSourceRef), templates),
   };
 }
 

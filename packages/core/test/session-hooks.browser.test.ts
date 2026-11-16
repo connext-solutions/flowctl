@@ -4,7 +4,12 @@ import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FlowError } from '../src/flow/index.js';
-import { RunError, RunSession, toOutcome } from '../src/run/index.js';
+import {
+  DRAFT_PROVENANCE,
+  RunError,
+  RunSession,
+  toOutcome,
+} from '../src/run/index.js';
 import { fixtureConfig, seedProfiles, writeFlow } from './helpers.js';
 import { allowEnvVars, consentHooks, testStore } from './trust-fixture.js';
 
@@ -49,7 +54,11 @@ describe('RunSession hook consent (ADR 0021, ADR 0025 section 5)', () => {
       { ...FLOW, name: 'hooked-flow', setup: 'true' },
       false,
     );
-    const run = RunSession.open(cfg, flow, { browser, store });
+    const run = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     const err = await run.begin().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RunError);
     expect(err instanceof RunError ? err.kind : '').toBe('hooks_untrusted');
@@ -67,7 +76,11 @@ describe('RunSession hook consent (ADR 0021, ADR 0025 section 5)', () => {
       setup: 'true',
     });
     const edited = writeFlow(cfg, { ...FLOW, name: 'edited', setup: 'true ' });
-    const run = RunSession.open(cfg, edited, { browser, store });
+    const run = RunSession.open(cfg, edited, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     const err = await run.begin().catch((e: unknown) => e);
     expect(err instanceof RunError ? err.hint : '').toContain(
       'digest_mismatch',
@@ -83,7 +96,11 @@ describe('RunSession hook consent (ADR 0021, ADR 0025 section 5)', () => {
       setup: 'touch ./.hook-tmp/a',
       teardown: '[ -f ./.hook-tmp/a ]',
     });
-    const run = RunSession.open(cfg, flow, { browser, store });
+    const run = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     await run.begin();
     const r = await run.finish({ status: 'passed' }, 0);
     expect(r.teardownFailed).toBe(false);
@@ -102,13 +119,21 @@ describe('RunSession hook consent (ADR 0021, ADR 0025 section 5)', () => {
       setup: './seed.sh',
     });
     const store = consentHooks(cfg, testStore(cfg), [flow]);
-    const ok = RunSession.open(cfg, flow, { browser, store });
+    const ok = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     await ok.begin();
     await ok.finish({ status: 'passed' }, 0);
     writeFileSync(join(cfg.flowsPath, 'seed.sh'), '#!/bin/sh\nfalse\n', {
       mode: 0o755,
     });
-    const bad = RunSession.open(cfg, flow, { browser, store });
+    const bad = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     const err = await bad.begin().catch((e: unknown) => e);
     expect(err instanceof RunError ? err.hint : '').toContain(
       'digest_mismatch',
@@ -124,7 +149,11 @@ describe('RunSession hook consent (ADR 0021, ADR 0025 section 5)', () => {
         name: 'env-probe',
         setup: '[ -z "$FLOWCTL_TEST_SECRET" ] && [ "$HOME" != "/" ]',
       });
-      const run = RunSession.open(cfg, flow, { browser, store });
+      const run = RunSession.open(cfg, flow, {
+        provenance: DRAFT_PROVENANCE,
+        browser,
+        store,
+      });
       await run.begin();
       await run.finish({ status: 'passed' }, 0);
     } finally {
@@ -149,7 +178,11 @@ describe('RunSession hook consent (ADR 0021, ADR 0025 section 5)', () => {
     const saved = process.env.PGHOST;
     process.env.PGHOST = 'db.local';
     try {
-      const run = RunSession.open(cfg, flow, { browser, store });
+      const run = RunSession.open(cfg, flow, {
+        provenance: DRAFT_PROVENANCE,
+        browser,
+        store,
+      });
       await run.begin();
       process.env.PGHOST = 'attacker.example';
       const r = await run.finish({ status: 'passed' }, 0);
@@ -174,7 +207,11 @@ describe('RunSession lifecycle (#22, #23)', () => {
       teardown: 'false',
     });
     const allowed = allowEnvVars(store, 'employee', ['FLOWCTL_UNSET_X']);
-    const run = RunSession.open(cfg, flow, { browser, store: allowed });
+    const run = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store: allowed,
+    });
     const err = await run.begin().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(FlowError);
     const r = await run.finish(toOutcome(err), 0);
@@ -189,7 +226,11 @@ describe('RunSession lifecycle (#22, #23)', () => {
       setup: 'exit 1',
       teardown: 'false',
     });
-    const run = RunSession.open(cfg, flow, { browser, store });
+    const run = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     const err = await run.begin().catch((e: unknown) => e);
     const r = await run.finish(toOutcome(err), 0);
     expect(r.error?.kind).toBe('setup_failed');
@@ -202,7 +243,11 @@ describe('RunSession lifecycle (#22, #23)', () => {
       name: 'lc-crash',
       teardown: 'true',
     });
-    const run = RunSession.open(cfg, flow, { browser, store });
+    const run = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     await run.begin();
     await run.page.context().close();
     const r = await run.finish({ status: 'passed' }, 0);
