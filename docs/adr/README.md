@@ -80,4 +80,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0038](0038-case-drafter.md) | The case drafter writes only grounded steps from fixed verb rules; the rest is a gap | accepted |
 | [0039](0039-reviewer-key-lifetime-and-custody.md) | A reviewer key lives at most 365 days, and its custody is recorded as an owner declaration, not a fact | proposed |
 | [0040](0040-contract-readers.md) | Contract readers parse static text with fixed rules, emit facts and consistency checks, and never run what they read | proposed |
-| [0041](0041-invariant-templates.md) | Invariants are templates with a fixed expansion: they bind to evidence, judge what was observed and expand only where the assertion schema can say it | proposed |
+| [0041](0041-invariant-templates.md) | Invariants are templates with a fixed expansion: they bind to evidence, judge what was observed and expand only where the assertion catches the template's own seeded bug | proposed |

@@ -17,10 +17,7 @@ function expanded(id: InvariantId): Assertion {
 const RESOLVABLE = [
   'crud-create-appears',
   'crud-edit-shows',
-  'reload-keeps-data',
   'no-console-error',
-  'round-trip-equality',
-  'success-toast-implies-2xx',
 ] as const;
 
 describe('invariantResolves', () => {
@@ -30,29 +27,66 @@ describe('invariantResolves', () => {
     });
   });
 
-  it('refuses a hand-edited status', () => {
-    const a = expanded('success-toast-implies-2xx');
-    const edited = {
-      ...a,
-      network: { method: 'POST', url: '/api/items', status: 200 },
-    } as Assertion;
+  it('refuses a hand-edited text', () => {
+    const a = { ...expanded('crud-create-appears'), text: 'QA-' } as Assertion;
+    expect(
+      invariantResolves(a, PARAMS['crud-create-appears'], evidence()),
+    ).toEqual({ ok: false, reason: 'differs' });
+  });
+
+  it.each([
+    ['a changed within', { role: 'list' }],
+    ['a within with a test id', { testId: 'list' }],
+  ])('refuses %s', (_name, within) => {
+    const a = { ...expanded('crud-create-appears'), within } as Assertion;
+    expect(
+      invariantResolves(a, PARAMS['crud-create-appears'], evidence()),
+    ).toEqual({ ok: false, reason: 'differs' });
+  });
+
+  it('refuses a dropped within', () => {
+    const { within: _w, ...bare } = expanded('crud-create-appears') as {
+      within?: unknown;
+    };
     expect(
       invariantResolves(
-        edited,
-        PARAMS['success-toast-implies-2xx'],
+        bare as Assertion,
+        PARAMS['crud-create-appears'],
         evidence(),
       ),
     ).toEqual({ ok: false, reason: 'differs' });
   });
 
-  it('refuses an extra within', () => {
+  it('compares canonical JSON, so key order does not matter', () => {
+    const { sourceRef, within, text } = expanded('crud-create-appears') as {
+      sourceRef: unknown;
+      within: unknown;
+      text: string;
+    };
+    const reordered = { within, sourceRef, text } as Assertion;
+    expect(
+      invariantResolves(reordered, PARAMS['crud-create-appears'], evidence()),
+    ).toEqual({ ok: true });
+  });
+
+  it('fails closed on an assertion with no canonical JSON form', () => {
     const a = {
       ...expanded('crud-create-appears'),
-      within: { role: 'list' },
+      text: 'QA-\uD800',
     } as Assertion;
     expect(
       invariantResolves(a, PARAMS['crud-create-appears'], evidence()),
-    ).toMatchObject({ ok: false });
+    ).toEqual({ ok: false, reason: 'not_canonical' });
+  });
+
+  it('fails closed on a value input named like an object member', () => {
+    expect(
+      invariantResolves(
+        expanded('crud-create-appears'),
+        { ...PARAMS['crud-create-appears'], valueFrom: 'constructor' },
+        evidence(),
+      ),
+    ).toEqual({ ok: false, reason: 'bad_input' });
   });
 
   it('refuses a swapped ref', () => {
@@ -110,10 +144,10 @@ describe('invariantResolves', () => {
   });
 
   it('refuses a stale binding: the evidence no longer holds the step', () => {
-    const a = expanded('success-toast-implies-2xx');
+    const a = expanded('crud-create-appears');
     expect(
-      invariantResolves(a, PARAMS['success-toast-implies-2xx'], evidence([])),
-    ).toMatchObject({ ok: false });
+      invariantResolves(a, PARAMS['crud-create-appears'], evidence([])),
+    ).toEqual({ ok: false, reason: 'no_evidence' });
   });
 
   it('refuses an assertion of a template that is not expandable', () => {

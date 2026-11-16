@@ -4,7 +4,12 @@ import { ARIA_ROLES } from '../flow/index.js';
 import { redactText, type RunSession } from '../run/index.js';
 import { pageLinks, type LinkRules, type PageLinks } from './links.js';
 import { PAGE_SCRIPT } from './page-script.js';
-import { PAGE_PATH, type AppForm, type AppPage } from './schema.js';
+import {
+  PAGE_PATH,
+  REGION_ROLES,
+  type AppForm,
+  type AppPage,
+} from './schema.js';
 
 const Text = z.string().max(300);
 
@@ -42,6 +47,9 @@ const ReadSchema = z.object({
       }),
     )
     .max(PAGE_CAPS.forms),
+  regions: z
+    .array(z.object({ role: z.enum(REGION_ROLES), name: Text.min(1) }))
+    .max(100),
 });
 
 /** Whether the page script stopped a list at its cap ({@link PAGE_CAPS}), so the page offers more than was read. */
@@ -95,8 +103,8 @@ function controlsOf(
 }
 
 /**
- * Reads the open page of `run` at `path`: its document status, title, snapshot controls, forms with their field
- * model and the same-origin links it offers, plus the links the crawl may follow ({@link pageLinks}).
+ * Reads the open page of `run` at `path`: its document status, title, snapshot controls, named regions, forms with
+ * their field model and the same-origin links it offers, plus the links the crawl may follow ({@link pageLinks}).
  *
  * @remarks Field values are never read (the page script reads attributes and labels), the snapshot never lists
  *   password fields, and every text and path kept goes through the evidence redaction (`redactText` with the run's
@@ -128,6 +136,7 @@ export async function readPage(
     title: red(raw.title),
     status: raw.status,
     controls: controlsOf(snap, red),
+    regions: raw.regions.map((r) => ({ role: r.role, name: red(r.name) })),
     links: [...new Set(links.slice(0, MAX_LINKS).map(red))]
       .filter((p) => PAGE_PATH.test(p))
       .sort(),

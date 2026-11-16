@@ -73,7 +73,10 @@ own; `brokenLink`, `page500` and `pageNoAnswer` require it next to the target's 
 
 The `/items` app (unlinked, a crawl or a drive starts there by path) carries the seeded bugs of the invariant library
 (ADR 0041). They are in `INVARIANT_BUG_MODES`, not `BUG_MODES`: no flow assertion catches them. Each is caught by
-exactly one invariant, pinned in `core/test/invariants.accuracy.test.ts`.
+exactly one invariant, pinned in `core/test/invariants.accuracy.test.ts`. The three modes whose invariant expands to
+a flow assertion (`createNotListed`, `editNotShown`, `pageConsoleError`) are also replayed as flows in
+`core/test/invariants-expand.accuracy.test.ts`: the expansion fails them, the flow without it passes. The list is
+named "Danh sách mục" so a `text` assertion can be held `within` it.
 
 | Mode | Defect | Invariant |
 |---|---|---|

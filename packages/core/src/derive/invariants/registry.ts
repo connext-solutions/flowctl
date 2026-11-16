@@ -55,6 +55,6 @@ export const expandInvariant = (
 /** The free-check invariants: a case made only of these is smoke-only, since they judge no behaviour of the app. */
 const FREE: readonly InvariantId[] = ['no-5xx', 'no-console-error'];
 
-/** Whether a case that stands only on `ids` is smoke-only (ADR 0020 section g). */
+/** Whether a case that stands only on `ids` is smoke-only (ADR 0020 section c: a case with only free checks). */
 export const isSmokeOnly = (ids: readonly InvariantId[]): boolean =>
   ids.length > 0 && ids.every((id) => FREE.includes(id));

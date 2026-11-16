@@ -31,8 +31,11 @@ export {
   FormSchema,
   PageSchema,
   Path,
+  REGION_ROLES,
+  RegionSchema,
   type AppCall,
   type AppForm,
   type AppMap,
   type AppPage,
+  type AppRegion,
 } from './schema.js';

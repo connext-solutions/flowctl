@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { ITEM_NAME_LIMIT } from './invariant-bugs.js';
+import type { CrawlBugMode } from './crawl.js';
+import { ITEM_NAME_LIMIT, type InvariantBugMode } from './invariant-bugs.js';
+import type { BugMode } from './server.js';
 
 /**
  * A small items CRUD for the run ledger's browser tests in core (ADR 0024 section 5, "The run ledger"): records with
@@ -8,7 +10,7 @@ import { ITEM_NAME_LIMIT } from './invariant-bugs.js';
  * apart from the leave pages and is linked from nowhere. It holds no seeded bug unless one of the
  * `InvariantBugMode`s is switched on (T4.9, ADR 0041); the clean app is what the ledger tests rely on.
  *
- * - `GET /items` lists the items; each row has a "Xoá" button (`DELETE /api/items/:id`); the form "Tạo" sends
+ * - `GET /items` lists the items in the list "Danh sách mục"; each row has a "Xoá" button (`DELETE /api/items/:id`); the form "Tạo" sends
  *   `POST /api/items` `{ name }` and shows the answer.
  * - `POST /api/items` answers 201 with `{ id, name }`, 409 for a name that exists, 400 without a name or with one
  *   longer than {@link ITEM_NAME_LIMIT}, which the page blocks before it sends.
@@ -52,7 +54,7 @@ const ITEMS_PAGE = (
 <p role="status" id="msg"></p>
 <p id="total"></p>
 <a href="/items/report" target="_blank">Báo cáo</a>
-<ul id="list"></ul>
+<ul id="list" aria-label="Danh sách mục"></ul>
 <script>
 const msg = document.getElementById('msg');
 const total = /^#total=(.*)$/.exec(location.hash);
@@ -128,7 +130,7 @@ async function bodyOf(req: IncomingMessage): Promise<Record<string, unknown>> {
 }
 
 /** The items store of one fixture and its handlers. */
-export function itemsApp(bug?: string): {
+export function itemsApp(bug?: InvariantBugMode | BugMode | CrawlBugMode): {
   /** Answers `req` when it is an items page or API call; `false` otherwise. */
   handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
   reset(): void;

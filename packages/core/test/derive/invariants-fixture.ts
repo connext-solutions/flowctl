@@ -7,11 +7,16 @@ export const CREATE = { role: 'button', name: 'Tạo' } as const;
 export const EDIT = { role: 'button', name: 'Sửa' } as const;
 export const APPROVE = { role: 'button', name: 'Duyệt' } as const;
 export const DELETE = { role: 'button', name: 'Xoá' } as const;
+/** The list region of the items page, as the map records it (`ul aria-label`). */
+export const LIST = { role: 'list', name: 'Danh sách mục' } as const;
 
 const SHOWN = { listed: true, state: null };
 const HIDDEN = { listed: false, state: null };
 
-/** A clean step: create `QA-1`, accepted, listed, kept after a reload, read back equal. */
+/**
+ * A clean step: create `QA-1` on a visible, enabled control, accepted, the request window settled, listed, kept after
+ * a reload, read back equal.
+ */
 export const step = (over: Partial<DriveStep> = {}): DriveStep => ({
   action: 'create',
   page: PAGE,
@@ -19,6 +24,8 @@ export const step = (over: Partial<DriveStep> = {}): DriveStep => ({
   field: NAME_FIELD,
   sent: 'QA-1',
   request: { method: 'POST', path: '/api/items', status: 201 },
+  actionable: true,
+  settled: true,
   clientBlocked: false,
   before: HIDDEN,
   after: SHOWN,
@@ -94,7 +101,8 @@ export const itemsMap = (over: Record<string, unknown> = {}) => ({
       path: PAGE,
       title: 'Mục',
       status: 200,
-      controls: [],
+      controls: [CREATE],
+      regions: [LIST],
       links: [],
       forms: [],
       calls: [],
@@ -120,8 +128,8 @@ export const evidence = (
 export const VALUE = { page: PAGE, valueFrom: 'name' };
 export const RENAMED = { page: PAGE, valueFrom: 'rename' };
 export const PARAMS = {
-  'crud-create-appears': VALUE,
-  'crud-edit-shows': RENAMED,
+  'crud-create-appears': { ...VALUE, within: LIST },
+  'crud-edit-shows': { ...RENAMED, within: LIST },
   'crud-delete-absent': RENAMED,
   'reload-keeps-data': VALUE,
   'no-5xx': {},

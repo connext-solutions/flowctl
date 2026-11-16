@@ -23,14 +23,16 @@ import { fixtureConfig, seedProfiles } from './helpers.js';
  *
  * @remarks Written from the defect, never from a run. Each mode is caught by exactly one invariant, so removing that
  *   invariant lets the mode pass unnoticed: each template is load-bearing. `reloadLosesData` leaves nothing to read
- *   back, so `round-trip-equality` has no evidence there and refuses (a refusal is not a pass).
+ *   back, so `round-trip-equality` has no evidence there and refuses (a refusal is not a pass); `editNotShown` leaves
+ *   no renamed item, so the drive deletes one holding the other input's value and `crud-delete-absent`, bound to the
+ *   renamed value, refuses.
  */
 const CAUGHT_BY: Record<
   InvariantBugMode,
   { must: InvariantId; refused?: InvariantId[] }
 > = {
   createNotListed: { must: 'crud-create-appears' },
-  editNotShown: { must: 'crud-edit-shows' },
+  editNotShown: { must: 'crud-edit-shows', refused: ['crud-delete-absent'] },
   deleteStillListed: { must: 'crud-delete-absent' },
   reloadLosesData: {
     must: 'reload-keeps-data',

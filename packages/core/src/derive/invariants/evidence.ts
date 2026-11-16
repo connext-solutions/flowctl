@@ -37,9 +37,14 @@ export const DRIVE_ACTIONS = [
 
 /**
  * One action a drive took on a page and what it saw (the evidence ADR 0041 section 3 fixes for the round-trip
- * invariants). `request` is the call the click sent, `null` when it sent none; `clientBlocked` is true when the page
- * refused to send. `sent` is the value written (always `QA-` prefixed); `readBack` is the value read from the page after
- * a reload, `null` when the step reads none. `toast` is the text of the status region once the action settled.
+ * invariants). `request` is the call the click sent, `null` when it sent none. `actionable` is true when the control
+ * was visible and enabled immediately before the action (ADR 0020 amendment 2026-11-12 section 4: `isVisible`,
+ * `isEnabled`, no `aria-disabled="true"` or `inert` on it or an ancestor, no `force`); `settled` is true when the
+ * request window closed after it (no fetch or XHR in flight and none started for the drive's idle time, section 3).
+ * `clientBlocked` is true only when the page refused to send: the control was actionable, the window settled and no
+ * request left, so "nothing was sent" is never read off a click that did not happen or a window still open (ADR 0020
+ * section g). `sent` is the value written (always `QA-` prefixed); `readBack` is the value read from the page after a
+ * reload, `null` when the step reads none. `toast` is the text of the status region once the action settled.
  *
  * @remarks T2.8 (the drive stage) must emit this shape, or this schema moves to `observe/` and is imported from there.
  *   No field value is read from a page the drive did not write itself, and no expected value is taken from a run.
@@ -52,6 +57,8 @@ export const DriveStepSchema = z
     field: ControlSchema.optional(),
     sent: Seen.optional(),
     request: CallSchema.omit({ origin: true }).nullable(),
+    actionable: z.boolean(),
+    settled: z.boolean(),
     clientBlocked: z.boolean(),
     before: PageStateSchema,
     after: PageStateSchema,
@@ -65,6 +72,15 @@ export const DriveStepSchema = z
     {
       message: `a drive writes only values starting with ${DRIVE_VALUE_PREFIX}`,
       path: ['sent'],
+    },
+  )
+  .refine(
+    (s) =>
+      !s.clientBlocked || (s.actionable && s.settled && s.request === null),
+    {
+      message:
+        'a blocked client needs an actionable control, a settled window and no request',
+      path: ['clientBlocked'],
     },
   );
 

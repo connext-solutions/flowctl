@@ -6,8 +6,8 @@ import {
 } from '../../src/derive/index.js';
 import {
   APPROVE,
-  EDIT_FIELD,
-  NAME_FIELD,
+  CREATE,
+  LIST,
   PAGE,
   PARAMS,
   cleanSteps,
@@ -17,22 +17,23 @@ import {
 const ref = (id: InvariantId) => ({ kind: 'invariant', ref: id });
 
 const GOLDEN: Partial<Record<InvariantId, object>> = {
-  'crud-create-appears': { text: 'QA-{{uid}}' },
-  'crud-edit-shows': { text: 'QA-{{uid}}-e' },
-  'reload-keeps-data': { text: 'QA-{{uid}}' },
+  'crud-create-appears': { text: 'QA-{{uid}}', within: LIST },
+  'crud-edit-shows': { text: 'QA-{{uid}}-e', within: LIST },
   'no-console-error': { noConsoleErrors: true },
-  'round-trip-equality': {
-    value: { locator: NAME_FIELD, equals: 'QA-{{uid}}' },
-  },
-  'success-toast-implies-2xx': {
-    network: { method: 'POST', url: '/api/items', status: 201 },
-  },
 };
 
+/**
+ * The templates whose assertion cannot catch their own seeded bug (ADR 0041 section 5): no status class, no text
+ * absence, no comparison of two observations, no forced reload, no read-back from a fresh load, no toast tied to a
+ * status.
+ */
 const NOT_EXPANDABLE: InvariantId[] = [
   'crud-delete-absent',
+  'reload-keeps-data',
   'no-5xx',
+  'round-trip-equality',
   'state-change-after-action',
+  'success-toast-implies-2xx',
   'client-blocks-what-server-rejects',
 ];
 
@@ -64,7 +65,9 @@ describe('expanding', () => {
   );
 
   it('copies the template text, never a value from the page', () => {
-    const steps = cleanSteps().map((s) => ({ ...s, sent: 'QA-zzz' }));
+    const steps = cleanSteps().map((s) =>
+      s.action === 'create' ? { ...s, sent: 'QA-abc' } : s,
+    );
     expect(
       expandInvariant(
         'crud-create-appears',
@@ -74,28 +77,24 @@ describe('expanding', () => {
     ).toMatchObject({ assertion: { text: 'QA-{{uid}}' } });
   });
 
-  it('holds the text within a region when the parameters name one', () => {
-    const within = { role: 'list', name: 'Mục' } as const;
-    const r = expandInvariant('crud-create-appears', evidence(), {
-      ...PARAMS['crud-create-appears'],
-      within,
-    });
-    expect(r).toMatchObject({ assertion: { text: 'QA-{{uid}}', within } });
-  });
+  it.each(['crud-create-appears', 'crud-edit-shows'] as const)(
+    '%s refuses to expand without a list region to hold the text to',
+    (id) => {
+      const { within: _w, ...bare } = PARAMS[id];
+      expect(expandInvariant(id, evidence(), bare)).toMatchObject({
+        ok: false,
+        reason: 'no_evidence',
+      });
+    },
+  );
 
-  it('refuses a request path a network assertion would read as a pattern', () => {
-    const steps = cleanSteps().map((s) =>
-      s.request === null
-        ? s
-        : { ...s, request: { ...s.request, path: '/api/*' } },
-    );
+  it('refuses to hold the text to a control: only a region of the map holds a list', () => {
     expect(
-      expandInvariant(
-        'success-toast-implies-2xx',
-        evidence(steps),
-        PARAMS['success-toast-implies-2xx'],
-      ),
-    ).toMatchObject({ ok: false, reason: 'not_expandable' });
+      expandInvariant('crud-create-appears', evidence(), {
+        ...PARAMS['crud-create-appears'],
+        within: CREATE,
+      }),
+    ).toMatchObject({ ok: false, reason: 'no_evidence' });
   });
 
   it('refuses where binding refuses', () => {
@@ -105,6 +104,5 @@ describe('expanding', () => {
         control: APPROVE,
       }),
     ).toMatchObject({ ok: false, reason: 'no_evidence' });
-    expect(EDIT_FIELD.name).toBe('Tên mới');
   });
 });

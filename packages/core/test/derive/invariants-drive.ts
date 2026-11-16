@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import type { Browser, Page, Response } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import {
   DriveRecordSchema,
   type DriveRecord,
   type DriveStep,
 } from '../../src/derive/index.js';
+import { act, track } from './invariants-window.js';
 
 const NAME = { role: 'textbox', name: 'Tên mục' } as const;
 const RENAME = { role: 'textbox', name: 'Tên mới' } as const;
@@ -12,8 +13,6 @@ const CREATE = { role: 'button', name: 'Tạo' } as const;
 const EDIT = { role: 'button', name: 'Sửa' } as const;
 const APPROVE = { role: 'button', name: 'Duyệt' } as const;
 const DELETE = { role: 'button', name: 'Xoá' } as const;
-
-type Call = NonNullable<DriveStep['request']>;
 
 /**
  * A stand-in for the drive stage (T2.8) in the tests of the invariant library: it drives the `/items` app of
@@ -24,53 +23,6 @@ export interface ItemsDrive {
   record: DriveRecord;
   /** The `{ value }` inputs the drive wrote through, by name, as the flow would hold them. */
   inputs: Record<string, string>;
-}
-
-/**
- * Runs `click` and returns the first answered request to `path` with `method`. It waits until the status line changed
- * (every action of the app writes one) and the page has no request in flight for 150 ms, so the list is redrawn.
- */
-async function act(
-  page: Page,
-  method: string,
-  path: RegExp,
-  click: () => Promise<void>,
-): Promise<Call | null> {
-  const found: Call[] = [];
-  let inflight = 0;
-  const onResponse = (r: Response): void => {
-    const url = new URL(r.url());
-    if (r.request().method() === method && path.test(url.pathname))
-      found.push({ method, path: url.pathname, status: r.status() });
-  };
-  const start = (): void => void (inflight += 1);
-  const end = (): void => void (inflight = Math.max(0, inflight - 1));
-  const status = page.locator('#msg');
-  const previous = await status.innerText();
-  page.on('response', onResponse);
-  page.on('request', start);
-  page.on('requestfinished', end);
-  page.on('requestfailed', end);
-  try {
-    await click();
-    await page
-      .waitForFunction(
-        (p) => document.getElementById('msg')?.textContent !== p,
-        previous,
-        { timeout: 3000 },
-      )
-      .catch(() => undefined);
-    for (let quiet = 0, ticks = 0; quiet < 3 && ticks < 100; ticks += 1) {
-      await page.waitForTimeout(50);
-      quiet = inflight === 0 ? quiet + 1 : 0;
-    }
-  } finally {
-    page.off('response', onResponse);
-    page.off('request', start);
-    page.off('requestfinished', end);
-    page.off('requestfailed', end);
-  }
-  return found[0] ?? null;
 }
 
 const row = (page: Page, value: string) =>
@@ -97,7 +49,6 @@ async function reload(page: Page, value: string) {
   const name = row(page, value).locator('.name');
   const readBack = reloaded.listed ? await name.innerText() : null;
   await page.evaluate('load()');
-  await page.waitForLoadState('networkidle');
   return { reloaded, readBack };
 }
 
@@ -114,7 +65,10 @@ export async function driveItems(
   await context.addCookies([{ name: 'role', value: 'employee', url: baseUrl }]);
   const page = await context.newPage();
   const steps: DriveStep[] = [];
-  const base = { page: '/items', clientBlocked: false } as const;
+  const base = { page: '/items' } as const;
+  const inflight = track(page);
+  const button = (name: string) =>
+    page.getByRole('button', { name, exact: true });
   try {
     await page.goto('/items');
     await page.waitForLoadState('networkidle');
@@ -122,19 +76,23 @@ export async function driveItems(
     const create = async (value: string, withReload: boolean) => {
       const before = await seen(page, value);
       await page.getByRole(NAME.role, { name: NAME.name }).fill(value);
-      const request = await act(page, 'POST', /^\/api\/items$/, () =>
-        page.getByRole(CREATE.role, { name: CREATE.name }).click(),
+      const acted = await act(
+        page,
+        inflight,
+        'POST',
+        /^\/api\/items$/,
+        button(CREATE.name),
       );
       const after = await seen(page, value);
       const message = await toast(page);
       const back = withReload ? await reload(page, value) : null;
       steps.push({
         ...base,
+        ...acted,
         action: 'create',
         control: CREATE,
         field: NAME,
         sent: value,
-        request,
         before,
         after,
         reloaded: back?.reloaded ?? null,
@@ -148,19 +106,23 @@ export async function driveItems(
     await row(page, created)
       .getByRole(RENAME.role, { name: RENAME.name })
       .fill(renamed);
-    const edit = await act(page, 'PATCH', /^\/api\/items\/[^/]+$/, () =>
-      row(page, created).getByRole(EDIT.role, { name: EDIT.name }).click(),
+    const edit = await act(
+      page,
+      inflight,
+      'PATCH',
+      /^\/api\/items\/[^/]+$/,
+      row(page, created).getByRole(EDIT.role, { name: EDIT.name }),
     );
     const afterEdit = await seen(page, renamed);
     const editToast = await toast(page);
     const editBack = await reload(page, renamed);
     steps.push({
       ...base,
+      ...edit,
       action: 'edit',
       control: EDIT,
       field: RENAME,
       sent: renamed,
-      request: edit,
       before: { listed: beforeEdit.listed, state: null },
       after: afterEdit,
       reloaded: editBack.reloaded,
@@ -173,17 +135,20 @@ export async function driveItems(
       `fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: ${JSON.stringify(other)} }) })`,
     );
     await page.evaluate('load()');
-    await page.waitForLoadState('networkidle');
     const beforeState = await seen(page, other);
-    const approve = await act(page, 'POST', /\/approve$/, () =>
-      row(page, other).getByRole(APPROVE.role, { name: APPROVE.name }).click(),
+    const approve = await act(
+      page,
+      inflight,
+      'POST',
+      /\/approve$/,
+      row(page, other).getByRole(APPROVE.role, { name: APPROVE.name }),
     );
     steps.push({
       ...base,
+      ...approve,
       action: 'transition',
       control: APPROVE,
       sent: other,
-      request: approve,
       before: beforeState,
       after: await seen(page, other),
       reloaded: null,
@@ -191,18 +156,23 @@ export async function driveItems(
       toast: await toast(page),
     });
 
+    const beforeDuplicate = await seen(page, other);
     await page.getByRole(NAME.role, { name: NAME.name }).fill(other);
-    const duplicate = await act(page, 'POST', /^\/api\/items$/, () =>
-      page.getByRole(CREATE.role, { name: CREATE.name }).click(),
+    const duplicate = await act(
+      page,
+      inflight,
+      'POST',
+      /^\/api\/items$/,
+      button(CREATE.name),
     );
     steps.push({
       ...base,
+      ...duplicate,
       action: 'create',
       control: CREATE,
       field: NAME,
       sent: other,
-      request: duplicate,
-      before: await seen(page, other),
+      before: beforeDuplicate,
       after: await seen(page, other),
       reloaded: null,
       readBack: null,
@@ -210,20 +180,19 @@ export async function driveItems(
     });
 
     const beforeDelete = await seen(page, current);
-    const del = await act(page, 'DELETE', /^\/api\/items\/[^/]+$/, () =>
-      page
-        .getByRole(DELETE.role, {
-          name: `${DELETE.name} ${current}`,
-          exact: true,
-        })
-        .click(),
+    const del = await act(
+      page,
+      inflight,
+      'DELETE',
+      /^\/api\/items\/[^/]+$/,
+      button(`${DELETE.name} ${current}`),
     );
     steps.push({
       ...base,
+      ...del,
       action: 'delete',
       control: DELETE,
       sent: current,
-      request: del,
       before: beforeDelete,
       after: await seen(page, current),
       reloaded: null,
@@ -233,17 +202,20 @@ export async function driveItems(
 
     const long = `QA-${'x'.repeat(38)}`;
     await page.getByRole(NAME.role, { name: NAME.name }).fill(long);
-    const sent = await act(page, 'POST', /^\/api\/items$/, () =>
-      page.getByRole(CREATE.role, { name: CREATE.name }).click(),
+    const probe = await act(
+      page,
+      inflight,
+      'POST',
+      /^\/api\/items$/,
+      button(CREATE.name),
     );
     steps.push({
       ...base,
+      ...probe,
       action: 'probe',
       control: CREATE,
       field: NAME,
       sent: long,
-      request: sent,
-      clientBlocked: sent === null,
       before: { listed: false, state: null },
       after: await seen(page, long),
       reloaded: null,

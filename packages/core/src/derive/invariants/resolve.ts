@@ -1,25 +1,26 @@
 import type { Assertion } from '../../flow/index.js';
+import { TrustError, canonicalJson } from '../../trust/index.js';
 import { isInvariantId, expandInvariant } from './registry.js';
 
 /** The result of resolving an assertion: it is what the template writes, or the first reason it is not. */
 export type Resolution = { ok: true } | { ok: false; reason: string };
 
-/** `value` with its object keys sorted at every depth, so two equal objects print the same. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (typeof value === 'object' && value !== null)
-    return `{${Object.entries(value)
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
-      .join(',')}}`;
-  return JSON.stringify(value) ?? 'undefined';
+/** The canonical JSON of `value` (`canonicalJson` of `trust/`, the form signatures are computed over), or `undefined` when it has none. */
+function canonical(value: unknown): string | undefined {
+  try {
+    return canonicalJson(value);
+  } catch (error) {
+    if (error instanceof TrustError) return undefined;
+    throw error;
+  }
 }
 
 /**
  * Whether `assertion` is exactly what the template named by its `sourceRef` writes for `params` and `evidence` (ADR
- * 0020 section d: "the assertion must equal what the template expands to"). Whole equality, so an edited status, an
- * extra `within`, a swapped `ref`, a `quote` or a stale binding fails; every other outcome is a refusal. The unit
- * T4.5 signs.
+ * 0020 section d: "the assertion must equal what the template expands to"). Whole equality of their canonical JSON,
+ * the form T4.5 signs, so an edited text, a changed or dropped `within`, a swapped `ref`, a `quote` or a
+ * stale binding fails; a value with no canonical form fails closed (`not_canonical`); every other outcome is a
+ * refusal. The unit T4.5 signs.
  */
 export function invariantResolves(
   assertion: Assertion,
@@ -35,7 +36,9 @@ export function invariantResolves(
   if (keys !== 'kind,ref') return { ok: false, reason: 'source_ref_extra' };
   const expansion = expandInvariant(ref.ref, evidence, params);
   if (!expansion.ok) return { ok: false, reason: expansion.reason };
-  return canonical(expansion.assertion) === canonical(assertion)
-    ? { ok: true }
-    : { ok: false, reason: 'differs' };
+  const want = canonical(expansion.assertion);
+  const got = canonical(assertion);
+  if (want === undefined || got === undefined)
+    return { ok: false, reason: 'not_canonical' };
+  return want === got ? { ok: true } : { ok: false, reason: 'differs' };
 }

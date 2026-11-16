@@ -1,4 +1,3 @@
-import type { Assertion } from '../../../flow/index.js';
 import { defineInvariant } from '../define.js';
 import {
   ControlParams,
@@ -6,8 +5,8 @@ import {
   RoundTripParams,
   refuse,
   valueInput,
+  writes,
 } from '../params.js';
-import type { Refusal } from '../types.js';
 import { accepted, bindSteps, driveFinding, same } from '../steps.js';
 
 export const ROUND_TRIP_EQUALITY = defineInvariant({
@@ -23,6 +22,7 @@ export const ROUND_TRIP_EQUALITY = defineInvariant({
       (s) =>
         (s.action === 'create' || s.action === 'edit') &&
         same(s.field, p.field) &&
+        writes(input, s.sent) &&
         s.readBack !== null,
     );
   },
@@ -33,12 +33,8 @@ export const ROUND_TRIP_EQUALITY = defineInvariant({
         ? [driveFinding('round-trip-equality', e, i, 'readBack')]
         : [];
     }),
-  expand: (e, p): Assertion | Refusal => {
-    const input = valueInput(e.inputs, p.valueFrom);
-    return typeof input === 'string'
-      ? { value: { locator: p.field, equals: input } }
-      : input;
-  },
+  expand: () =>
+    'a value assertion reads the field the flow typed into: the flow schema cannot read the value back from a fresh load',
 });
 
 export const STATE_CHANGE_AFTER_ACTION = defineInvariant({
@@ -71,8 +67,6 @@ export const STATE_CHANGE_AFTER_ACTION = defineInvariant({
   expand: () =>
     'the change is a comparison of two observations: no assertion kind compares them',
 });
-
-const GLOB = /[*?[\]{}]/;
 
 /** The toast text with the value the step wrote replaced, so two steps with different values compare equal. */
 const shape = (toast: string, sent: string | undefined): string =>
@@ -122,23 +116,15 @@ export const SUCCESS_TOAST_IMPLIES_2XX = defineInvariant({
         : [],
     );
   },
-  expand: (e, _p, b) => {
-    const step = b.steps
-      .map((i) => e.drive?.steps[i])
-      .find((s) => s?.request && accepted(s.request.status));
-    if (!step?.request) return refuse('no_evidence', 'no accepted request');
-    if (GLOB.test(step.request.path))
-      return 'the request path holds a glob character a network assertion would read as a pattern';
-    return {
-      network: {
-        method: step.request.method,
-        url: step.request.path,
-        status: step.request.status,
-      },
-    };
-  },
+  expand: () =>
+    'no assertion kind ties a toast to the status of the request that caused it: a network assertion alone does not catch a toast shown on a failure',
 });
 
+/**
+ * Binds only a probe whose verdict means something (ADR 0020 section g): the client blocked it (an actionable control,
+ * a settled window, no request; the drive record refuses `clientBlocked` otherwise) or it sent a request the server
+ * answered. A probe that sent nothing and was not seen to block is refused, never passed.
+ */
 export const CLIENT_BLOCKS_WHAT_SERVER_REJECTS = defineInvariant({
   id: 'client-blocks-what-server-rejects',
   params: FieldParams,
@@ -147,7 +133,10 @@ export const CLIENT_BLOCKS_WHAT_SERVER_REJECTS = defineInvariant({
       e,
       p.page,
       'probe of the field',
-      (s) => s.action === 'probe' && same(s.field, p.field),
+      (s) =>
+        s.action === 'probe' &&
+        same(s.field, p.field) &&
+        (s.clientBlocked || s.request !== null),
     ),
   evaluate: (e, _p, b) =>
     b.steps.flatMap((i) => {
@@ -168,5 +157,5 @@ export const CLIENT_BLOCKS_WHAT_SERVER_REJECTS = defineInvariant({
         : [];
     }),
   expand: () =>
-    'a status class is not an assertion kind yet: the 4xx is what the probe observed, never a chosen value',
+    'a blocked client is a network assertion with absent: true, and no evidence holds the URL the blocked form would send to, so the pattern ADR 0020 section g needs would be chosen, not bound',
 });
