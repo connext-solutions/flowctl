@@ -162,6 +162,7 @@ export {
   requirePurpose,
   type RootPurpose,
   type SkippedEntry,
+  splitRelative,
   WALK_LIMITS,
   type WalkedFile,
   type WalkLimits,
