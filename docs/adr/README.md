@@ -80,3 +80,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0038](0038-case-drafter.md) | The case drafter writes only grounded steps from fixed verb rules; the rest is a gap | accepted |
 | [0039](0039-reviewer-key-lifetime-and-custody.md) | A reviewer key lives at most 365 days, and its custody is recorded as an owner declaration, not a fact | proposed |
 | [0040](0040-contract-readers.md) | Contract readers parse static text with fixed rules, emit facts and consistency checks, and never run what they read | proposed |
+| [0042](0042-review-gate.md) | A case approval signs a fixed length-prefixed payload; the review gate re-does the work and raises only `latestRevision` | proposed |
