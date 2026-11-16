@@ -6,8 +6,10 @@ import { loadFlow, type Flow } from '../src/flow/index.js';
 import {
   handWrittenDigest,
   provenanceState,
+  writeApprovals,
   type ProvenanceStore,
 } from '../src/provenance/index.js';
+import { AT, world } from './approval-fixture.js';
 
 const HEX = 'b'.repeat(64);
 const REF = `    sourceRef: { kind: contract, ref: c1 }\n`;
@@ -129,5 +131,28 @@ describe('provenanceState', () => {
       'rollback_not_checked',
       'signature_unavailable',
     ]);
+  });
+});
+
+describe('provenanceState with verify options', () => {
+  it('is verified for a claim with a valid record, and unverified without one', () => {
+    const w = world();
+    writeApprovals(w.flow.file, [w.record()]);
+    const verify = { project: 'test-project', store: w.reload(), now: AT };
+    const ok = provenanceState(w.flow, w.flowsPath, w.store, verify);
+    expect(ok.state).toBe('verified');
+    expect(ok.notes).toContain('freshness_not_checked');
+    writeApprovals(w.flow.file, [w.record({ revision: 0 })]);
+    expect(provenanceState(w.flow, w.flowsPath, w.store, verify).state).toBe(
+      'unverified',
+    );
+  });
+
+  it('stays the stub without verify options: a valid record alone never verifies', () => {
+    const w = world();
+    writeApprovals(w.flow.file, [w.record()]);
+    expect(provenanceState(w.flow, w.flowsPath, w.store).state).toBe(
+      'unverified',
+    );
   });
 });

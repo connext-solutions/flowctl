@@ -1,5 +1,13 @@
+import { existsSync } from 'node:fs';
 import { claimsDerivation, type Flow } from '../flow/index.js';
-import { TrustError, openTrustStore, type TrustStore } from '../trust/index.js';
+import {
+  TrustError,
+  openTrustStore,
+  projectFor,
+  type TrustStore,
+} from '../trust/index.js';
+import type { VerifyOptions } from './approval-state.js';
+import { approvalsPath } from './approvals-file.js';
 import { provenanceState, type ProvenanceState } from './state.js';
 
 /**
@@ -15,14 +23,18 @@ import { provenanceState, type ProvenanceState } from './state.js';
  *     `classification_unreadable:<ErrorClass>` (the error's class name only, never its message or a path): both are labels that vouch for nothing.
  * @param flowsRoot absolute path of the flows folder.
  * @param store `'default'` for the owner's store.
+ * @param options `projectRoot` (the checkout, to find the store's project entry) turns on the signature checks of
+ *   `verified`; without it a claim stays `unverified`. A checkout the store does not know, or whose identity cannot be
+ *   checked, is `unverified` with `project_not_registered` or `project_unresolved:<kind>`.
  */
 export function labelFlow(
   flow: Flow,
   flowsRoot: string,
   store: TrustStore | 'default',
+  options: LabelOptions = {},
 ): ProvenanceState {
   try {
-    return label(flow, flowsRoot, store);
+    return label(flow, flowsRoot, store, options);
   } catch (e) {
     return {
       state: claimsDerivation(flow) ? 'unverified' : 'unclassified',
@@ -48,10 +60,50 @@ function errorClass(e: unknown): string {
   }
 }
 
+/** What {@link labelFlow} may be told beyond the flow and the store. */
+export interface LabelOptions {
+  projectRoot?: string;
+  now?: Date;
+  mergeBaseRevision?: number;
+  hasDuplicateStem?: boolean;
+}
+
+function verifyOptions(
+  flow: Flow,
+  store: TrustStore,
+  o: LabelOptions,
+): { verify?: VerifyOptions; note?: string } {
+  if (o.projectRoot === undefined) return {};
+  const hasRecord = flow.file !== '' && existsSync(approvalsPath(flow.file));
+  if (!claimsDerivation(flow) && !hasRecord) return {};
+  let project: string | undefined;
+  try {
+    project = projectFor(store, o.projectRoot);
+  } catch (e) {
+    if (!(e instanceof TrustError)) throw e;
+    return { note: `project_unresolved:${e.kind}` };
+  }
+  if (project === undefined) return { note: 'project_not_registered' };
+  return {
+    verify: {
+      project,
+      store,
+      ...(o.now === undefined ? {} : { now: o.now }),
+      ...(o.mergeBaseRevision === undefined
+        ? {}
+        : { mergeBaseRevision: o.mergeBaseRevision }),
+      ...(o.hasDuplicateStem === undefined
+        ? {}
+        : { hasDuplicateStem: o.hasDuplicateStem }),
+    },
+  };
+}
+
 function label(
   flow: Flow,
   flowsRoot: string,
   store: TrustStore | 'default',
+  options: LabelOptions,
 ): ProvenanceState {
   let opened: TrustStore | undefined;
   try {
@@ -61,5 +113,8 @@ function label(
     const r = provenanceState(flow, flowsRoot, undefined);
     return { ...r, notes: [...r.notes, 'trust_store_unavailable'] };
   }
-  return provenanceState(flow, flowsRoot, opened);
+  if (opened === undefined) return provenanceState(flow, flowsRoot, undefined);
+  const { verify, note } = verifyOptions(flow, opened, options);
+  const r = provenanceState(flow, flowsRoot, opened, verify);
+  return note === undefined ? r : { ...r, notes: [...r.notes, note] };
 }

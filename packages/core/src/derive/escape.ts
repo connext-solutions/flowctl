@@ -20,6 +20,10 @@ export function cutShown(raw: string): string {
     : raw;
 }
 
+/** Whether {@link cutShown} (and so {@link mdCode}) would cut `raw`: more than 500 code points. */
+export const exceedsShown = (raw: string): boolean =>
+  [...raw].length > MAX_SHOWN;
+
 /**
  * `raw` with every invisible, control (a line break included) and lone surrogate code point shown as `⟨U+XXXX⟩`, so
  * no hidden, reordered or extra line of text reaches a reader.
