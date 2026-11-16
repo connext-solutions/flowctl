@@ -4,10 +4,13 @@ import { join } from 'node:path';
 import { loadFlow, type Flow } from '../src/flow/index.js';
 import {
   assertionHash,
+  checkApprovals,
   encodeApprovalPayload,
   evidenceHash,
   flowContentHash,
   payloadOf,
+  writeApprovals,
+  type ApprovalCheck,
   type CaseApprovalRecord,
 } from '../src/provenance/index.js';
 import {
@@ -112,6 +115,27 @@ export function world(): World {
     },
   };
   return w;
+}
+
+/** Writes `records` as the approvals file of `extra.flow` (the world's flow by default) and checks it. */
+export function checkRecords(
+  w: World,
+  records: unknown[],
+  extra: {
+    mergeBaseRevision?: number;
+    hasDuplicateStem?: boolean;
+    now?: Date;
+    flow?: Flow;
+  } = {},
+): ApprovalCheck {
+  const flow = extra.flow ?? w.flow;
+  writeApprovals(flow.file, records);
+  return checkApprovals(flow, {
+    project: 'test-project',
+    store: w.reload(),
+    now: extra.now ?? AT,
+    ...extra,
+  });
 }
 
 export { payloadOf, testOwnerKey, NOW };

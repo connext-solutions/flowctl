@@ -5,93 +5,21 @@ import {
   checkApprovals,
   flowContentHash,
   highestRevision,
-  provenanceState,
-  requiredRevision,
   writeApprovals,
+  type ApprovedAssertion,
+  type CaseApprovalRecord,
 } from '../src/provenance/index.js';
 import { revokeReviewerKey } from '../src/trust/index.js';
 import {
   AT,
   FLOW_YAML,
+  HEX,
   newReviewer,
   testOwnerKey,
   world,
+  checkRecords as check,
   type World,
 } from './approval-fixture.js';
-import { editStore } from './trust-fixture.js';
-
-const KEY = 'test-project/pv';
-
-function check(
-  w: World,
-  records: unknown[],
-  extra: {
-    mergeBaseRevision?: number;
-    hasDuplicateStem?: boolean;
-    now?: Date;
-    flow?: World['flow'];
-  } = {},
-) {
-  const flow = extra.flow ?? w.flow;
-  writeApprovals(flow.file, records);
-  return checkApprovals(flow, {
-    project: 'test-project',
-    store: w.reload(),
-    now: extra.now ?? AT,
-    ...extra,
-  });
-}
-
-describe('requiredRevision (ADR 0020 section l)', () => {
-  it('is the maximum of the sources that exist, absent when none does', () => {
-    expect(requiredRevision({})).toEqual({ rollbackNotChecked: true });
-    expect(requiredRevision({ floor: 4 })).toEqual({
-      required: 4,
-      rollbackNotChecked: false,
-    });
-    expect(requiredRevision({ floor: 4, latest: 6, mergeBase: 5 })).toEqual({
-      required: 6,
-      rollbackNotChecked: false,
-    });
-    expect(requiredRevision({ mergeBase: 2 }).rollbackNotChecked).toBe(false);
-  });
-});
-
-describe('checkApprovals: the floor table', () => {
-  it('verifies with rollback_not_checked when the store has no value', () => {
-    const w = world();
-    const r = check(w, [w.record()]);
-    expect(r.verified).toBe(true);
-    expect(r.notes).toContain('rollback_not_checked');
-  });
-
-  it.each<[string, { floor: number; latest?: number }, number, boolean]>([
-    ['floor 4, record 4', { floor: 4 }, 4, true],
-    ['floor 4, record 3', { floor: 4 }, 3, false],
-    ['floor 4, latest 6, record 5', { floor: 4, latest: 6 }, 5, false],
-    ['floor 4, latest 6, record 6', { floor: 4, latest: 6 }, 6, true],
-  ])('%s', (_n, stored, revision, ok) => {
-    const w = world();
-    editStore(w.store.dir, (d) => ({
-      ...d,
-      flowFloors: { [KEY]: stored.floor },
-      latestRevision: Object.fromEntries(
-        stored.latest === undefined ? [] : [[KEY, stored.latest]],
-      ),
-    }));
-    const r = check(w, [w.record({ revision })]);
-    expect(r.verified).toBe(ok);
-    expect(r.notes.includes('revision_below_floor')).toBe(!ok);
-    expect(r.notes).not.toContain('rollback_not_checked');
-  });
-
-  it('takes the merge-base value as a third term', () => {
-    const w = world();
-    const r = check(w, [w.record({ revision: 2 })], { mergeBaseRevision: 3 });
-    expect(r.verified).toBe(false);
-    expect(r.notes).toContain('revision_below_floor');
-  });
-});
 
 describe('checkApprovals: which records count (ADR 0020 section j)', () => {
   it('ignores a record of another flow name after a rename', () => {
@@ -219,14 +147,18 @@ describe('checkApprovals: which records count (ADR 0020 section j)', () => {
     ]);
     expect(differ.verified).toBe(false);
     expect(differ.notes).toContain('record_tie_conflict');
-    const baseline = check(w, [
-      w.record({ revision: 3, baseline: { value: '1', evidence: 'e' } }),
-      w.record(
-        { revision: 3, baseline: { value: '2', evidence: 'e' } },
-        second,
+    const flow = w.write(
+      'pv',
+      FLOW_YAML('pv').replace(
+        'kind: invariant, ref: inv-1',
+        'kind: baseline, ref: b-1',
       ),
-    ]);
-    expect(baseline.notes).toContain('record_tie_conflict');
+    );
+    const at3 = (value: string, as = w.signer) =>
+      w.record({ revision: 3, baseline: { value, evidence: 'e' } }, as, flow);
+    const bound = check(w, [at3('Total'), at3('Other', second)], { flow });
+    expect(bound.verified).toBe(true);
+    expect(bound.notes).toContain('record_baseline_mismatch');
   });
 
   it('lets a lower record stay out of a tie at a higher revision', () => {
@@ -258,25 +190,93 @@ describe('checkApprovals: which records count (ADR 0020 section j)', () => {
   });
 });
 
-describe('provenanceState with verify options', () => {
-  it('is verified for a claim with a valid record, and unverified without one', () => {
+type Edit = (r: CaseApprovalRecord, otherKey: string) => CaseApprovalRecord;
+const mapAssertions = (
+  r: CaseApprovalRecord,
+  f: (a: ApprovedAssertion) => ApprovedAssertion,
+): CaseApprovalRecord => ({ ...r, assertions: r.assertions.map(f) });
+const baselineOf = (w: World) =>
+  w.write('pv', FLOW_YAML('pv').replace('kind: invariant', 'kind: baseline'));
+
+describe('checkApprovals: every signed field is bound by the signature', () => {
+  const bl = { value: 'Total', evidence: 'e' };
+  it.each<[string, Edit]>([
+    ['approvedAt', (r) => ({ ...r, approvedAt: '2026-01-06T00:00:00.000Z' })],
+    ['replayHashes', (r) => ({ ...r, replayHashes: [HEX] })],
+    ['evidenceHash', (r) => ({ ...r, evidenceHash: HEX })],
+    ['baseline.value', (r) => ({ ...r, baseline: { ...bl, value: 'Totals' } })],
+    [
+      'baseline.evidence',
+      (r) => ({ ...r, baseline: { ...bl, evidence: 'f' } }),
+    ],
+    [
+      'number',
+      (r) =>
+        mapAssertions(r, (a) => ({ ...a, number: { label: 'n', unit: 'u' } })),
+    ],
+    [
+      'sourceRef',
+      (r) =>
+        mapAssertions(r, (a) => ({
+          ...a,
+          sourceRef: { kind: 'baseline' as const, ref: 'inv-2' },
+        })),
+    ],
+    ['keyId', (r, other) => ({ ...r, keyId: other })],
+    ['revision', (r) => ({ ...r, revision: 2 })],
+    ['flowName', (r) => ({ ...r, flowName: 'pw' })],
+    ['project', (r) => ({ ...r, project: 'other' })],
+  ])('%s edited after signing is signature_invalid', (_field, edit) => {
     const w = world();
-    writeApprovals(w.flow.file, [w.record()]);
-    const verify = { project: 'test-project', store: w.reload(), now: AT };
-    const ok = provenanceState(w.flow, w.flowsPath, w.store, verify);
-    expect(ok.state).toBe('verified');
-    expect(ok.notes).toContain('freshness_not_checked');
-    writeApprovals(w.flow.file, [w.record({ revision: 0 })]);
-    expect(provenanceState(w.flow, w.flowsPath, w.store, verify).state).toBe(
-      'unverified',
-    );
+    const flow = baselineOf(w);
+    const other = newReviewer(w.store).keyId;
+    const good = w.record({ baseline: bl }, w.signer, flow);
+    expect(check(w, [good], { flow }).verified).toBe(true);
+    const r = check(w, [edit(good, other)], { flow });
+    expect(r.verified).toBe(false);
+    expect(r.notes).toContain('signature_invalid');
   });
 
-  it('stays the stub without verify options: a valid record alone never verifies', () => {
+  it('ignores a signed record whose assertions or their sourceRef are not the flow', () => {
     const w = world();
-    writeApprovals(w.flow.file, [w.record()]);
-    expect(provenanceState(w.flow, w.flowsPath, w.store).state).toBe(
-      'unverified',
-    );
+    const wrongHash = w.record({
+      assertions: [{ hash: HEX, polarity: 'positive' }],
+    });
+    const wrongRef = w.record({
+      assertions: w.record().assertions.map((a) => ({
+        ...a,
+        sourceRef: { kind: 'invariant' as const, ref: 'inv-2' },
+      })),
+    });
+    for (const rec of [wrongHash, wrongRef]) {
+      const r = check(w, [rec]);
+      expect(r.verified).toBe(false);
+      expect(r.notes).toContain('record_assertions_mismatch');
+    }
+  });
+
+  it('ignores a signed record whose baseline is not the flow baseline', () => {
+    const w = world();
+    const flow = baselineOf(w);
+    const cases = [
+      w.record({ baseline: { value: '42', evidence: 'e' } }, w.signer, flow),
+      w.record({}, w.signer, flow),
+    ];
+    for (const rec of cases) {
+      const r = check(w, [rec], { flow });
+      expect(r.verified).toBe(false);
+      expect(r.notes).toContain('record_baseline_mismatch');
+    }
+    const extra = check(w, [
+      w.record({ baseline: { value: 'Total', evidence: 'e' } }),
+    ]);
+    expect(extra.notes).toContain('record_baseline_mismatch');
+  });
+
+  it('reads an approvedAt that is not a real instant as malformed', () => {
+    const w = world();
+    const r = check(w, [w.record({ approvedAt: '2026-02-30T00:00:00.000Z' })]);
+    expect(r.verified).toBe(false);
+    expect(r.notes).toContain('record_malformed');
   });
 });

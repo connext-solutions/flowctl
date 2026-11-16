@@ -12,7 +12,7 @@ import {
   ApprovalError,
   writeApprovals,
 } from '../../src/provenance/index.js';
-import { revokeReviewerKey, TrustError } from '../../src/trust/index.js';
+import { revokeReviewerKey } from '../../src/trust/index.js';
 import {
   AT,
   FLOW_YAML,
@@ -21,17 +21,6 @@ import {
   world,
 } from '../approval-fixture.js';
 import { options } from './review-fixture.js';
-
-const refusal = async (p: Promise<unknown>): Promise<string> => {
-  try {
-    await p;
-  } catch (e) {
-    if (e instanceof TrustError) return e.kind;
-    if (e instanceof ApprovalError) return e.code;
-    throw e;
-  }
-  return 'none';
-};
 
 describe('baselines', () => {
   it('signs an approved value the evidence showed, and refuses one it did not', async () => {
@@ -43,25 +32,15 @@ describe('baselines', () => {
         'kind: baseline, ref: b-1',
       ),
     );
-    const good = {
-      value: '42',
-      observed: ['41', '42'],
-      evidence: 'page showed 42',
-    };
-    const r = await approveCase(options(w, { flow, baseline: good }).opts);
-    expect(r.record.baseline).toEqual({
-      value: '42',
-      evidence: 'page showed 42',
-    });
+    const baseline = { value: 'Total', evidence: 'page showed Total' };
+    const shown = { passed: true, summary: {}, baselineSeen: ['Total'] };
+    const r = await approveCase(
+      options(w, { flow, baseline, replay: shown }).opts,
+    );
+    expect(r.record.baseline).toEqual(baseline);
     expect(baselineCount(flow)).toBe(1);
-    expect(() => verifyBaseline({ ...good, value: '43' })).toThrow(/not among/);
-    expect(
-      await refusal(
-        approveCase(
-          options(w, { flow, baseline: { ...good, value: '43' } }).opts,
-        ),
-      ),
-    ).toBe('baseline_mismatch');
+    expect(() => verifyBaseline('Total', ['Totals'])).toThrow(/not among/);
+    expect(() => verifyBaseline('Total', ['x', 'Total'])).not.toThrow();
   });
 
   it('rejects generator output that already holds a baseline or an approval', () => {
@@ -106,6 +85,36 @@ describe('prune', () => {
     expect(
       JSON.parse(readFileSync(approvalsPath(changed.file), 'utf8')),
     ).toHaveLength(1);
+  });
+
+  it('drops forged records of a valid key at the current hash from a full file, and then approves', async () => {
+    const w = world();
+    const forged = {
+      ...w.record({ revision: 5 }),
+      signature: 'A'.repeat(86) + '==',
+    };
+    writeFileSync(
+      approvalsPath(w.flow.file),
+      JSON.stringify(Array.from({ length: 256 }, () => forged)),
+    );
+    const done = await approveCase(options(w).opts);
+    expect(done.pruned).toBe(256);
+    expect(done.revision).toBe(1);
+    expect(
+      JSON.parse(readFileSync(approvalsPath(w.flow.file), 'utf8')),
+    ).toHaveLength(1);
+    writeFileSync(
+      approvalsPath(w.flow.file),
+      JSON.stringify([forged, done.record]),
+    );
+    expect(
+      pruneApprovals({
+        flow: w.flow,
+        project: 'test-project',
+        store: w.reload(),
+        now: AT,
+      }),
+    ).toEqual({ removed: 1, kept: 1 });
   });
 });
 

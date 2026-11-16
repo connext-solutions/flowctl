@@ -1,9 +1,16 @@
+import dayjs from 'dayjs';
 import { z } from 'zod';
 import { NAME_PATTERN } from '../foundation/index.js';
 import { SourceRefSchema } from '../flow/index.js';
 
 const Hex64 = z.string().regex(/^[0-9a-f]{64}$/, 'a lowercase hex sha256');
 const Name = z.string().regex(NAME_PATTERN);
+
+/** True when `s` is the ISO text of the instant it names: a day 30 of February or an hour 24 does not round-trip. */
+const roundTrips = (s: string): boolean => {
+  const at = dayjs(s);
+  return at.isValid() && at.toISOString() === s;
+};
 
 /** The longest signature text read from a record: an Ed25519 signature is 88 base64 characters. */
 export const MAX_SIGNATURE_CHARS = 128;
@@ -40,7 +47,8 @@ export const CaseApprovalRecordSchema = z
     keyId: Hex64,
     approvedAt: z
       .string()
-      .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'an ISO time'),
+      .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'an ISO time')
+      .refine(roundTrips, 'an instant that round-trips through toISOString'),
     assertions: z.array(ApprovedAssertionSchema).max(200),
     replayHashes: z.array(Hex64).min(1).max(8),
     evidenceHash: Hex64,

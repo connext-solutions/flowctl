@@ -23,9 +23,35 @@ export async function resolveSources(
   }
 }
 
+/** The fewest confirming replays: two, so one flaky pass does not sign (ADR 0042 section 5). */
+export const MIN_REPLAYS = 2;
+/** The most confirming replays: the record holds at most 8 replay hashes. */
+export const MAX_REPLAYS = 8;
+
 /**
- * Runs `count` model-free confirming replays and returns the sha256 of each redaction-safe summary, computed here:
- * the generator supplies no hash.
+ * The number of confirming replays to run: `requested`, two when absent.
+ *
+ * @throws {ApprovalError} `replay_count_invalid` for anything but an integer from 2 to 8.
+ */
+export function replayCount(requested: number | undefined): number {
+  const n = requested ?? MIN_REPLAYS;
+  if (!Number.isInteger(n) || n < MIN_REPLAYS || n > MAX_REPLAYS)
+    throw new ApprovalError(
+      'replay_count_invalid',
+      `An approval runs from ${MIN_REPLAYS} to ${MAX_REPLAYS} confirming replays.`,
+    );
+  return n;
+}
+
+/** What the confirming replays gave: the hash of each summary, and every value the baseline's target showed. */
+export interface ReplayProof {
+  hashes: string[];
+  seen: string[];
+}
+
+/**
+ * Runs `count` model-free confirming replays and returns the sha256 of each redaction-safe summary, computed here
+ * (the generator supplies no hash), with the values each replay reported for the baseline's target.
  *
  * @throws {ApprovalError} `replay_failed` for the first replay that does not pass; `payload_invalid` for a summary
  *   with no canonical JSON form.
@@ -34,8 +60,9 @@ export async function confirmReplays(
   flow: Flow,
   replayer: Replayer,
   count: number,
-): Promise<string[]> {
+): Promise<ReplayProof> {
   const hashes: string[] = [];
+  const seen: string[] = [];
   for (let n = 1; n <= count; n++) {
     const evidence = await replayer.replay(flow);
     if (!evidence.passed)
@@ -51,6 +78,7 @@ export async function confirmReplays(
         'A replay summary has no canonical JSON form.',
       );
     }
+    seen.push(...(evidence.baselineSeen ?? []));
   }
-  return hashes;
+  return { hashes, seen };
 }

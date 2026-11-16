@@ -1,6 +1,6 @@
 import { TrustError } from './errors.js';
-import { TrustStore } from './store.js';
-import { replaceStoreDoc } from './write.js';
+import type { TrustStore } from './store.js';
+import { commitLatestRevision } from './write.js';
 
 /** The largest approval revision (ADR 0020 Amendment 2026-11-02 section j, rule 1). */
 export const MAX_REVISION = Number.MAX_SAFE_INTEGER;
@@ -48,13 +48,21 @@ export function storedRevisions(
   };
 }
 
+const ciRefusal = (): TrustError =>
+  new TrustError(
+    'trust_entry_invalid',
+    'This trust store is marked ci and is read-only; approvals happen on the owner machine.',
+  );
+
 /**
  * Raises `latestRevision` of (project, flow name) to `revision`: the one store value `flowctl review` writes
  * (ADR 0020 Amendment 2026-11-02 section k). It signs nothing, so no key is needed, and it only goes up: a lower
  * value is refused, an equal one changes nothing; lowering is the owner-signed `trust forget`.
  *
- * @remarks The store is read again before the write, so a change made meanwhile is kept; the hash-chained log and
- *   the anchor record the write like any other.
+ * @remarks The `ci` marker and the stored value are judged again on the store as read under the lock
+ *   (`commitLatestRevision`), so a store that became `ci` or was raised meanwhile is seen, and any other change made
+ *   meanwhile is kept: only this one value changes. The hash-chained log and the anchor record the write like any
+ *   other.
  * @throws {TrustError} `trust_entry_invalid` for a `ci` store (provisioned elsewhere), a revision outside 1..2^53-1
  *   or one below the stored value; `trust_tampered` for an invalid stored value; `store_busy`.
  */
@@ -64,34 +72,25 @@ export function raiseLatestRevision(
   flowName: string,
   revision: number,
 ): void {
-  if (store.isCi)
-    throw new TrustError(
-      'trust_entry_invalid',
-      'This trust store is marked ci and is read-only; approvals happen on the owner machine.',
-    );
+  if (store.isCi) throw ciRefusal();
   if (!Number.isInteger(revision) || revision < 1 || revision > MAX_REVISION)
     throw new TrustError(
       'trust_entry_invalid',
       'A revision is an integer from 1 to 9007199254740991.',
     );
-  const fresh = TrustStore.open(store.dir);
-  const { data } = fresh;
-  const current = storedRevisions({ data }, project, flowName).latest;
-  if (current !== undefined && revision < current)
-    throw new TrustError(
-      'trust_entry_invalid',
-      `latestRevision only goes up: the store holds ${current}, not lowered to ${revision}.`,
-    );
-  if (current === revision) return;
-  replaceStoreDoc(
-    fresh.dir,
-    {
-      ...data,
-      latestRevision: {
-        ...data.latestRevision,
-        [revisionKey(project, flowName)]: revision,
-      },
+  commitLatestRevision(
+    store.dir,
+    revisionKey(project, flowName),
+    revision,
+    (fresh) => {
+      if (fresh.isCi) throw ciRefusal();
+      const current = storedRevisions(fresh, project, flowName).latest;
+      if (current !== undefined && revision < current)
+        throw new TrustError(
+          'trust_entry_invalid',
+          `latestRevision only goes up: the store holds ${current}, not lowered to ${revision}.`,
+        );
+      return current !== revision;
     },
-    { fingerprint: data.ownerFingerprint ?? '' },
   );
 }

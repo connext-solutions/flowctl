@@ -5,6 +5,7 @@ import {
   reviewerKeyStatus,
   type TrustStore,
 } from '../trust/index.js';
+import { flowBaseline, type FlowBaseline } from './baseline.js';
 import { assertionHash } from './flow-hash.js';
 import { encodeApprovalPayload, payloadOf } from './payload.js';
 import {
@@ -112,12 +113,25 @@ export const highestRevision = (
   records: readonly CaseApprovalRecord[],
 ): number => records.reduce((h, r) => Math.max(h, r.revision), 0);
 
-const sameAssertionHashes = (r: CaseApprovalRecord, flow: Flow): boolean =>
+const refJson = (ref: unknown): string => canonicalJson(ref ?? null);
+
+/** The record's assertions are the flow's, in order: each hash, and the `sourceRef` the record signed beside it. */
+const sameAssertions = (r: CaseApprovalRecord, flow: Flow): boolean =>
   r.assertions.length === flow.assertions.length &&
   r.assertions.every((a, i) => {
     const mine = flow.assertions[i];
-    return mine !== undefined && a.hash === assertionHash(mine);
+    return (
+      mine !== undefined &&
+      a.hash === assertionHash(mine) &&
+      refJson(a.sourceRef) === refJson(mine.sourceRef)
+    );
   });
+
+/** The record signs the flow's baseline value, or no baseline when the flow asserts none. */
+const sameBaseline = (r: CaseApprovalRecord, want: FlowBaseline): boolean =>
+  want.kind === 'none'
+    ? r.baseline === undefined
+    : want.kind === 'one' && r.baseline?.value === want.value;
 
 const agreement = (r: CaseApprovalRecord): string =>
   canonicalJson([
@@ -138,7 +152,9 @@ export interface ApprovalVerdict {
 
 /**
  * The state of a flow's records (Amendment 2026-11-02 section j rule 5 and section l): authentic records of the
- * current content hash and assertion hashes, the highest revision `h`, and a tie that must agree on the polarity of
+ * current content hash, of the flow's assertions (each hash and `sourceRef`) and of the value the flow's baseline
+ * assertion checks (`record_baseline_mismatch`; a flow with no baseline needs a record with none), the highest
+ * revision `h`, and a tie that must agree on the polarity of
  * every item and the baseline value (`record_tie_conflict`); `h` below `required` is `revision_below_floor`.
  *
  * @param required the required revision of {@link requiredRevision}, absent when no source has one.
@@ -149,13 +165,18 @@ export function verifyApprovals(
   required: number | undefined,
 ): ApprovalVerdict {
   const { records, notes } = authenticRecords(ctx, raw);
+  const baseline = flowBaseline(ctx.flow);
   const current = records.filter((r) => {
     if (r.flowHash !== ctx.flowHash) {
       notes.push('record_hash_mismatch');
       return false;
     }
-    if (!sameAssertionHashes(r, ctx.flow)) {
+    if (!sameAssertions(r, ctx.flow)) {
       notes.push('record_assertions_mismatch');
+      return false;
+    }
+    if (!sameBaseline(r, baseline)) {
+      notes.push('record_baseline_mismatch');
       return false;
     }
     return true;

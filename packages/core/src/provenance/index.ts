@@ -33,6 +33,7 @@ export {
   type ApprovalPayload,
 } from './payload.js';
 export { assertionHash, evidenceHash, flowContentHash } from './flow-hash.js';
+export { flowBaseline, type FlowBaseline } from './baseline.js';
 export {
   approvalsPath,
   MAX_RECORDS,

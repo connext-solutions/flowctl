@@ -19,6 +19,12 @@ export interface Tty {
 export interface ReplayEvidence {
   passed: boolean;
   summary: unknown;
+  /**
+   * Every value the target of the flow's baseline assertion showed during this replay (the text, the address or the
+   * field value), filled by the replayer; absent or empty for a flow with no baseline. The approved baseline must be
+   * among these or the AppMap slice's values (ADR 0042 section 5).
+   */
+  baselineSeen?: readonly string[];
 }
 
 /** Runs the flow model-free, in the review's own process. The real one is built over `replayFlow` by the CLI. */
@@ -45,12 +51,13 @@ export interface NumberSpec {
   unit: string;
 }
 
-/** A baseline the reviewer approves: the value and what the replays and the map showed. */
+/**
+ * A baseline the reviewer approves. `value` must be the value the flow's baseline assertion checks; what the replays
+ * and the map showed is collected by the review itself (`ReplayEvidence.baselineSeen`), never taken from here.
+ */
 export interface BaselineInput {
-  /** The approved value, as it will be checked. */
+  /** The approved value, exactly as the flow's baseline assertion checks it. */
   value: string;
-  /** Every value the replay evidence and the AppMap showed for the field, collected by the review process. */
-  observed: readonly string[];
   /** What the reviewer saw, one short text (it is signed). */
   evidence: string;
 }

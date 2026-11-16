@@ -102,7 +102,7 @@ export function createStoreDoc(
 export function replaceStoreDoc(
   dir: string,
   doc: TrustStoreDoc,
-  key: Pick<OwnerKey, 'fingerprint'>,
+  key: OwnerKey,
 ): void {
   const release = lock(dir);
   try {
@@ -118,36 +118,66 @@ export function replaceStoreDoc(
         'The unlocked owner key is not the key this store pins.',
         'owner_key_mismatch',
       );
-    const committed = [...now.log];
-    const last = committed.at(-1);
-    if (last === undefined)
-      throw new TrustError(
-        'trust_tampered',
-        'trust.log is empty.',
-        'log_chain',
-      );
-    const next = normalize({ ...doc, anchor: now.data.anchor });
-    const line = writeLine(last, next);
-    const target = { head: lineHash(line), seq: line.seq };
-    const anchor = now.anchor;
-    const pending = beginAnchor(
-      anchor,
-      now.data.head,
-      target,
-      now.data.ownerFingerprint ?? '',
-    );
-    replaceFile(dir, LOG_FILE, logText([...committed, line]));
-    replaceFile(dir, STORE_FILE, serialize(next, target.head));
-    try {
-      finishAnchor(anchor.location, pending, target);
-    } catch (e) {
-      throw new TrustError(
-        'trust_tampered',
-        `The change was saved, but the anchor could not be updated to it (${e instanceof Error ? e.message : String(e)}). Run any flowctl trust command again to finish it.`,
-        'anchor_unreachable',
-      );
-    }
+    commit(dir, now, doc);
   } finally {
     release();
+  }
+}
+
+/**
+ * Sets one `latestRevision` value (ADR 0020 Amendment 2026-11-02 section k, ADR 0042 section 4) and nothing else:
+ * under the store lock it reads the store again, lets `guard` judge that read (the `ci` marker and the stored value),
+ * and commits that same document with only `latestRevision[entry]` changed, through the same log, rename and anchor
+ * steps as {@link replaceStoreDoc}. It takes no owner key because it can change no other section.
+ *
+ * @internal Reached only through `raiseLatestRevision` (`revision.ts`); `trust/index.ts` does not export it.
+ * @param guard throws to refuse the write and returns `false` when there is nothing to change.
+ * @throws {TrustError} what `guard` throws; `store_busy`; `trust_tampered` when the store fails its read checks.
+ */
+export function commitLatestRevision(
+  dir: string,
+  entry: string,
+  revision: number,
+  guard: (now: TrustStore) => boolean,
+): void {
+  const release = lock(dir);
+  try {
+    const now = TrustStore.open(dir);
+    if (!guard(now)) return;
+    commit(dir, now, {
+      ...now.data,
+      latestRevision: { ...now.data.latestRevision, [entry]: revision },
+    });
+  } finally {
+    release();
+  }
+}
+
+/** The write of {@link replaceStoreDoc} once its checks passed, with the lock held: log line, renames, anchor. */
+function commit(dir: string, now: TrustStore, doc: TrustStoreDoc): void {
+  const committed = [...now.log];
+  const last = committed.at(-1);
+  if (last === undefined)
+    throw new TrustError('trust_tampered', 'trust.log is empty.', 'log_chain');
+  const next = normalize({ ...doc, anchor: now.data.anchor });
+  const line = writeLine(last, next);
+  const target = { head: lineHash(line), seq: line.seq };
+  const anchor = now.anchor;
+  const pending = beginAnchor(
+    anchor,
+    now.data.head,
+    target,
+    now.data.ownerFingerprint ?? '',
+  );
+  replaceFile(dir, LOG_FILE, logText([...committed, line]));
+  replaceFile(dir, STORE_FILE, serialize(next, target.head));
+  try {
+    finishAnchor(anchor.location, pending, target);
+  } catch (e) {
+    throw new TrustError(
+      'trust_tampered',
+      `The change was saved, but the anchor could not be updated to it (${e instanceof Error ? e.message : String(e)}). Run any flowctl trust command again to finish it.`,
+      'anchor_unreachable',
+    );
   }
 }

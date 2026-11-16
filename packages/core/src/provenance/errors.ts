@@ -4,13 +4,18 @@ export type ApprovalErrorCode =
   | 'flow_not_on_disk'
   | 'flow_name_mismatch'
   | 'source_unresolved'
+  | 'replay_count_invalid'
   | 'replay_failed'
+  | 'baseline_required'
+  | 'baseline_unsupported'
   | 'baseline_mismatch'
   | 'baseline_pre_approved'
   | 'reviewer_key_invalid'
   | 'revision_overflow'
   | 'approvals_unreadable'
   | 'approvals_too_large'
+  | 'approvals_changed'
+  | 'screen_truncated'
   | 'payload_invalid'
   | 'latest_revision_unrecorded';
 

@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   MAX_REVISION,
   raiseLatestRevision,
+  replaceStoreDoc,
   revisionKey,
   storedRevisions,
   TrustStore,
+  type OwnerKey,
 } from '../src/trust/index.js';
 import { kindOf } from './rotate-fixture.js';
 import { cfg } from './trust-keys-fixture.js';
@@ -69,5 +71,30 @@ describe('raiseLatestRevision (T4.5)', () => {
     expect(
       kindOf(() => storedRevisions(reopen(store), 'test-project', 'f')),
     ).toBe('trust_tampered:revision_value');
+  });
+
+  it('refuses when the store on disk became ci after the caller opened it', () => {
+    const store = testStore(cfg());
+    editStore(store.dir, (d) => ({ ...d, markers: ['ci'] }));
+    expect(
+      kindOf(() => raiseLatestRevision(store, 'test-project', 'f', 2)),
+    ).toBe('trust_entry_invalid:');
+    expect(reopen(store).data.latestRevision).toEqual({});
+  });
+
+  it('keeps a change made after the caller opened the store, and changes only latestRevision', () => {
+    const store = testStore(cfg());
+    editStore(store.dir, (d) => ({
+      ...d,
+      flowFloors: { [revisionKey('test-project', 'f')]: 2 },
+    }));
+    raiseLatestRevision(store, 'test-project', 'f', 3);
+    const after = reopen(store).data;
+    expect(after.flowFloors).toEqual({ 'test-project/f': 2 });
+    expect(after.latestRevision).toEqual({ 'test-project/f': 3 });
+  });
+
+  it('leaves replaceStoreDoc needing an unlocked owner key', () => {
+    expectTypeOf(replaceStoreDoc).parameter(2).toEqualTypeOf<OwnerKey>();
   });
 });
