@@ -47,7 +47,9 @@ export async function replayFlow(
 ): Promise<RunResult> {
   const run = RunSession.open(cfg, flow, {
     ...opts,
-    provenance: labelFlow(flow, cfg.flowsPath, opts.store ?? 'default'),
+    provenance: labelFlow(flow, cfg.flowsPath, opts.store ?? 'default', {
+      projectRoot: cfg.root,
+    }),
   });
   const healed = new Map<number, Loc>();
   let written = false;

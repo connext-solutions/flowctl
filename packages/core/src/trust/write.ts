@@ -102,7 +102,7 @@ export function createStoreDoc(
 export function replaceStoreDoc(
   dir: string,
   doc: TrustStoreDoc,
-  key: OwnerKey,
+  key: Pick<OwnerKey, 'fingerprint'>,
 ): void {
   const release = lock(dir);
   try {

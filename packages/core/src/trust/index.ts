@@ -25,6 +25,12 @@ export {
 } from './hookrun/index.js';
 export { createStoreDoc, replaceStoreDoc } from './write.js';
 export {
+  MAX_REVISION,
+  raiseLatestRevision,
+  revisionKey,
+  storedRevisions,
+} from './revision.js';
+export {
   planReplace,
   planRotation,
   rotateOwner,
