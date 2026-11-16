@@ -15,6 +15,7 @@ import {
 import { validateLeaveRequest } from './validator.js';
 import { crawlRoute, type CrawlBugMode } from './crawl.js';
 import { guardRoute } from './guard-pages.js';
+import type { InvariantBugMode } from './invariant-bugs.js';
 import { itemsApp } from './items.js';
 import { echoRoute } from './echo.js';
 
@@ -104,14 +105,15 @@ const CONTENT_TYPES = {
 
 /**
  * Starts the fixture app on a random localhost port, with at most one seeded bug: a flow-class mode
- * ({@link BUG_MODES}) or a crawl-class mode (`CRAWL_BUG_MODES`, pages under `/map`).
+ * ({@link BUG_MODES}) a crawl-class mode (`CRAWL_BUG_MODES`, pages under `/map`) or an invariant mode
+ * (`INVARIANT_BUG_MODES`, the `/items` app).
  */
 export async function startFixture(
-  bug?: BugMode | CrawlBugMode,
+  bug?: BugMode | CrawlBugMode | InvariantBugMode,
 ): Promise<Fixture> {
   let store: LeaveRequest[] = [];
   let seq = 1;
-  const items = itemsApp();
+  const items = itemsApp(bug);
 
   const page = (res: ServerResponse, html: string): void => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

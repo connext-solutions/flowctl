@@ -152,6 +152,19 @@ describe('observe (T2.2)', () => {
     expect({ ...b.map, observedAt: '' }).toEqual({ ...a.map, observedAt: '' });
   });
 
+  it('records the named regions of a page, and no unnamed one', async () => {
+    const cfg = await config();
+    const { map } = await observe(cfg, { browser, start: '/items' });
+    expect(page(map, '/items').regions).toEqual([
+      { role: 'list', name: 'Danh sách mục' },
+    ]);
+    const crawl = await observe(cfg, { browser, start: '/map' });
+    expect(page(crawl.map, '/map').regions).toEqual([
+      { role: 'region', name: 'Không đi theo' },
+    ]);
+    expect(page(crawl.map, '/requests').regions).toEqual([]);
+  });
+
   it('stops at the page budget and marks the map truncated', async () => {
     const cfg = await config({ budgets: { pages: 2 } });
     const { map, run, budget } = await observe(cfg, { browser, start: '/map' });

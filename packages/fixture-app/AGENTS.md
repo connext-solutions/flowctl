@@ -15,6 +15,10 @@ Root [AGENTS.md](../../AGENTS.md) applies. This package exists to prove flowctl 
   `src/pages.ts` (client side); add it to `BUG_MODES` with a JSDoc line and to the README table.
   Crawl-class modes (found by the crawler's free checks, not by a flow assertion) go in `CRAWL_BUG_MODES` in
   `src/crawl.ts` instead, with their pages under `/map`; keep `/map` unlinked from the leave pages.
+- Invariant-library bugs (T4.9, ADR 0041) go in `INVARIANT_BUG_MODES` in `src/invariant-bugs.ts` and are applied to the `/items`
+  app only; they default off, the mode is fixed per fixture start (`startFixture(bug)`), and `reset()` clears the
+  data, never the mode. Each needs a row in `core/test/invariants.accuracy.test.ts`
+  with exactly one catching invariant. The clean `/items` app is what the run ledger tests rely on.
 - The fake System 1 (`src/system1.ts`) matches targets by the exact `[id] label` text the client sends.
   A new System 1 operation the fake must answer needs a case here.
 - No network access outside localhost; no dependencies beyond Node built-ins.

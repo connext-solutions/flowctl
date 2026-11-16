@@ -21,6 +21,18 @@ export const ControlSchema = z
   .object({ role: z.enum(ARIA_ROLES), name: PageText })
   .strict();
 
+/** The roles a map records as a region: containers a `text` assertion may be held `within` (ADR 0041 section 5). */
+export const REGION_ROLES = ['list', 'table', 'grid', 'region'] as const;
+
+/**
+ * A named region of a page: a visible element of a {@link REGION_ROLES} role with an `aria-label` or
+ * `aria-labelledby` name, the same pair a `within` locator uses. An unnamed one is not recorded: a role alone does
+ * not name one element.
+ */
+export const RegionSchema = z
+  .object({ role: z.enum(REGION_ROLES), name: PageText.min(1) })
+  .strict();
+
 /** One field of a form: its control, the input `type` attribute (or `null`) and whether it is required. */
 export const FieldSchema = z
   .object({
@@ -61,8 +73,8 @@ export const CallSchema = z
   .strict();
 
 /**
- * One page the crawler visited: the document `status` (0 when the navigation got no response), its controls,
- * the same-origin links it offers, its forms, the calls and console errors seen while it was open, and what the
+ * One page the crawler visited: the document `status` (0 when the navigation got no response), its controls, its
+ * named regions (`regions`, absent in a map written before T4.9), the same-origin links it offers, its forms, the calls and console errors seen while it was open, and what the
  * run's guards refused while it was open (`refused`: a request out of scope, or a write; the request was aborted).
  * `navigationRefused` is true only when the guards refused the page's own navigation (its request or a redirect hop
  * of it), which explains a status 0; `refused` may also hold a late refusal of the page opened before it.
@@ -73,6 +85,7 @@ export const PageSchema = z
     title: PageText,
     status: z.number().int().min(0).max(599),
     controls: z.array(ControlSchema).max(500),
+    regions: z.array(RegionSchema).max(100).optional(),
     links: z.array(Path).max(500),
     forms: z.array(FormSchema).max(50),
     calls: z.array(CallSchema).max(500),
@@ -106,3 +119,4 @@ export type AppMap = z.infer<typeof AppMapSchema>;
 export type AppPage = z.infer<typeof PageSchema>;
 export type AppForm = z.infer<typeof FormSchema>;
 export type AppCall = z.infer<typeof CallSchema>;
+export type AppRegion = z.infer<typeof RegionSchema>;

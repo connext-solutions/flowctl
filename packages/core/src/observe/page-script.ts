@@ -1,12 +1,13 @@
 /**
  * Browser-side script that reads what a crawl keeps of a page besides its snapshot controls: the document status,
- * the title, every `a[href]` and `area[href]` (hidden ones too: a collapsed menu still offers its links) and every
- * form with its field model. It reads attributes and label text only, never a field's value, so no typed or
+ * the title, every `a[href]` and `area[href]` (hidden ones too: a collapsed menu still offers its links), every
+ * form with its field model and every visible named region (a list, table, grid or region with an `aria-label` or
+ * `aria-labelledby` name; ADR 0041). It reads attributes and label text only, never a field's value, so no typed or
  * prefilled secret leaves the page. Kept as a string so no bundler helper can leak into code that runs in the page.
  *
  * @remarks The status comes from the Navigation Timing entry (`responseStatus`, Chromium 109 and later): the answer
  *   of the final hop, 0 when the browser does not know it. Counts are capped here (2,000 links, 50 forms, 200 fields
- *   per form) before anything crosses to Node; text is capped at 300 characters.
+ *   per form, 100 regions) before anything crosses to Node; text is capped at 300 characters.
  */
 export const PAGE_SCRIPT = String.raw`(() => {
   const text = (s) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 300);
@@ -61,6 +62,14 @@ export const PAGE_SCRIPT = String.raw`(() => {
     download: a.hasAttribute('download'),
     name: text(a.getAttribute('aria-label')) || text(a.innerText) || text(a.getAttribute('title')) || text(a.getAttribute('alt')),
   }));
+  const REGION = { UL: 'list', OL: 'list', TABLE: 'table' };
+  const REGION_ROLES = ['list', 'table', 'grid', 'region'];
+  const regions = [...document.querySelectorAll('[aria-label],[aria-labelledby]')]
+    .map((e) => ({ e, role: e.getAttribute('role') || REGION[e.tagName] || (e.tagName === 'SECTION' ? 'region' : '') }))
+    .filter(({ e, role }) => REGION_ROLES.includes(role) && e.getClientRects().length > 0)
+    .map(({ e, role }) => ({ role, name: byIds(e.getAttribute('aria-labelledby')) || text(e.getAttribute('aria-label')) }))
+    .filter((r) => r.name !== '')
+    .slice(0, 100);
   const nav = performance.getEntriesByType('navigation')[0];
-  return { status: (nav && nav.responseStatus) || 0, title: text(document.title), links, forms };
+  return { status: (nav && nav.responseStatus) || 0, title: text(document.title), links, forms, regions };
 })()`;

@@ -1,14 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { CrawlBugMode } from './crawl.js';
+import { ITEM_NAME_LIMIT, type InvariantBugMode } from './invariant-bugs.js';
+import type { BugMode } from './server.js';
 
 /**
  * A small items CRUD for the run ledger's browser tests in core (ADR 0024 section 5, "The run ledger"): records with
  * uuid ids, so the digits of a port or a `{{uid}}` never collide with a created id. Like `/guard`, it is a test page
- * apart from the leave pages, holds no seeded bug and is linked from nowhere.
+ * apart from the leave pages and is linked from nowhere. It holds no seeded bug unless one of the
+ * `InvariantBugMode`s is switched on (T4.9, ADR 0041); the clean app is what the ledger tests rely on.
  *
- * - `GET /items` lists the items; each row has a "Xoá" button (`DELETE /api/items/:id`); the form "Tạo" sends
+ * - `GET /items` lists the items in the list "Danh sách mục"; each row has a "Xoá" button (`DELETE /api/items/:id`); the form "Tạo" sends
  *   `POST /api/items` `{ name }` and shows the answer.
- * - `POST /api/items` answers 201 with `{ id, name }`, 409 for a name that exists, 400 without a name.
+ * - `POST /api/items` answers 201 with `{ id, name }`, 409 for a name that exists, 400 without a name or with one
+ *   longer than {@link ITEM_NAME_LIMIT}, which the page blocks before it sends.
+ * - Each row has an input "Tên mới" with a button "Sửa" (`PATCH`), a button "Duyệt" (`POST /api/items/:id/approve`,
+ *   the row's state goes from "Chờ duyệt" to "Đã duyệt") and the "Xoá" button. `GET /api/items` answers
+ *   `{ items, approved }`; the first list a page load fetches carries `?initial=1`.
  * - `GET`, `PATCH` (`{ name }`) and `DELETE` on `/api/items/:id` answer 404 for an unknown id; `DELETE` answers 204.
  * - `POST /api/__items/next` `{ id, status, delayMs, deleteDelayMs }` sets how the next create answers (a test seam,
  *   like `/api/__reset`): the id it returns, a status other than 201 (a redirect to `/items` for a 3xx; nothing is
@@ -38,23 +46,50 @@ interface NextAnswer {
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-const ITEMS_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><link rel="icon" href="data:,"><title>Mục</title></head><body>
+const ITEMS_PAGE = (
+  bug: string,
+): string => `<!doctype html><html lang="vi"><head><meta charset="utf-8"><link rel="icon" href="data:,"><title>Mục</title><script>window.ITEMS_BUG=${JSON.stringify(bug)}</script></head><body>
 <h1>Mục</h1>
 <form id="f"><label>Tên mục <input name="name" aria-label="Tên mục"></label><button type="submit">Tạo</button></form>
 <p role="status" id="msg"></p>
 <p id="total"></p>
 <a href="/items/report" target="_blank">Báo cáo</a>
-<ul id="list"></ul>
+<ul id="list" aria-label="Danh sách mục"></ul>
 <script>
 const msg = document.getElementById('msg');
 const total = /^#total=(.*)$/.exec(location.hash);
 if (total) document.getElementById('total').textContent = 'Tổng ' + total[1];
+const bug = window.ITEMS_BUG;
+let first = true;
 async function load() {
-  const r = await fetch('/api/items');
-  const { items } = await r.json();
+  const r = await fetch('/api/items' + (first ? '?initial=1' : ''));
+  first = false;
+  const { items, approved } = await r.json();
   const list = document.getElementById('list');
   list.replaceChildren(...items.map((it) => {
     const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = it.name;
+    const state = document.createElement('span');
+    state.className = 'state';
+    state.textContent = approved.includes(it.id) ? 'Đã duyệt' : 'Chờ duyệt';
+    const input = document.createElement('input');
+    input.setAttribute('aria-label', 'Tên mới');
+    const edit = document.createElement('button');
+    edit.textContent = 'Sửa';
+    edit.onclick = async () => {
+      const e = await fetch('/api/items/' + it.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: input.value }) });
+      msg.textContent = e.status === 200 ? 'Đã sửa ' + input.value : 'Sửa thất bại';
+      await load();
+    };
+    const approve = document.createElement('button');
+    approve.textContent = 'Duyệt';
+    approve.onclick = async () => {
+      const a = await fetch('/api/items/' + it.id + '/approve', { method: 'POST' });
+      msg.textContent = a.status === 200 ? 'Đã duyệt ' + it.name : 'Duyệt thất bại';
+      await load();
+    };
     const b = document.createElement('button');
     b.textContent = 'Xoá ' + it.name;
     b.onclick = async () => {
@@ -62,16 +97,17 @@ async function load() {
       msg.textContent = d.status === 204 ? 'Đã xoá ' + it.name : 'Xoá thất bại';
       await load();
     };
-    li.append(it.name + ' ', b);
+    li.append(name, ' ', state, ' ', input, edit, approve, b);
     return li;
   }));
 }
 document.getElementById('f').onsubmit = async (e) => {
   e.preventDefault();
   const name = new FormData(e.target).get('name');
+  if (name.length > ${ITEM_NAME_LIMIT} && bug !== 'clientLimitMissing') { msg.textContent = 'Tên quá dài'; return; }
   const r = await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
-  msg.textContent = r.status === 201 ? 'Đã tạo ' + name : r.status === 409 ? 'Tên đã tồn tại' : 'Tạo thất bại';
-  await load();
+  msg.textContent = r.status === 201 || (r.status === 409 && bug === 'toastOnConflict') ? 'Đã tạo ' + name : r.status === 409 ? 'Tên đã tồn tại' : 'Tạo thất bại';
+  if (bug !== 'createNotListed') await load();
 };
 load();
 </script></body></html>`;
@@ -94,17 +130,19 @@ async function bodyOf(req: IncomingMessage): Promise<Record<string, unknown>> {
 }
 
 /** The items store of one fixture and its handlers. */
-export function itemsApp(): {
+export function itemsApp(bug?: InvariantBugMode | BugMode | CrawlBugMode): {
   /** Answers `req` when it is an items page or API call; `false` otherwise. */
   handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
   reset(): void;
 } {
   let items: Item[] = [];
+  let approved = new Set<string>();
   let next: NextAnswer = {};
   let deleteDelayMs: number | undefined;
   return {
     reset() {
       items = [];
+      approved = new Set();
       next = {};
       deleteDelayMs = undefined;
     },
@@ -112,7 +150,7 @@ export function itemsApp(): {
       const p = url.pathname;
       if (req.method === 'GET' && p === ITEMS_PATH) {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(ITEMS_PAGE);
+        res.end(ITEMS_PAGE(bug ?? ''));
         return true;
       }
       if (req.method === 'GET' && p === `${ITEMS_PATH}/report`) {
@@ -140,8 +178,18 @@ export function itemsApp(): {
         return true;
       }
       if (p === '/api/items') {
-        if (req.method === 'GET') send(res, 200, { items });
-        else if (req.method === 'POST') {
+        if (req.method === 'GET') {
+          const initial = url.searchParams.get('initial') === '1';
+          const shown =
+            initial && bug === 'reloadLosesData'
+              ? []
+              : items.map((i) =>
+                  initial && bug === 'readBackAltered'
+                    ? { ...i, name: `${i.name}.` }
+                    : i,
+                );
+          send(res, 200, { items: shown, approved: [...approved] });
+        } else if (req.method === 'POST') {
           const name = (await bodyOf(req))['name'];
           const answer = next;
           next = {};
@@ -154,7 +202,11 @@ export function itemsApp(): {
                 : {},
             );
             res.end();
-          } else if (typeof name !== 'string' || name === '')
+          } else if (
+            typeof name !== 'string' ||
+            name === '' ||
+            name.length > ITEM_NAME_LIMIT
+          )
             send(res, 400, { message: 'name' });
           else if (items.some((i) => i.name === name))
             send(res, 409, { message: 'exists' });
@@ -166,6 +218,17 @@ export function itemsApp(): {
         } else send(res, 405, { message: 'method' });
         return true;
       }
+      const act = /^\/api\/items\/([^/]+)\/approve$/.exec(p);
+      if (act !== null) {
+        const target = items.find((i) => i.id === act[1]);
+        if (target === undefined) send(res, 404, { message: 'not found' });
+        else if (req.method !== 'POST') send(res, 405, { message: 'method' });
+        else {
+          if (bug !== 'itemApproveNoop') approved.add(target.id);
+          send(res, 200, { id: target.id });
+        }
+        return true;
+      }
       const one = /^\/api\/items\/([^/]+)$/.exec(p);
       if (one === null) return false;
       const found = items.find((i) => i.id === one[1]);
@@ -173,13 +236,17 @@ export function itemsApp(): {
       else if (req.method === 'GET') send(res, 200, found);
       else if (req.method === 'PATCH') {
         const name = (await bodyOf(req))['name'];
-        if (typeof name === 'string') found.name = name;
+        if (typeof name === 'string' && bug !== 'editNotShown')
+          found.name = name;
         send(res, 200, found);
       } else if (req.method === 'DELETE') {
         const delay = deleteDelayMs;
         deleteDelayMs = undefined;
         if (delay !== undefined) await wait(delay);
-        items = items.filter((i) => i !== found);
+        if (bug !== 'deleteStillListed') {
+          items = items.filter((i) => i !== found);
+          approved.delete(found.id);
+        }
         send(res, 204);
       } else send(res, 405, { message: 'method' });
       return true;

@@ -67,6 +67,7 @@ export async function walk(
       title: read?.title ?? '',
       status: read?.status ?? 0,
       controls: read?.controls ?? [],
+      regions: read?.regions ?? [],
       links: read?.links ?? [],
       forms: read?.forms ?? [],
       ...c.capture.take(),
