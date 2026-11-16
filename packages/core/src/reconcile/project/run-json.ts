@@ -8,6 +8,7 @@ import {
   type ErrorKind,
   NoFollowReadError,
   readFileNoFollow,
+  PROVENANCE_STATES,
 } from '../../foundation/index.js';
 import type { RunResult } from '../../result.js';
 import { RUN_ID_PATTERN } from '../../trust/index.js';
@@ -78,6 +79,8 @@ const RunJsonSchema = z.object({
     videos: z.array(z.string()).optional(),
   }),
   ms: z.number(),
+  provenance: z.enum(PROVENANCE_STATES).default('unclassified'),
+  provenanceNotes: z.array(z.string()).default([]),
 });
 
 const RunJson = z.record(z.string(), z.unknown());

@@ -32,6 +32,8 @@ const run = (extra: Partial<RunResult> = {}): RunResult => ({
   weakLocators: [],
   evidence: { dir: '/tmp/r_1', traces: [], network: [], console: [] },
   ms: 1,
+  provenance: 'unclassified',
+  provenanceNotes: [],
   ...extra,
 });
 

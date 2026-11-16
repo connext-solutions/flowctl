@@ -1,7 +1,7 @@
 import { relative, sep } from 'node:path';
 import { BUILT_IN_DENY, pathGlob } from '../../browser/index.js';
 import type { LoadedConfig, ResolvedEnv } from '../../config.js';
-import type { Flow } from '../../flow/index.js';
+import { withoutSourceRef, type Flow } from '../../flow/index.js';
 import type { ConfirmDigestInput, ReadContext } from '../../trust/index.js';
 
 /**
@@ -35,7 +35,7 @@ export function confirmInputFor(
     flow.start,
     flow.inputs,
     flow.steps,
-    flow.assertions,
+    flow.assertions.map(withoutSourceRef),
   ]);
   const names = new Set([...text.matchAll(ENV_REF)].map((m) => m[1] ?? ''));
   const vars: Record<string, string> = {};

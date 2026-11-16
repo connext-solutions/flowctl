@@ -5,7 +5,7 @@ import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { TraceMode } from '../src/result.js';
-import { outcomeOf, RunSession } from '../src/run/index.js';
+import { DRAFT_PROVENANCE, outcomeOf, RunSession } from '../src/run/index.js';
 import { fixtureConfig, seedProfiles, writeFlow } from './helpers.js';
 import { allowEnvVars, testStore } from './trust-fixture.js';
 
@@ -71,7 +71,12 @@ async function run(trace?: TraceMode, logList = false) {
     const store = allowEnvVars(testStore(cfg), 'employee', [
       'FLOWCTL_TEST_REASON',
     ]);
-    const r = RunSession.open(cfg, flow, { browser, store, trace });
+    const r = RunSession.open(cfg, flow, {
+      browser,
+      store,
+      trace,
+      provenance: DRAFT_PROVENANCE,
+    });
     await r.begin();
     for (const step of r.steps) await r.perform(step);
     const verdict = await r.check(2000);

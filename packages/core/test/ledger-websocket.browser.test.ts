@@ -4,7 +4,7 @@ import type { Duplex } from 'node:stream';
 import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { RunSession } from '../src/run/index.js';
+import { DRAFT_PROVENANCE, RunSession } from '../src/run/index.js';
 import { writeFlow } from './helpers.js';
 import { crud, LedgerApp } from './ledger-fixture.js';
 
@@ -71,7 +71,11 @@ describe('WebSocket messages in a shared replay', () => {
       ...crud('items-socket', [{ wait: 10 }]),
       assertions: [{ text: 'Mục' }],
     });
-    const run = RunSession.open(cfg, flow, { browser, store });
+    const run = RunSession.open(cfg, flow, {
+      browser,
+      store,
+      provenance: DRAFT_PROVENANCE,
+    });
     await run.begin();
     await run.page.evaluate(
       `new Promise((ok) => { const s = new WebSocket('ws://localhost:${port}/socket'); s.onopen = () => { s.send('DELETE item 12'); ok(); }; })`,

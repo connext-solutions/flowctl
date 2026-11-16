@@ -4,7 +4,12 @@ import { startFixture, type Fixture } from '@flowctl/fixture-app';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RunResult } from '../../src/result.js';
-import { outcomeOf, RunSession, type NetEntry } from '../../src/run/index.js';
+import {
+  DRAFT_PROVENANCE,
+  outcomeOf,
+  RunSession,
+  type NetEntry,
+} from '../../src/run/index.js';
 import { fixtureConfig, seedProfiles, writeFlow } from '../helpers.js';
 import { allowEnvVars, testStore } from '../trust-fixture.js';
 import { CHECK, SECRET_ENV, echoFlow, withSecret } from './echo-flow.js';
@@ -52,7 +57,11 @@ beforeAll(async () => {
   const flow = writeFlow(cfg, echoFlow('redaction-replay'));
   const store = allowEnvVars(testStore(cfg), 'employee', [SECRET_ENV]);
   result = await withSecret(secret, async () => {
-    const r = RunSession.open(cfg, flow, { browser, store });
+    const r = RunSession.open(cfg, flow, {
+      provenance: DRAFT_PROVENANCE,
+      browser,
+      store,
+    });
     await r.begin();
     for (const step of r.steps) await r.perform(step);
     const verdict = await r.check(2000);

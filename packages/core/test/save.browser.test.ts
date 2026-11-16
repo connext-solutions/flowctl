@@ -76,6 +76,35 @@ describe('saveExploration', () => {
     expect((await replayFlow(cfg, flow, { browser })).status).toBe('passed');
   });
 
+  it('records the human origin and carries no derived marker or sourceRef', async () => {
+    const { cfg, x } = await explored();
+    const r = await saveExploration(cfg, x, { name: 'human-origin', browser });
+    const text = readFileSync(r.file ?? '', 'utf8');
+    expect(text).not.toContain('derived');
+    expect(text).not.toContain('sourceRef');
+    const flow = loadFlow(r.file ?? '', PROFILES);
+    expect(flow.recorded).toMatchObject({ origin: 'human' });
+    expect(flow.derived).toBeUndefined();
+    expect(r.replay.provenance).toBe('unclassified');
+  });
+
+  it('refuses an exploration request that carries a sourceRef: an agent cannot declare provenance', async () => {
+    s1 = await startFakeSystem1(MOVES);
+    const cfg = exploreConfig(fixture.url, s1.url);
+    await expect(
+      Exploration.start(
+        cfg,
+        {
+          ...SUBMIT,
+          assertions: [
+            { text: 'x', sourceRef: { kind: 'baseline', ref: 'b' } },
+          ],
+        },
+        { browser, vars: VARS },
+      ),
+    ).rejects.toBeInstanceOf(FlowError);
+  });
+
   it('writes nothing when the confirming replay fails', async () => {
     const { cfg, x } = await explored();
     rmSync(storageStatePath(cfg, 'local', 'employee'));

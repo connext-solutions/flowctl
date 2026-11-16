@@ -5,7 +5,13 @@ import {
   MAX_STEPS_CAP,
   NAME_PATTERN,
 } from '../foundation/index.js';
-import { errorText, FlowError, FlowSchema, LocSchema } from '../flow/index.js';
+import {
+  errorText,
+  FlowError,
+  FlowSchema,
+  LocSchema,
+  RequestAssertionSchema,
+} from '../flow/index.js';
 import type { DirectedStep, ExploreRequest } from './types.js';
 
 /** The longest goal or hint an orchestrator may send; it is prompt text for System 1. */
@@ -92,7 +98,7 @@ const ExploreRequestSchema = z
     start: Path,
     profile: z.string().regex(NAME_PATTERN),
     inputs: FlowSchema.shape.inputs.optional(),
-    assertions: FlowSchema.shape.assertions,
+    assertions: z.array(RequestAssertionSchema).min(1),
     setup: z.string().optional(),
     teardown: z.string().optional(),
     maxSteps: z.number().int().min(1).max(MAX_STEPS_CAP).optional(),
