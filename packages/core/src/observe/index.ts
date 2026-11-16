@@ -30,6 +30,7 @@ export {
   FieldSchema,
   FormSchema,
   PageSchema,
+  Path,
   type AppCall,
   type AppForm,
   type AppMap,
