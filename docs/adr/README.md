@@ -78,3 +78,4 @@ superseded_by: "0007"  # only when status: superseded
 | [0036](0036-failure-classifier.md) | The failure classifier applies fixed rules with cited evidence, and reports a tie instead of breaking it (amended 2026-11-12: `flowctl reconcile <run id>`, `classification.json`, exit 0 or 2) | accepted |
 | [0037](0037-coverage-gaps.md) | Coverage gaps join code routes, crawled pages and spec operations by fixed rules, and say what may explain each gap (amended 2026-11-12: `flowctl reconcile --gaps`, latest map by default) | accepted |
 | [0038](0038-case-drafter.md) | The case drafter writes only grounded steps from fixed verb rules; the rest is a gap | accepted |
+| [0039](0039-reviewer-key-lifetime-and-custody.md) | A reviewer key lives at most 365 days, and its custody is recorded as an owner declaration, not a fact | proposed |
