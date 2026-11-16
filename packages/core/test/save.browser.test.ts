@@ -187,7 +187,7 @@ describe('saveExploration with orchestrator steps', () => {
       { op: 'TYPE_TEXT', target: 'Lý do', input: 'reason' },
       { op: 'CLICK', target: 'Gửi' },
       { op: 'BLOCKED' },
-      { op: 'CLICK', target: `Duyệt ${reason}` },
+      { op: 'CLICK', target: `Duyệt ${reason}`, waitForTarget: true },
       { op: 'DONE' },
     ]);
     const cfg = exploreConfig(fixture.url, s1.url, {
