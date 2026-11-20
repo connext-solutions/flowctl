@@ -40,3 +40,9 @@ Contract tier, 2026-11-11, untrusted-data framing in every question (issue #48):
 3 or 4 decisions on both. The Enter-only todo task escalated 5/5 on both (`done_rejected` after three `DONE`, or one
 `BLOCKED` or low-confidence decision): System 1 answers `DONE` once the field shows the value and never presses
 Enter, before and after the change, so the change did not cause it.
+
+## LLM agent vs flowctl
+
+`compare/` holds an opt-in comparison of a headless LLM agent driving the Chrome DevTools MCP against flowctl
+explore and replay on the fixture app's flows (verdict correctness, speed, tokens and cost): method, results
+and how to rerun in [`compare/README.md`](compare/README.md), harness in `scripts/bench/compare.mjs`.
