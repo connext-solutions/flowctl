@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Opt-in benchmark: an LLM agent (headless Claude Code with the Chrome DevTools MCP) against flowctl (explore with
+ * Opt-in benchmark: an LLM agent (headless Claude Code or Kiro CLI with the Chrome DevTools MCP) against flowctl (explore with
  * the real System 1, then model-free replay) on the fixture app's four flows, clean and with each seeded bug.
  * Appends one line per run to `docs/benchmarks/compare/results.jsonl`; `--report` prints the tables.
  *
@@ -12,6 +12,7 @@
  *   node scripts/bench/compare.mjs --arm replay
  *   set -a; . <path>/spike/.env; set +a; node scripts/bench/compare.mjs --arm explore
  *   node scripts/bench/compare.mjs --arm llm
+ *   node scripts/bench/compare.mjs --arm kiro
  *   node scripts/bench/compare.mjs --report
  */
 import { spawn } from 'node:child_process';
@@ -22,6 +23,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { parseVerdict, promptFor } from './compare-prompt.mjs';
+import { kiroArm } from './compare-kiro.mjs';
 import { report } from './compare-report.mjs';
 
 /** The fixture app ships TypeScript source with `.js` specifiers; map them to the `.ts` files for Node's type stripping. */
@@ -108,7 +110,8 @@ const lines = () =>
 function record(line) {
   mkdirSync(dirname(RESULTS), { recursive: true });
   appendFileSync(RESULTS, `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`);
-  const cost = typeof line.costUsd !== 'number' ? '' : ` $${line.costUsd.toFixed(4)}`;
+  const cost =
+    typeof line.costUsd === 'number' ? ` $${line.costUsd.toFixed(4)}` : typeof line.credits === 'number' ? ` ${line.credits.toFixed(3)} credits` : '';
   process.stderr.write(`${line.arm} ${line.case} #${line.rep}: ${line.verdict} (${line.wallMs} ms)${cost}\n`);
 }
 const correct = (verdict, expected) => (verdict === 'passed' || verdict === 'failed' ? verdict === expected : false);
@@ -454,7 +457,8 @@ else if (values['dry-run'] === true)
 else if (values.arm === 'replay') await replayArm(CASES);
 else if (values.arm === 'explore') await exploreArm();
 else if (values.arm === 'llm') process.stderr.write(`${await llmArm(CASES)}\n`);
+else if (values.arm === 'kiro') process.stderr.write(`${await kiroArm(CASES, { withFixture, flowDoc, record, correct, lines })}\n`);
 else {
-  process.stderr.write('usage: compare.mjs --arm replay|explore|llm | --report | --dry-run\n');
+  process.stderr.write('usage: compare.mjs --arm replay|explore|llm|kiro | --report | --dry-run\n');
   process.exitCode = 2;
 }
