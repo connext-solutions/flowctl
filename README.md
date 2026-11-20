@@ -10,6 +10,11 @@ Fast, deterministic verification of web flows for developers and testers who wor
 - **Reliable:** strict locators, assertions that wait, and evidence for every run (Playwright trace,
   screenshot, network and console logs) that is safe to attach to a bug.
 
+![A two-role flow on the fixture app: an employee submits a leave request, a manager approves it, the employee sees it approved; a box in the corner names each step and then the result](docs/media/replay-demo.gif)
+
+A saved flow replaying with no model; the overlay shows each step. Recorded with `flowctl replay leave-approve
+--video` on the fixture app ([MP4](docs/media/replay-demo.mp4)).
+
 > **Early preview.** The engine, the CLI and the MCP server work and are tested, but the interfaces may still
 > change between releases. On a shared env a replay writes only what the machine's owner confirmed for that exact
 > flow version (`flowctl trust add destructive`), changes only records the run itself created, and removes them at
@@ -28,6 +33,25 @@ Playwright and returns `passed`, `failed`, `flaky` or `error`.
 2. **Save.** A passed exploration becomes a flow only after a model-free replay of the recording passes.
 3. **Replay.** Saved flows replay with no model, in CI or locally. `flowctl replay --heal` may ask System 1 to
    repair one broken locator, never an assertion, and writes the fix only with `--accept-heals`.
+
+```mermaid
+flowchart LR
+  E["Explore: System 1 drives,<br/>escalates to the coding agent"] --> A{"Assertions<br/>decide"}
+  A -- passed --> S["Save after a<br/>model-free replay"]
+  S --> R["Replay in CI,<br/>no model, with evidence"]
+  A -- failed --> B["Bug report<br/>with evidence"]
+```
+
+### What a failure looks like
+
+The fixture app with a seeded bug: the client sends `type: "OT"` instead of `LEAVE`. Every step works and the
+final page shows the request approved, but the `requestBody` assertion fails and shows what was sent:
+
+![Terminal output of flowctl replay leave-approve: a red cross, the requestBody assertion that failed, the request body actually sent with type OT, the evidence directory, and 0 passed, 1 failed](docs/media/replay-failed.png)
+
+All four fixture flows on the clean app:
+
+![Terminal output of flowctl replay: four fixture flows passed with their times, and 4 passed, 0 failed, 0 flaky, 0 errors](docs/media/replay-passed.png)
 
 Design decisions are recorded in [docs/adr/](docs/adr/README.md); the vocabulary is in [CONTEXT.md](CONTEXT.md).
 
@@ -211,6 +235,8 @@ the scope refused is not one). Each finding names the page and what was seen the
 command prints the verdict and up to 20 findings (`--json`: `checks` with the status, failed ids, count and file).
 Exit `0` when the crawl finished and every check passed, `1` when a check failed, `2` on an error (no checks are run
 then). A pass on a truncated map covers only the pages it holds (ADR 0033, amendment).
+
+![Terminal output of flowctl observe --start /map on the fixture app with a page that answers 500: five pages listed, then the failed checks no-console-error, no-5xx and no-broken-link with the page each was found on](docs/media/observe-checks.png)
 
 ## Flow format
 
