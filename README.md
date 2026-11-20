@@ -57,7 +57,7 @@ Design decisions are recorded in [docs/adr/](docs/adr/README.md); the vocabulary
 
 ## Status
 
-Latest release: [v0.2.0](https://github.com/connext-solutions/flowctl/releases/tag/v0.2.0) (pre-release).
+Latest release: [v0.3.0](https://github.com/connext-solutions/flowctl/releases/tag/v0.3.0) (pre-release).
 
 | Area | State |
 |---|---|
@@ -72,9 +72,11 @@ Latest release: [v0.2.0](https://github.com/connext-solutions/flowctl/releases/t
 | Stored destructive confirmations and the run ledger (CRUD flows on shared envs, `flowctl cleanup`) | done, first version |
 | Read-only replay on production, computed System 1 cost | open |
 | Observe: read-only crawler, `AppMap` and free checks (`flowctl observe`, ADR 0033) | early |
-| Derive: spec-to-map matcher and conflicts file (ADR 0034); inside core, not exported yet | early |
+| Derive: spec-to-map matcher, conflicts file, case drafter, contract readers, invariant library and review gate (ADR 0034, 0038, 0040, 0041, 0042); inside core, not exported yet | early |
+| Provenance: `sourceRef` per expected item, provenance label on every replay, reviewer keys (`flowctl trust key`) (ADR 0020, 0039) | early |
+| Redaction suite: a known secret is checked for in every run output, in many encodings | done; two known gaps listed in ADR 0030 |
 | Reconcile: classifying a failed run and coverage gaps from a code index, a crawl and the spec (`flowctl reconcile`, ADR 0035, 0036, 0037) | early |
-| Derive: drafting test cases and assertions | planned |
+| Derive: assertion builder, `flowctl derive` and `flowctl review` commands | planned |
 
 Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues).
 
@@ -82,10 +84,10 @@ Bugs and proposals: [issues](https://github.com/connext-solutions/flowctl/issues
 
 Requires Node 22.12+. Releases are published on
 [GitHub Releases](https://github.com/connext-solutions/flowctl/releases), not on npm (ADR 0031). Install a
-release by its URL (replace `0.2.0` with the release you want):
+release by its URL (replace `0.3.0` with the release you want):
 
 ```bash
-npm install --save-dev https://github.com/connext-solutions/flowctl/releases/download/v0.2.0/flowctl-cli-0.2.0.tgz
+npm install --save-dev https://github.com/connext-solutions/flowctl/releases/download/v0.3.0/flowctl-cli-0.3.0.tgz
 npx playwright install chromium
 npx flowctl --help
 ```
