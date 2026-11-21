@@ -75,6 +75,12 @@ async function evaluateSnapshot(page: Page, ignore: string[]) {
 
 const SETTLE_POLL_MS = 200;
 
+/**
+ * The longest a snapshot waits for the page's network to go quiet, in ms, capped by `settleMs`. A page that polls
+ * never goes quiet; waiting the whole `stepTimeout` before each snapshot would spend most of a run waiting.
+ */
+const NETWORK_SETTLE_MS = 2_000;
+
 async function evaluateOnce(page: Page, ignore: string[]) {
   return evaluateSnapshot(page, ignore).catch(async () => {
     await page.waitForLoadState('domcontentloaded');
@@ -87,23 +93,31 @@ async function evaluateOnce(page: Page, ignore: string[]) {
  * controls with ids that stay stable for the same element.
  *
  * @remarks Retries once after `domcontentloaded` when a navigation destroys the page context
- *   mid-evaluation. A page with no control yet (an SPA still waiting for its first API calls after
- *   `load`) is re-read after `networkidle` and then every 200 ms for up to `settleMs`; on a real app the
- *   first snapshot otherwise came back empty and System 1 answered BLOCKED.
+ *   mid-evaluation. With `settleMs` it first waits for the page's `networkidle`, at most
+ *   {@link NETWORK_SETTLE_MS}: an SPA calls its API after `load`, and a page that already shows its nav would
+ *   otherwise be read before its list rendered, so System 1 and the orchestrator saw a stale control table (#28).
+ *   Playwright resolves `networkidle` at once when it was reached since the last navigation, so only the first
+ *   snapshot of a page waits. A page with no control yet is then re-read every 200 ms for up to `settleMs`; on a
+ *   real app the first snapshot otherwise came back empty and System 1 answered BLOCKED.
  * @param ignore `snapshotIgnore` selectors, added to {@link DEV_OVERLAYS}.
- * @param settleMs how long to wait for a first control (0 = never wait).
+ * @param settleMs how long to wait for the page to settle and for a first control (0 = never wait).
+ * @param waitNetwork false when the caller already waited for the network (a crawl), so a page that never goes
+ *   quiet is not waited on twice.
  */
 export async function takeSnapshot(
   page: Page,
   ignore: string[] = [],
   settleMs = 0,
+  waitNetwork = true,
 ): Promise<PageSnapshot> {
   const deadline = Date.now() + settleMs;
-  let raw = await evaluateOnce(page, ignore);
-  if (raw.controls.length === 0 && settleMs > 0)
+  if (settleMs > 0 && waitNetwork)
     await page
-      .waitForLoadState('networkidle', { timeout: settleMs })
+      .waitForLoadState('networkidle', {
+        timeout: Math.min(settleMs, NETWORK_SETTLE_MS),
+      })
       .catch(() => undefined);
+  let raw = await evaluateOnce(page, ignore);
   while (raw.controls.length === 0 && Date.now() < deadline) {
     await page.waitForTimeout(SETTLE_POLL_MS);
     raw = await evaluateOnce(page, ignore);

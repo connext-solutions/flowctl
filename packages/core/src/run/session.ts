@@ -215,13 +215,10 @@ export class RunSession {
     this.deadline.assertWithin();
   }
 
-  /** Visible controls and text of the active page, without `snapshotIgnore` and dev overlays. */
-  snapshot(): Promise<PageSnapshot> {
-    return takeSnapshot(
-      this.page,
-      this.cfg.snapshotIgnore,
-      this.cfg.stepTimeout,
-    );
+  /** Visible controls and text of the active page, without `snapshotIgnore` and dev overlays ({@link takeSnapshot}). */
+  snapshot(waitNetwork = true): Promise<PageSnapshot> {
+    const { snapshotIgnore, stepTimeout } = this.cfg;
+    return takeSnapshot(this.page, snapshotIgnore, stepTimeout, waitNetwork);
   }
 
   /**

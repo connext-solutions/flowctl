@@ -107,6 +107,12 @@ $('#f').addEventListener('submit', async (e) => {
 load();
 </script></body></html>`;
 
+/**
+ * The manager's approvals list, filled by `GET /api/requests` after the page loads.
+ *
+ * @remarks `?listDelay=<ms>` makes the server answer that list late (a test seam): the page has loaded and shows
+ *   its nav links, but no approve button yet.
+ */
 export const APPROVALS_PAGE = `${head('Phê duyệt')}<body>${NAV}
 <h1>Phê duyệt</h1>
 <table><tbody id="rows"></tbody></table>
@@ -114,8 +120,9 @@ export const APPROVALS_PAGE = `${head('Phê duyệt')}<body>${NAV}
 <script>
 ${CONTRACT_JS}
 const $ = (s) => document.querySelector(s);
+const listDelay = new URLSearchParams(location.search).get('listDelay');
 async function load() {
-  const r = await fetch('/api/requests');
+  const r = await fetch('/api/requests' + (listDelay ? '?delay=' + listDelay : ''));
   if (!r.ok) return;
   const data = await r.json();
   $('#rows').innerHTML = data.items.filter((i) => i.status === 'PENDING').map((i) =>
