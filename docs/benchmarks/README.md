@@ -54,3 +54,9 @@ typing. After: in the first two runs `CLICK` on the `Lưu nháp` (save draft) bu
 0.37 in the one logged), in the last three `PRESS_ENTER` came first (p 0.30, 0.42, 0.41) with `CLICK` on `Lưu nháp`
 second and `DONE` at 0.10 to 0.19. Every run still escalated as `low_confidence` (threshold 0.5), so the task is
 still 0/5; the leave form stays 5/5 (3 steps, 4 decisions).
+
+## LLM agent vs flowctl
+
+`compare/` holds an opt-in comparison of a headless LLM agent driving the Chrome DevTools MCP against flowctl
+explore and replay on the fixture app's flows (verdict correctness, speed, tokens and cost): method, results
+and how to rerun in [`compare/README.md`](compare/README.md), harness in `scripts/bench/compare.mjs`.
