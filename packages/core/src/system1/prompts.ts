@@ -20,11 +20,14 @@ its matching autocomplete suggestion selected. For date pickers, CLICK the field
 Set every requested filter/control; a matching result alone does not prove a requested filter was set.
 Do not toggle a checkbox, switch, or radio already in the requested state.
 Submit populated search fields before opening a result; a populated field alone is not an applied search.
+A value typed into a field is not added or saved until it is submitted: CLICK a button whose label
+names the goal's action, otherwise PRESS_ENTER in that field.
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
-DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
-a matching link is not enough. BLOCKED means no supported operation can make progress.`;
+DONE requires visible evidence that ALL requirements are satisfied; a field's current value is not
+that evidence. If asked to open a result, a matching link is not enough.
+BLOCKED means no supported operation can make progress.`;
 
 export const TARGET = `Choose the best observed target if the next operation is the one specified in this question.
 Use the user's entire goal, field values, nearby text, and recent actions. This question chooses only
@@ -43,7 +46,7 @@ export const OP_TEXT: Record<Op, string> = {
   SELECT:
     'Choose a value in a native dropdown with one of the provided inputs.',
   PRESS_ENTER:
-    'Press Enter in the focused field, e.g. to submit a form that has no submit button.',
+    "Submit the value just typed into a field by pressing Enter, when no button names the goal's action.",
   SCROLL_DOWN: 'Scroll down',
   SCROLL_UP: 'Scroll up',
   WAIT: 'Wait for the page to update',

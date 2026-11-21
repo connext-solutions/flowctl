@@ -40,3 +40,17 @@ Contract tier, 2026-11-11, untrusted-data framing in every question (issue #48):
 3 or 4 decisions on both. The Enter-only todo task escalated 5/5 on both (`done_rejected` after three `DONE`, or one
 `BLOCKED` or low-confidence decision): System 1 answers `DONE` once the field shows the value and never presses
 Enter, before and after the change, so the change did not cause it.
+
+Contract tier, 2026-11-21, issue #4 (Enter-only todo task). The request after typing offered `PRESS_ENTER`, but its
+text spoke of "the focused field" while the snapshot marks no field as focused, and only search fields were said to
+need submitting; the field value `Mua sữa` was the only place the goal's words appeared, a likely reason for `DONE`. The
+change says a typed value is not added or saved until submitted (a button naming the goal's action, otherwise
+`PRESS_ENTER`), that a field's current value is not evidence for `DONE`, and describes `PRESS_ENTER` as submitting
+the value just typed. Lines at 07:13:13 to 07:24:27 are five Enter-task runs while the wording was tuned: two with
+a first draft of the field rule, one with the committed rule and the old `PRESS_ENTER` text, one with the committed
+wording (07:23:53), and one with an extra Search/Submit edit that was then dropped. The five leave-form lines after
+them use the committed wording. Before (2026-11-11 lines and issue #4): `DONE`, `BLOCKED` or `CLICK` came first after
+typing. After: in the first two runs `CLICK` on the `Lưu nháp` (save draft) button came first (p 0.42, `PRESS_ENTER`
+0.37 in the one logged), in the last three `PRESS_ENTER` came first (p 0.30, 0.42, 0.41) with `CLICK` on `Lưu nháp`
+second and `DONE` at 0.10 to 0.19. Every run still escalated as `low_confidence` (threshold 0.5), so the task is
+still 0/5; the leave form stays 5/5 (3 steps, 4 decisions).
