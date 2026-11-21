@@ -109,7 +109,8 @@ function controlsOf(
  * @remarks Field values are never read (the page script reads attributes and labels), the snapshot never lists
  *   password fields, and every text and path kept goes through the evidence redaction (`redactText` with the run's
  *   secrets, ADR 0030), cut to 300 characters. `path` and `follow` stay as the browser reads them: the crawl
- *   navigates with them; the map stores the redacted form.
+ *   navigates with them; the map stores the redacted form. The caller (`readOpen` in `walk.ts`) already waited for
+ *   the network, so the snapshot does not wait again.
  * @throws {RunError} from the run's snapshot (`budget_exceeded` once the deadline closed the page).
  */
 export async function readPage(
@@ -118,7 +119,7 @@ export async function readPage(
   rules: LinkRules,
 ): Promise<PageRead> {
   const raw = ReadSchema.parse(await run.page.evaluate(PAGE_SCRIPT));
-  const snap = await run.snapshot();
+  const snap = await run.snapshot(false);
   const red = redactor(run.secrets);
   const origin = new URL(run.env.baseUrl).origin;
   const { links, follow } = pageLinks(raw.links, origin, rules);

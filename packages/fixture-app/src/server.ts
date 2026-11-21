@@ -139,6 +139,8 @@ export async function startFixture(
     }
     if (req.method === 'GET' && url.pathname === '/api/requests') {
       if (bug === 'list500') return send(res, 500, { message: 'boom' });
+      const delay = Number(url.searchParams.get('delay') ?? 0);
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       const items = store.map((r) =>
         bug === 'wrongValueAfterReload'
           ? { ...r, reason: r.reason.toUpperCase() }

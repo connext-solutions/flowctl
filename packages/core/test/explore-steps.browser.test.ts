@@ -125,6 +125,27 @@ describe('Exploration.step', () => {
     ]);
   });
 
+  it('escalates after a goto with the list the page fetched after load, not only its nav (#28)', async () => {
+    const cfg = await setup([
+      { op: 'TYPE_TEXT', target: 'Lý do', input: 'reason' },
+      { op: 'CLICK', target: 'Gửi' },
+      { op: 'BLOCKED' },
+      { op: 'BLOCKED' },
+    ]);
+    const x = await start(cfg, SUBMIT);
+    expect((await x.advance()).status).toBe('escalated');
+    const stop = await x.step([
+      { kind: 'as', profile: 'manager' },
+      { kind: 'goto', url: '/approvals?listDelay=800' },
+    ]);
+    if (stop.status !== 'escalated') throw new Error(JSON.stringify(stop));
+    expect(stop.escalation.controls).toContainEqual(
+      expect.stringContaining('"Duyệt Việc riêng cố định"'),
+    );
+    const seen = s1?.requests.at(-1);
+    expect(JSON.stringify(seen)).toContain('Duyệt Việc riêng cố định');
+  });
+
   it('expands templates in an orchestrator step but records the template', async () => {
     const cfg = await setup([{ op: 'BLOCKED' }, { op: 'DONE' }]);
     const x = await start(cfg, {
