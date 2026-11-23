@@ -33,7 +33,7 @@ Releases are GitHub Releases with npm tarballs (ADR 0031). Bump `version` in `pa
 `packages/mcp` to the same value in a pull request; after it merges, tag that commit on `main` and push the tag:
 
 ```bash
-git tag v0.3.0 && git push origin v0.3.0
+git tag v0.3.1 && git push origin v0.3.1
 ```
 
 The `Release` workflow packs the three packages, installs them into an empty project, runs both bins and publishes
