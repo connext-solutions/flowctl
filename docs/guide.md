@@ -144,7 +144,7 @@ a video cannot hide what is typed. Review a video before you share it.
 
 ## Status in detail
 
-Release: [v0.3.0](https://github.com/connext-solutions/flowctl/releases/tag/v0.3.0) (pre-release).
+Release: [v0.3.1](https://github.com/connext-solutions/flowctl/releases/tag/v0.3.1) (pre-release).
 
 | Area | State |
 |---|---|
