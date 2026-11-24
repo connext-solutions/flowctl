@@ -57,6 +57,13 @@ export function openTty(): Tty {
 }
 
 /**
+ * Shown before a new passphrase is chosen: the new passphrase and its repeat are echoed, so the owner can check
+ * what they typed or pasted. The prompts that unlock an existing key stay hidden.
+ */
+export const NEW_PASSPHRASE_NOTE =
+  'The new passphrase is shown as you type or paste it. Make sure nobody can see your screen, and clear the terminal afterwards.\n';
+
+/**
  * Asks the owner to type back a nonce shown only on `/dev/tty` (ADR 0025 section 3).
  *
  * @throws {TrustError} `confirmation_mismatch` when the typed text differs.
@@ -86,7 +93,15 @@ function readLine(fd: number): string {
     if (buf[0] !== 0x0d) bytes.push(buf[0] ?? 0);
     if (bytes.length > 4096) break;
   }
-  return Buffer.from(bytes).toString('utf8');
+  return stripPasteMarkers(Buffer.from(bytes).toString('utf8'));
+}
+
+/**
+ * Removes the bracketed-paste markers (`ESC[200~`, `ESC[201~`) a terminal can wrap around pasted text, so a
+ * pasted passphrase or nonce reads the same as a typed one.
+ */
+export function stripPasteMarkers(line: string): string {
+  return line.replaceAll('\u001b[200~', '').replaceAll('\u001b[201~', '');
 }
 
 /** Turns terminal echo on or off for a hidden answer; a missing `stty` leaves echo as it is. */

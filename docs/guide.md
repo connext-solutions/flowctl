@@ -53,7 +53,7 @@ Every run also has a wall-clock budget, `target.budgets.wallClockMs` (10 minutes
 
 ## The trust store
 
-`flowctl trust init` (once per machine, interactive) records what this machine allows. You type each env's class (`production`, `shared` or `local`), the production origins, the default env, the language and the locale, then a passphrase for your owner key. The folder that holds `flowctl.config.yaml` must be a git repository with at least one commit.
+`flowctl trust init` (once per machine, interactive) records what this machine allows. You type each env's class (`production`, `shared` or `local`), the production origins, the default env, the language and the locale, then a passphrase for your owner key. The new passphrase is shown as you type or paste it, so you can check it; the prompts that later ask for it stay hidden. The folder that holds `flowctl.config.yaml` must be a git repository with at least one commit.
 
 Every command except `--help` and `trust init` refuses with exit code 3 (`trust_missing`) until this is done. The store intersects every run with what you recorded: an env runs only on its recorded origin, System 1 stays off envs not classed `local` or `shared`, and limits cannot be loosened past the built-in ceilings. `flowctl trust --help` lists the other commands (another project, env, origin, secret input names, key rotation, hook consent).
 

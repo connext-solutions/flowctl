@@ -16,7 +16,12 @@ import {
   TrustError,
   validateInit,
 } from '@flowctl/core';
-import { confirmNonce, openTty, type Tty } from './trust-tty.js';
+import {
+  confirmNonce,
+  NEW_PASSPHRASE_NOTE,
+  openTty,
+  type Tty,
+} from './trust-tty.js';
 
 /** An env of the repository config, shown to the owner as a candidate only. */
 export interface EnvCandidate {
@@ -200,10 +205,9 @@ export function trustInit(
     validateInit(target);
     tty.write(describeAnswers(answers));
     confirmNonce(tty, 'create the trust store and register this project');
-    const pass = tty.ask('New owner-key passphrase (16+ characters): ', {
-      echo: false,
-    });
-    if (tty.ask('Repeat the passphrase: ', { echo: false }) !== pass)
+    tty.write(NEW_PASSPHRASE_NOTE);
+    const pass = tty.ask('New owner-key passphrase (16+ characters): ');
+    if (tty.ask('Repeat the passphrase: ') !== pass)
       throw new TrustError(
         'confirmation_mismatch',
         'The passphrases differ; nothing was changed.',
