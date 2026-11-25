@@ -79,7 +79,7 @@ You need Node 22.12 or newer.
 **1. Install** (releases are on GitHub, not npm):
 
 ```bash
-npm install --save-dev https://github.com/connext-solutions/flowctl/releases/download/v0.3.1/flowctl-cli-0.3.1.tgz
+npm install --save-dev https://github.com/connext-solutions/flowctl/releases/download/v0.3.2/flowctl-cli-0.3.2.tgz
 npx playwright install chromium
 ```
 
