@@ -11,7 +11,7 @@ import {
 } from '@flowctl/core';
 import type { Values } from './argv.js';
 import { keyLines, keyRequest } from './trust-key-opts.js';
-import { confirmNonce, openTty } from './trust-tty.js';
+import { confirmNonce, NEW_PASSPHRASE_NOTE, openTty } from './trust-tty.js';
 
 /**
  * `flowctl trust key new --person <name> --scope flows|spec --expires <days> [--out <file>]`: on the owner machine,
@@ -47,16 +47,12 @@ export function trustKeyNew(
       defaultKeyDir(),
       tty.ask('Owner-key passphrase: ', { echo: false }),
     );
+    tty.write(NEW_PASSPHRASE_NOTE);
     const pass = tty.ask(
       'New reviewer-key passphrase (16 characters or more): ',
-      {
-        echo: false,
-      },
     );
     assertReviewerPassphrase(pass);
-    if (
-      tty.ask('New reviewer-key passphrase again: ', { echo: false }) !== pass
-    )
+    if (tty.ask('New reviewer-key passphrase again: ') !== pass)
       throw new TrustError(
         'confirmation_mismatch',
         'The two passphrases differ; nothing was changed.',

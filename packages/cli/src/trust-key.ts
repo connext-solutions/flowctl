@@ -8,7 +8,7 @@ import {
   rotateOwner,
   TrustError,
 } from '@flowctl/core';
-import { confirmNonce, openTty } from './trust-tty.js';
+import { confirmNonce, NEW_PASSPHRASE_NOTE, openTty } from './trust-tty.js';
 
 /**
  * `flowctl trust key rotate-owner` (ADR 0025 Amendment 2026-11-02 section 5): first finishes or rolls back a rotation
@@ -50,10 +50,9 @@ export function trustRotateOwner(out: (s: string) => void): void {
       keyDir,
       tty.ask('Current owner-key passphrase: ', { echo: false }),
     );
-    const pass = tty.ask('New passphrase (16 characters or more): ', {
-      echo: false,
-    });
-    if (tty.ask('New passphrase again: ', { echo: false }) !== pass)
+    tty.write(NEW_PASSPHRASE_NOTE);
+    const pass = tty.ask('New passphrase (16 characters or more): ');
+    if (tty.ask('New passphrase again: ') !== pass)
       throw new TrustError(
         'confirmation_mismatch',
         'The new passphrases differ; nothing was changed.',
